@@ -12,7 +12,13 @@ local Terrain = Workspace.Terrain
 -- ServerStorage.BuildWorld, so rebuilding the world is one line in the command
 -- bar rather than pasting the whole file in:
 --
---   require(game.ServerStorage.BuildWorld)()
+--   local fresh = game.ServerStorage.BuildWorld:Clone()
+--   fresh.Parent = game.ServerStorage
+--   require(fresh)()
+--   fresh:Destroy()
+--
+-- The clone matters: require() caches per ModuleScript INSTANCE, so after Rojo
+-- updates this file a plain require() keeps handing back the stale function.
 --
 -- The body below is deliberately left at column 0. Indenting 700 lines by one
 -- level to satisfy the wrapper would make every future diff unreadable.
@@ -601,8 +607,21 @@ local function buildPickaxe(): Tool
 	tool.RequiresHandle = true
 	tool.CanBeDropped = false
 	tool.ToolTip = "Swing at a rock to mine stone"
-	-- Hand grips near the butt of the shaft, head out front, angled down a little.
-	tool.Grip = CFrame.new(0, 0, 1.35) * CFrame.Angles(math.rad(15), 0, 0)
+
+	-- Held upright, like a torch, rather than sticking straight out in front.
+	--
+	-- Tool.Grip is the INVERSE of where the Handle sits in the hand's frame, so
+	-- the readable way to write it is to describe the pose you want and invert.
+	-- The hand's frame has +Y up and -Z forward, and the Handle's shaft runs
+	-- along its own local Z with the head at -Z. Rotating +90 degrees about X
+	-- carries the handle's -Z onto the hand's +Y, which stands the head up.
+	--
+	-- The grip point wanted is 1.35 along the shaft from centre, near the butt.
+	-- After that rotation it sits 1.35 BELOW the handle's centre, so the centre
+	-- has to be lifted by the same amount to bring the grip back to the hand.
+	local RIGHT_HAND_AT = 1.35
+	local heldPose = CFrame.new(0, RIGHT_HAND_AT, 0) * CFrame.Angles(math.rad(90), 0, 0)
+	tool.Grip = heldPose:Inverse()
 
 	local WOOD = Color3.fromRGB(122, 84, 50)
 	local IRON = Color3.fromRGB(96, 100, 107)
@@ -723,6 +742,14 @@ local function buildPickaxe(): Tool
 	butt.Material = Enum.Material.Wood
 	butt.Color = Color3.fromRGB(96, 66, 40)
 	attach(butt, CFrame.new(0, 0, 1.98) * CFrame.Angles(0, math.rad(90), 0))
+
+	-- Where the off hand goes: further up the shaft than the right hand, the way
+	-- you would actually hold a long tool. ResourceService points an IKControl at
+	-- this, which is what makes the swing two-handed.
+	local leftGrip = Instance.new("Attachment")
+	leftGrip.Name = "LeftGrip"
+	leftGrip.CFrame = CFrame.new(0, 0, 0.8)
+	leftGrip.Parent = handle
 
 	return tool
 end

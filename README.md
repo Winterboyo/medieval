@@ -11,7 +11,7 @@ on a curve, and a wall you spend the stone on.
 | Path | What |
 |---|---|
 | `src/server/ResourceService.server.luau` | The `ResourceService` Script in `ServerScriptService`. Rojo syncs it. |
-| `scripts/build-world.luau` | Builds the board: terrain, lake, scenery, nodes, build sites, pickaxe, lighting. Rojo syncs it to `ServerStorage.BuildWorld`; rebuild with `require(game.ServerStorage.BuildWorld)()` in the command bar. Re-runnable — it tears down what it built last time. |
+| `scripts/build-world.luau` | Builds the board: terrain, lake, scenery, nodes, build sites, pickaxe, lighting. Rojo syncs it to `ServerStorage.BuildWorld`; rebuild from the command bar with the clone snippet below (a plain `require` returns a cached, stale module). Re-runnable — it tears down what it built last time. |
 | `src/client/Notifications.client.luau` | Per-player notices, driven by the `Notify` RemoteEvent. |
 | `default.project.json` | Rojo's map from this repo into the DataModel. |
 | `rokit.toml` | Pins the toolchain (Rojo 7.7.0) so it is reproducible. |
@@ -201,6 +201,49 @@ just the rest pose before the raise. Swap the animation and you must re-measure.
 plain unrotated invisible block, with the visible round shaft welded over it —
 rotating the Handle to lay a cylinder along Z would twist every Grip value with
 it.
+
+**`Tool.Grip` is the *inverse* of where the Handle sits in the hand.** Writing it
+directly is guesswork; describe the pose you want and invert it:
+
+```lua
+local heldPose = CFrame.new(0, 1.35, 0) * CFrame.Angles(math.rad(90), 0, 0)
+tool.Grip = heldPose:Inverse()
+```
+
+The hand's frame has +Y up and −Z forward, and the shaft runs along the Handle's
+local Z with the head at −Z. Rotating +90° about X carries −Z onto +Y, standing
+the pickaxe upright instead of poking forward out of a straight arm. The 1.35
+lift puts the grip point back in the hand after the rotation drops it.
+
+**The two-handed look is an `IKControl`, not the animation.** The swing only
+poses the arm holding the tool, so an IKControl drags the left hand onto a
+`LeftGrip` attachment on the shaft and keeps it there for the whole arc — the off
+hand follows the swing without the animation knowing about it.
+
+`ChainRoot` is `UpperTorso`, not `LeftUpperArm`. Reaching a tool held out on the
+right means crossing the body, and an arm-only chain cannot get there: measured
+**1.78 studs short** with `LeftUpperArm` against **1.32** with the torso in the
+chain. `LowerTorso` is worse again (3.36) — it bends the whole body and still
+misses.
+
+That 1.32 is close, not exact. It is a good approximation, not a real grip. The
+exact version is to pose the left arm in the animation itself, where the hand can
+be placed on the shaft by eye.
+
+**`require` caches per ModuleScript instance.** Rojo updating
+`ServerStorage.BuildWorld` does *not* invalidate that cache, so a plain
+`require(...)()` silently rebuilds the world from the module you loaded first
+this session. Clone it to get a fresh instance and therefore a fresh cache entry:
+
+```lua
+local fresh = game.ServerStorage.BuildWorld:Clone()
+fresh.Parent = game.ServerStorage
+require(fresh)()
+fresh:Destroy()
+```
+
+**Rojo syncs to the Edit datamodel, not a running playtest.** A play session
+started before an edit keeps the old code. Stop, let it sync, start again.
 
 ## Studio MCP
 

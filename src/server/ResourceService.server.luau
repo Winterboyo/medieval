@@ -103,6 +103,7 @@ type State = {
 	swingSpeed: number,
 	nextSwing: number,
 	nextNotice: number,
+	offHandIK: IKControl?,
 }
 
 local state: { [Player]: State } = {}
@@ -394,6 +395,64 @@ task.spawn(function()
 	end
 end)
 
+-- ---------------------------------------------------------------- off hand
+-- The swing animation only poses the arm holding the tool. To make it look
+-- two-handed, an IKControl drags the left hand onto a second grip point on the
+-- shaft, and keeps it there for the whole arc - so the off hand follows the
+-- swing without the animation having to know about it.
+--
+-- ChainRoot is UpperTorso, not LeftUpperArm. Reaching a tool held out on the
+-- right side means crossing the body, and an arm-only chain simply cannot get
+-- there: measured 1.78 studs short with LeftUpperArm against 1.32 with the
+-- torso in the chain. LowerTorso is worse again (3.36) - it bends the whole
+-- body and still misses.
+--
+-- 1.32 studs is close, not exact. This is a good approximation, not a real
+-- grip; the exact version is to pose the left arm in the animation itself,
+-- where the hand can be put on the shaft by eye.
+local OFF_HAND_IK = "OffHandIK"
+
+local function buildOffHandIK(character: Model): IKControl?
+	local humanoid = character:FindFirstChildOfClass("Humanoid")
+	local leftHand = character:FindFirstChild("LeftHand")
+	local chainRoot = character:FindFirstChild("UpperTorso")
+	-- R6 has none of these. No off hand, no crash.
+	if not (humanoid and leftHand and chainRoot) then
+		return nil
+	end
+
+	local existing = humanoid:FindFirstChild(OFF_HAND_IK)
+	if existing then
+		existing:Destroy()
+	end
+
+	local ik = Instance.new("IKControl")
+	ik.Name = OFF_HAND_IK
+	ik.Type = Enum.IKControlType.Position
+	ik.ChainRoot = chainRoot
+	ik.EndEffector = leftHand
+	ik.Weight = 1
+	ik.SmoothTime = 0.06
+	ik.Enabled = false -- nothing to hold onto until a tool is equipped
+	ik.Parent = humanoid
+	return ik
+end
+
+-- Called on equip and unequip. Passing nil drops the off hand back to whatever
+-- the animation wants.
+local function setOffHandTarget(player: Player, tool: Tool?)
+	local playerState = state[player]
+	local ik = playerState and playerState.offHandIK
+	if not ik or not ik.Parent then
+		return
+	end
+
+	local handle = tool and tool:FindFirstChild("Handle")
+	local grip = handle and handle:FindFirstChild("LeftGrip")
+	ik.Target = if grip and grip:IsA("Attachment") then grip else nil
+	ik.Enabled = ik.Target ~= nil
+end
+
 -- ---------------------------------------------------------------- the swing
 -- Loaded once per character rather than per swing: LoadAnimation has to fetch
 -- the asset the first time, and doing that inside a click would put a stall on
@@ -661,6 +720,21 @@ local function onCharacterAdded(player: Player, character: Model)
 	task.wait(0.2)
 	playerState.track, playerState.swingSpeed = loadSwingTrack(character)
 
+	playerState.offHandIK = buildOffHandIK(character)
+
+	-- Equipping parents the Tool to the character, unequipping moves it back to
+	-- the Backpack, so the off hand follows those two events.
+	character.ChildAdded:Connect(function(child)
+		if child:IsA("Tool") and child.Name == "Pickaxe" then
+			setOffHandTarget(player, child)
+		end
+	end)
+	character.ChildRemoved:Connect(function(child)
+		if child:IsA("Tool") and child.Name == "Pickaxe" then
+			setOffHandTarget(player, nil)
+		end
+	end)
+
 	watchForTools(player, character) -- equipped
 	local backpack = player:FindFirstChildOfClass("Backpack")
 	if backpack then
@@ -678,7 +752,7 @@ end
 
 local function onPlayerAdded(player: Player)
 	setupPlayer(player)
-	state[player] = { track = nil, swingSpeed = 1, nextSwing = 0, nextNotice = 0 }
+	state[player] = { track = nil, swingSpeed = 1, nextSwing = 0, nextNotice = 0, offHandIK = nil }
 
 	player.CharacterAdded:Connect(function(character)
 		onCharacterAdded(player, character)
