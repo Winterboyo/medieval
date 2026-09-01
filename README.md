@@ -3,8 +3,9 @@
 Roblox game, built in tiers. See the tier order in
 `~/.claude/projects/C--Users-winter-projects-medieval-land/memory/tier-build-order.md`.
 
-**Current tier: T2** — three rock nodes that deplete as you mine them and refill
-on a curve, and a wall you spend the stone on.
+**Current tier: T3** — built, not yet signed off. Five rock nodes on a Catan-style
+board that deplete and refill on a curve, walls and castles to spend stone on,
+and per-player notices over a RemoteEvent. The two-player playtest is outstanding.
 
 ## Layout
 
@@ -45,21 +46,20 @@ on the next sync. That is the point — it is what stops the two copies drifting
 
 ### What Rojo does not cover
 
-`default.project.json` deliberately maps **only** `ServerScriptService`. Nothing
-else is named in it, so Rojo will not touch Workspace, Terrain, Lighting or
-StarterPack.
+`default.project.json` maps `ServerScriptService`, `ReplicatedStorage.Remotes`,
+`StarterPlayer.StarterPlayerScripts` and `ServerStorage.BuildWorld` — and nothing
+else. Workspace, Terrain, Lighting and StarterPack are deliberately unmapped, so
+Rojo will not touch them.
 
-That is not laziness, it is a limit. Terrain is binary voxel data and cannot be
-live-synced at all. And the world is *generated* — 44 palms, three outcrops, the
-wall site and the pickaxe are the output of a script, not files on disk. Rojo
+That is a limit, not laziness. Terrain is binary voxel data and cannot be
+live-synced at all. And the world is *generated* — the palms, the outcrops, the
+build sites and the pickaxe are the output of a script, not files on disk. Rojo
 syncs static instance trees from files; it does not run generators. Freezing the
-output into an `.rbxmx` for Rojo to sync would trade a readable 700-line
-generator for a binary blob, which is a downgrade.
+output into an `.rbxmx` would trade a readable generator for a binary blob.
 
-So the split is: the thing that changes every session (the service) syncs
+So the split is: the thing that changes every session (the scripts) syncs
 automatically; the thing that changes rarely (the world) stays a deliberate
-one-shot. To rebuild a place from scratch: run `scripts/build-world.luau` in the
-command bar, then connect Rojo.
+one-shot, triggered by hand from `ServerStorage.BuildWorld`.
 
 ## The board
 
@@ -128,11 +128,15 @@ Measured over 180 seconds, mining continuously:
 | | 30s | 60s | 90s | 120s | 150s | 180s |
 |---|---|---|---|---|---|---|
 | camping one node | 30 | 42 | 44 | 46 | 47 | **48** |
-| rotating all three | 25 | 51 | 78 | 99 | 126 | **151** |
+| rotating three nodes | 25 | 51 | 78 | 99 | 126 | **151** |
 
 Camping asymptotes as its node pins at the floor. Rotation is linear and
-sustainable — 3.1x the stone, and it ends with all three nodes back at 24/24
-despite spending 26 of those 180 seconds walking rather than mining.
+sustainable — 3.1x the stone, and it ends with every node back at 24/24 despite
+spending 26 of those 180 seconds walking rather than mining.
+
+**Those numbers are from the old three-node map**, where the nodes sat ~74 studs
+apart. The board has five nodes ~160 studs apart, so the walk is longer and the
+balance has shifted. Re-run this comparison before trusting it.
 
 As a node is worked down its blocks disappear from the top, and a billboard over
 it shows `amount / capacity`. The bar is tinted by the node's **current regen
@@ -144,12 +148,14 @@ it just pays nothing.
 ### Mining
 
 `StarterPack` holds the `Pickaxe`; `ResourceService` auto-equips it on spawn and
-listens for `Tool.Activated`, which the engine fires on the **server** — so there
-is no RemoteEvent yet. That arrives at T3. The wall uses a `ProximityPrompt`,
-whose `Triggered` is likewise a server event.
+listens for `Tool.Activated`, which the engine fires on the **server**, so mining
+needs no RemoteEvent. Build sites use a `ProximityPrompt`, whose `Triggered` is
+likewise a server event. The one RemoteEvent in the game is `Notify`, and it
+exists for per-player feedback rather than for input.
 
-A swing takes 1 second. Stone is granted at the 0.5s mark, not on the click, and
-only if a node is within 15 studs **and** roughly in front of you.
+A swing takes 1 second. Stone is granted at the **0.70s** mark — the measured
+contact frame of the animation, not the click — and only if a node is within 15
+studs **and** roughly in front of you.
 
 ## Things that bit, so they don't bite twice
 
