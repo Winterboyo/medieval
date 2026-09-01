@@ -11,7 +11,8 @@ on a curve, and a wall you spend the stone on.
 | Path | What |
 |---|---|
 | `src/server/ResourceService.server.luau` | The `ResourceService` Script in `ServerScriptService`. Rojo syncs it. |
-| `scripts/build-world.luau` | One-shot world setup: terrain, the lake, palms, the rock nodes, the wall site, and the pickaxe tool. Run it in Studio by hand; it is not part of the place. Re-runnable. |
+| `scripts/build-world.luau` | Builds the board: terrain, lake, scenery, nodes, build sites, pickaxe, lighting. Rojo syncs it to `ServerStorage.BuildWorld`; rebuild with `require(game.ServerStorage.BuildWorld)()` in the command bar. Re-runnable — it tears down what it built last time. |
+| `src/client/Notifications.client.luau` | Per-player notices, driven by the `Notify` RemoteEvent. |
 | `default.project.json` | Rojo's map from this repo into the DataModel. |
 | `rokit.toml` | Pins the toolchain (Rojo 7.7.0) so it is reproducible. |
 
@@ -60,14 +61,48 @@ automatically; the thing that changes rarely (the world) stays a deliberate
 one-shot. To rebuild a place from scratch: run `scripts/build-world.luau` in the
 command bar, then connect Rojo.
 
+## The board
+
+A 5×5 grid of 72-stud square tiles, centred on the origin, laid out like a Catan
+board. The layout is fixed rather than shuffled, in `LAYOUT`:
+
+```
+G W S G D      L lake     S stone
+S G W D G      W wood     G grass
+W D L G S      D desert
+G S D W G
+D G W S G
+```
+
+Each tile kind gets its own terrain material and its own scenery, which is what
+makes a tile readable from ground level rather than only from above. The
+surround is deliberately a *different* material from the grass tiles — when they
+matched, the board stopped reading as a board and became landscape with lines
+drawn on it.
+
+**One stone outcrop per stone tile**, at the tile's centre — a stone tile *is*
+the node. Five tiles, five nodes, roughly 160 studs apart. That spacing is not
+decoration: the walk between nodes is what gives the regen curve teeth.
+
+**A castle plot on every interior tile corner** — the Catan settlement spots, 16
+of them, where four tiles meet.
+
 ## The loop
 
-Spawn on the pad at `(0, 86)`, mine one of the three outcrops, walk to the wall
-site at `(0, 72)` and hold **E** to spend 10 Stone on a section. The wall is 8
-sections wide and 3 courses high, 24 in total, then it is finished.
+Spawn on the pad south of the board, mine an outcrop, then hold **E** at a build
+site to spend 10 Stone on a block. Two site kinds, both 24 blocks:
+
+| Kind | Shape |
+|---|---|
+| `Wall` | 8 sections wide, 3 courses high. The Tier 1 starter sink, kept. |
+| `Castle` | A square ring stacked into a hollow tower, 8 blocks per course, 3 courses. |
+
+The world builder tags each site with a `Kind` attribute; `ResourceService` owns
+what that tag means. Adding a third shape is a new branch in `layoutOf` and
+nothing else.
 
 The world builder places geometry only. Everything that changes at runtime —
-how much stone a node holds, how fast it comes back, what a wall section costs —
+how much stone a node holds, how fast it comes back, what a block costs —
 lives in `ResourceService`.
 
 ### Nodes

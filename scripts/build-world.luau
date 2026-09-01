@@ -1,6 +1,6 @@
 --!strict
--- Medieval Land - world builder. The oasis is the whole map: grass to the
--- horizon, a sand shore, and open water in the middle.
+-- Medieval Land - world builder. A Catan-style board: a 5x5 grid of square
+-- resource tiles around a central lake, with castle plots on the tile corners.
 -- One-shot setup script. Safe to re-run: it tears down what it built last time first.
 
 local Workspace = game:GetService("Workspace")
@@ -8,69 +8,80 @@ local Lighting = game:GetService("Lighting")
 local StarterPack = game:GetService("StarterPack")
 local Terrain = Workspace.Terrain
 
+-- Exposed as a function so it can be re-run. Rojo syncs this file to
+-- ServerStorage.BuildWorld, so rebuilding the world is one line in the command
+-- bar rather than pasting the whole file in:
+--
+--   require(game.ServerStorage.BuildWorld)()
+--
+-- The body below is deliberately left at column 0. Indenting 700 lines by one
+-- level to satisfy the wrapper would make every future diff unreadable.
+return function()
+
 local MAP_SIZE = 512
-local SOIL_THICK = 30 -- grass slab, top surface at y = 0
+local SOIL_THICK = 30 -- terrain slab, top surface at y = 0
 
--- The lake is a sphere sunk below ground, so the banks curve instead of forming
--- a wall. Sphere of radius 48 with its centre 30 down opens a ~37 stud circle at
--- ground level and bottoms out 18 studs deep.
-local LAKE_RADIUS = 48
-local LAKE_SINK = 30
-local BEACH_RADIUS = 64
+local GRID = 5 -- tiles per side
+local TILE = 72 -- studs per tile
+local BOARD = GRID * TILE -- 360; the board is centred on the origin
 
-local PALM_COUNT = 44
+-- The lake occupies the centre tile and is kept well inside it, so the four
+-- castle plots on that tile's corners stay on dry land.
+local LAKE_RADIUS = 30
+local LAKE_SINK = 18
 
-local SPAWN_POS = Vector3.new(0, 0.5, 86)
-local WALL_SITE_POS = Vector3.new(0, 0.5, 72)
--- Ground positions only. The height is raycast at build time - see groundHeight.
-local NODE_POSITIONS = {
-	{ "Rock_01", Vector2.new(34, 98) },
-	{ "Rock_02", Vector2.new(-40, 90) },
-	{ "Rock_03", Vector2.new(6, 126) },
+-- Row-major, row 1 at -Z. Fixed rather than shuffled: the stone tiles need to be
+-- spread but not maximally distant, because the walk between them is what makes
+-- the regen curve in ResourceService worth anything.
+--   L lake   S stone   W wood   G grass   D desert
+local LAYOUT = {
+	"GWSGD",
+	"SGWDG",
+	"WDLGS",
+	"GSDWG",
+	"DGWSG",
 }
 
--- Scenery stays off these, so the walk between spawn, the rocks and the wall is
--- never blocked by a palm that happened to roll the wrong number.
-local KEEP_CLEAR = {
-	{ Vector2.new(SPAWN_POS.X, SPAWN_POS.Z), 22 },
-	{ Vector2.new(WALL_SITE_POS.X, WALL_SITE_POS.Z), 26 },
-	{ Vector2.new(34, 98), 15 },
-	{ Vector2.new(-40, 90), 15 },
-	{ Vector2.new(6, 126), 15 },
+local TILE_MATERIAL = {
+	L = Enum.Material.LeafyGrass, -- the water is carved into it separately
+	S = Enum.Material.Rock,
+	W = Enum.Material.Mud, -- forest floor, and distinct from the surround
+	G = Enum.Material.LeafyGrass,
+	D = Enum.Material.Sand,
 }
 
-local rng = Random.new(20260901)
+-- Everything off the board. Deliberately NOT LeafyGrass: when the surround
+-- matched the grass tiles, the board stopped reading as a board and became
+-- landscape with lines drawn on it. Dull earth makes the tiles pop.
+local SURROUND_MATERIAL = Enum.Material.Ground
 
-local function isClear(x: number, z: number): boolean
-	local point = Vector2.new(x, z)
-	for _, entry in KEEP_CLEAR do
-		if (point - entry[1]).Magnitude < entry[2] then
-			return false
-		end
-	end
-	return true
+-- Outside the board, so the horizon is not a flat edge.
+local SURROUND_RISES = 10
+
+local SPAWN_POS = Vector3.new(0, 0.5, 205)
+local WALL_SITE_POS = Vector3.new(0, 0.5, 188)
+
+local rng = Random.new(20260902)
+
+-- ---------------------------------------------------------------- tile helpers
+-- Tile (row, col) with 1-based indices; row 1 is the -Z edge.
+local function tileKind(row: number, col: number): string
+	return LAYOUT[row]:sub(col, col)
 end
 
--- Nothing below may assume the ground is at y = 0, because it is not. Terrain
--- smoothing lifts the flat parts of the map to about y = 2, and the grass rises
--- push it past 6. Rock_03 sits at distance 126, right inside the band the rises
--- are placed in; when it was positioned at a hardcoded height the whole outcrop
--- ended up buried inside a hill - invisible, unmineable, and it silently broke
--- the one test that needs three working nodes.
---
--- So every placement raycasts for the real surface first. Terrain only: scenery
--- must not stack on top of scenery.
-local groundParams = RaycastParams.new()
-groundParams.FilterType = Enum.RaycastFilterType.Include
-groundParams.FilterDescendantsInstances = { Terrain }
+local function tileCentre(row: number, col: number): Vector2
+	return Vector2.new((col - (GRID + 1) / 2) * TILE, (row - (GRID + 1) / 2) * TILE)
+end
 
-local function groundHeight(x: number, z: number): number
-	local hit = Workspace:Raycast(Vector3.new(x, 220, z), Vector3.new(0, -440, 0), groundParams)
-	return if hit then hit.Position.Y else 0
+-- Corners are the lattice points between tiles. Corner (i, j) with 1-based
+-- indices runs 1..GRID+1; the interior ones (2..GRID) are where four tiles meet,
+-- which is where a castle can go.
+local function cornerPoint(i: number, j: number): Vector2
+	return Vector2.new((j - 1 - GRID / 2) * TILE, (i - 1 - GRID / 2) * TILE)
 end
 
 -- ---------------------------------------------------------------- teardown
-for _, name in { "MedievalLand_Scenery", "ResourceNodes", "BuildSites", "SpawnLocation", "Baseplate" } do
+for _, name in { "MedievalLand_Scenery", "MedievalLand_Board", "ResourceNodes", "BuildSites", "SpawnLocation", "Baseplate" } do
 	local existing = Workspace:FindFirstChild(name)
 	if existing then
 		existing:Destroy()
@@ -83,59 +94,45 @@ end
 Terrain:Clear()
 
 -- ---------------------------------------------------------------- terrain
--- LeafyGrass, not Grass. The Grass material spawns Roblox's tall grass
--- decoration, whose blades stand about head height on a character: at eye level
--- it swallows the player, the rocks and the wall. There is no property to
--- shorten it, and Terrain.Decoration is not reachable from this scripting
--- context, so the fix is the material. LeafyGrass reads just as lush from a
--- distance and grows nothing.
+-- Base slab for everything outside the board.
 Terrain:FillBlock(
 	CFrame.new(0, -SOIL_THICK / 2, 0),
 	Vector3.new(MAP_SIZE, SOIL_THICK, MAP_SIZE),
-	Enum.Material.LeafyGrass
+	SURROUND_MATERIAL
 )
 
--- Low rises out in the fields so the grass is not a billiard table. Kept well
--- away from the water, which needs a flat rim to read as a shoreline.
-for i = 1, 12 do
-	local angle = (i / 12) * math.pi * 2 + rng:NextNumber(-0.35, 0.35)
-	local dist = rng:NextNumber(115, 215)
-	local radius = rng:NextNumber(45, 78)
-	local rise = rng:NextNumber(5, 13)
+-- Rises only OUTSIDE the board. The board itself stays dead flat, which is what
+-- makes it read as a board rather than as landscape.
+for i = 1, SURROUND_RISES do
+	local angle = (i / SURROUND_RISES) * math.pi * 2 + rng:NextNumber(-0.3, 0.3)
+	local dist = rng:NextNumber(BOARD / 2 + 60, 230)
+	local radius = rng:NextNumber(40, 70)
+	local rise = rng:NextNumber(5, 12)
 	Terrain:FillBall(
 		Vector3.new(math.cos(angle) * dist, -radius + rise, math.sin(angle) * dist),
 		radius,
-		Enum.Material.LeafyGrass
+		SURROUND_MATERIAL
 	)
 end
 
--- Sand shore. FillCylinder's axis runs along the CFrame's up vector, so an
--- unrotated CFrame gives the flat disc we want.
-Terrain:FillCylinder(CFrame.new(0, -4, 0), 8, BEACH_RADIUS, Enum.Material.Sand)
-
--- A perfect circle of sand looks stamped on. These break up its outer edge.
-for i = 1, 26 do
-	local angle = (i / 26) * math.pi * 2 + rng:NextNumber(-0.2, 0.2)
-	local dist = BEACH_RADIUS + rng:NextNumber(-7, 9)
-	local radius = rng:NextNumber(9, 16)
-	Terrain:FillBall(
-		Vector3.new(math.cos(angle) * dist, -radius + rng:NextNumber(1.5, 3.5), math.sin(angle) * dist),
-		radius,
-		Enum.Material.Sand
-	)
+-- Paint each tile. Squared-off fills are exactly what we want here.
+for row = 1, GRID do
+	for col = 1, GRID do
+		local centre = tileCentre(row, col)
+		Terrain:FillBlock(
+			CFrame.new(centre.X, -SOIL_THICK / 2, centre.Y),
+			Vector3.new(TILE, SOIL_THICK, TILE),
+			TILE_MATERIAL[tileKind(row, col)]
+		)
+	end
 end
 
--- Water.
+-- Water on the centre tile.
 --
 -- Terrain:FillBall(..., Enum.Material.Water) is a SILENT NO-OP on current
 -- Roblox. Since the Shorelines change, water is not a material in the solid
 -- voxel grid at all - it is its own LiquidOccupancy channel - and the Fill*
 -- family cannot write it. Nothing errors; you just get no water.
---
--- So the lake is written a voxel at a time: hollow out the sphere, and fill
--- whatever part of that hollow sits below ground level with liquid. Solid
--- removed and liquid added in one pass gives a bowl with curved banks and a
--- flat surface at y = 0.
 local LAKE_CENTRE = Vector3.new(0, -LAKE_SINK, 0)
 local VOXEL = 4
 
@@ -176,6 +173,47 @@ Terrain:WriteVoxelChannels(lakeRegion, VOXEL, {
 	SolidOccupancy = solidOccupancy,
 	LiquidOccupancy = liquidOccupancy,
 })
+
+-- ---------------------------------------------------------------- ground probe
+-- Nothing below may assume the ground is at y = 0. Terrain smoothing lifts the
+-- flat parts of the map, and the surrounding rises push it further. Placing at a
+-- hardcoded height once buried a whole resource node inside a hill.
+local groundParams = RaycastParams.new()
+groundParams.FilterType = Enum.RaycastFilterType.Include
+groundParams.FilterDescendantsInstances = { Terrain }
+
+local function groundHeight(x: number, z: number): number
+	local hit = Workspace:Raycast(Vector3.new(x, 220, z), Vector3.new(0, -440, 0), groundParams)
+	return if hit then hit.Position.Y else 0
+end
+
+-- ---------------------------------------------------------------- board edges
+-- Thin kerbs along the tile boundaries. Without these the terrain colours blur
+-- into each other and it stops reading as a board.
+local board = Instance.new("Folder")
+board.Name = "MedievalLand_Board"
+board.Parent = Workspace
+
+local function kerb(name: string, centre: Vector3, size: Vector3)
+	local part = Instance.new("Part")
+	part.Name = name
+	part.Size = size
+	part.Position = centre
+	part.Anchored = true
+	part.CanCollide = false -- you walk over tile lines, not into them
+	part.Material = Enum.Material.Sandstone
+	part.Color = Color3.fromRGB(206, 196, 172)
+	part.TopSurface = Enum.SurfaceType.Smooth
+	part.BottomSurface = Enum.SurfaceType.Smooth
+	part.Parent = board
+end
+
+for line = 1, GRID + 1 do
+	local offset = (line - 1 - GRID / 2) * TILE
+	local y = groundHeight(offset, 0) + 0.08
+	kerb(("KerbZ%d"):format(line), Vector3.new(offset, y, 0), Vector3.new(1.1, 0.35, BOARD))
+	kerb(("KerbX%d"):format(line), Vector3.new(0, y, offset), Vector3.new(BOARD, 0.35, 1.1))
+end
 
 -- ---------------------------------------------------------------- scenery
 local scenery = Instance.new("Folder")
@@ -284,89 +322,79 @@ local function makePalm(origin: Vector3)
 	palm.Parent = scenery
 end
 
--- Squaring the random roll biases palms toward the shore without leaving the
--- rest of the map bare.
-local placed = 0
-local attempts = 0
-while placed < PALM_COUNT and attempts < PALM_COUNT * 60 do
-	attempts += 1
-	local angle = rng:NextNumber(0, math.pi * 2)
-	local t = rng:NextNumber(0, 1)
-	local dist = 44 + t * t * 186
-	local x = math.cos(angle) * dist
-	local z = math.sin(angle) * dist
-	if isClear(x, z) then
-		makePalm(Vector3.new(x, groundHeight(x, z) - 0.6, z))
-		placed += 1
+local function makeShrub(x: number, z: number)
+	local shrub = Instance.new("Model")
+	shrub.Name = "Shrub"
+	local main: Part? = nil
+	local ground = groundHeight(x, z)
+	for lobe = 1, rng:NextInteger(2, 4) do
+		local size = rng:NextNumber(2.2, 4.0)
+		local blob = Instance.new("Part")
+		blob.Shape = Enum.PartType.Ball
+		blob.Size = Vector3.new(size, size * 0.78, size)
+		blob.Position = Vector3.new(x, ground + size * 0.24, z)
+			+ Vector3.new(rng:NextNumber(-1.6, 1.6), 0, rng:NextNumber(-1.6, 1.6))
+		blob.Anchored = true
+		blob.Material = Enum.Material.LeafyGrass
+		blob.Color = FROND_GREENS[rng:NextInteger(1, #FROND_GREENS)]
+		blob.Parent = shrub
+		main = main or blob
 	end
+	shrub.PrimaryPart = main
+	shrub.Parent = scenery
 end
 
-for i = 1, 34 do
-	local angle = rng:NextNumber(0, math.pi * 2)
-	local dist = rng:NextNumber(48, 200)
-	local x = math.cos(angle) * dist
-	local z = math.sin(angle) * dist
-	if isClear(x, z) then
-		local shrub = Instance.new("Model")
-		shrub.Name = "Shrub"
-		local main: Part? = nil
-		for lobe = 1, rng:NextInteger(2, 4) do
-			local size = rng:NextNumber(2.2, 4.4)
-			local blob = Instance.new("Part")
-			blob.Shape = Enum.PartType.Ball
-			blob.Size = Vector3.new(size, size * 0.78, size)
-			blob.Position = Vector3.new(x, groundHeight(x, z) + size * 0.24, z)
-				+ Vector3.new(rng:NextNumber(-1.6, 1.6), 0, rng:NextNumber(-1.6, 1.6))
-			blob.Anchored = true
-			blob.Material = Enum.Material.LeafyGrass
-			blob.Color = FROND_GREENS[rng:NextInteger(1, #FROND_GREENS)]
-			blob.Parent = shrub
-			main = main or blob
+local function makeBoulder(x: number, z: number)
+	local size = rng:NextNumber(2.0, 4.6)
+	local boulder = Instance.new("Part")
+	boulder.Name = "Boulder"
+	boulder.Size = Vector3.new(size, size * rng:NextNumber(0.5, 0.8), size * rng:NextNumber(0.7, 1.2))
+	boulder.CFrame = CFrame.new(x, groundHeight(x, z) + size * 0.2, z)
+		* CFrame.Angles(rng:NextNumber(-0.3, 0.3), rng:NextNumber(0, 6.28), rng:NextNumber(-0.3, 0.3))
+	boulder.Anchored = true
+	boulder.Material = Enum.Material.Rock
+	local grey = rng:NextInteger(112, 142)
+	boulder.Color = Color3.fromRGB(grey + 6, grey + 3, grey)
+	boulder.Parent = scenery
+end
+
+-- Scenery is dressed per tile kind, which is what makes a tile readable from
+-- ground level rather than only from above.
+local INSET = TILE / 2 - 9 -- keep scenery off the kerbs
+
+for row = 1, GRID do
+	for col = 1, GRID do
+		local kind = tileKind(row, col)
+		local centre = tileCentre(row, col)
+
+		local function scatter(count: number, place: (number, number) -> ())
+			for _ = 1, count do
+				place(
+					centre.X + rng:NextNumber(-INSET, INSET),
+					centre.Y + rng:NextNumber(-INSET, INSET)
+				)
+			end
 		end
-		shrub.PrimaryPart = main
-		shrub.Parent = scenery
-	end
-end
 
-for i = 1, 26 do
-	local angle = rng:NextNumber(0, math.pi * 2)
-	local dist = rng:NextNumber(50, 210)
-	local x = math.cos(angle) * dist
-	local z = math.sin(angle) * dist
-	if isClear(x, z) then
-		local size = rng:NextNumber(2.2, 5.5)
-		local boulder = Instance.new("Part")
-		boulder.Name = "Boulder"
-		boulder.Size = Vector3.new(size, size * rng:NextNumber(0.5, 0.8), size * rng:NextNumber(0.7, 1.2))
-		boulder.CFrame = CFrame.new(x, groundHeight(x, z) + size * 0.2, z)
-			* CFrame.Angles(rng:NextNumber(-0.3, 0.3), rng:NextNumber(0, 6.28), rng:NextNumber(-0.3, 0.3))
-		boulder.Anchored = true
-		boulder.Material = Enum.Material.Rock
-		local grey = rng:NextInteger(112, 142)
-		boulder.Color = Color3.fromRGB(grey + 6, grey + 3, grey)
-		boulder.Parent = scenery
-	end
-end
-
--- Driftwood, on the sand only.
-for i = 1, 9 do
-	local angle = rng:NextNumber(0, math.pi * 2)
-	local dist = rng:NextNumber(42, BEACH_RADIUS - 3)
-	local x = math.cos(angle) * dist
-	local z = math.sin(angle) * dist
-	if isClear(x, z) then
-		local length = rng:NextNumber(6, 11)
-		local log = Instance.new("Part")
-		log.Name = "Driftwood"
-		log.Shape = Enum.PartType.Cylinder
-		log.Size = Vector3.new(length, 1.5, 1.5)
-		log.CFrame = CFrame.new(x, groundHeight(x, z) + 0.7, z)
-			* CFrame.Angles(0, rng:NextNumber(0, 6.28), 0)
-			* CFrame.Angles(0, 0, rng:NextNumber(-0.08, 0.08))
-		log.Anchored = true
-		log.Material = Enum.Material.Wood
-		log.Color = Color3.fromRGB(148, 130, 108)
-		log.Parent = scenery
+		if kind == "W" then
+			scatter(rng:NextInteger(5, 7), function(x, z)
+				makePalm(Vector3.new(x, groundHeight(x, z) - 0.6, z))
+			end)
+			scatter(2, makeShrub)
+		elseif kind == "G" then
+			scatter(rng:NextInteger(3, 5), makeShrub)
+		elseif kind == "S" then
+			scatter(rng:NextInteger(3, 5), makeBoulder)
+		elseif kind == "D" then
+			scatter(rng:NextInteger(1, 2), makeBoulder)
+		elseif kind == "L" then
+			scatter(3, function(x, z)
+				-- palms on the lake shore only, not in the water
+				if Vector2.new(x, z).Magnitude > LAKE_RADIUS + 4 then
+					makePalm(Vector3.new(x, groundHeight(x, z) - 0.6, z))
+				end
+			end)
+		end
 	end
 end
 
@@ -429,7 +457,7 @@ local function makeOutcrop(name: string, origin: Vector3)
 		local height = rng:NextNumber(2.4, 5.2)
 		local angle = (i / 8) * math.pi * 2 + rng:NextNumber(-0.3, 0.3)
 		local dist = rng:NextNumber(1.7, 3.1)
-		local baseY = origin.Y - 2.4 + rng:NextNumber(0, 1.1)
+		local baseY = groundY + rng:NextNumber(0, 1.1)
 		stone(
 			"Block" .. i,
 			Vector3.new(width, height, width * rng:NextNumber(0.75, 1.2)),
@@ -482,47 +510,87 @@ local function makeOutcrop(name: string, origin: Vector3)
 	return outcrop
 end
 
-for _, entry in NODE_POSITIONS do
-	local at = entry[2]
-	makeOutcrop(entry[1], Vector3.new(at.X, groundHeight(at.X, at.Y) + 2.4, at.Y))
+-- One outcrop per stone tile, at the tile's centre. A stone tile IS the node.
+local nodeCount = 0
+for row = 1, GRID do
+	for col = 1, GRID do
+		if tileKind(row, col) == "S" then
+			nodeCount += 1
+			local centre = tileCentre(row, col)
+			makeOutcrop(
+				("Rock_%02d"):format(nodeCount),
+				Vector3.new(centre.X, groundHeight(centre.X, centre.Y) + 2.4, centre.Y)
+			)
+		end
+	end
 end
 
--- ---------------------------------------------------------------- wall site
--- Tier 1 needs somewhere for the stone to go, or gathering is just a counter.
--- Geometry and the prompt live here; the cost and the courses live in the service.
+-- ---------------------------------------------------------------- build sites
+-- Geometry and prompts live here; costs, layouts and progress live in
+-- ResourceService. The Kind attribute tells the service which layout to use.
 local buildSites = Instance.new("Folder")
 buildSites.Name = "BuildSites"
 buildSites.Parent = Workspace
 
-local wallSite = Instance.new("Model")
-wallSite.Name = "WallSite"
+local function makeSite(name: string, kind: string, position: Vector3, footprint: Vector3)
+	local site = Instance.new("Model")
+	site.Name = name
+	site:SetAttribute("Kind", kind)
 
-local foundation = Instance.new("Part")
-foundation.Name = "Foundation"
-foundation.Size = Vector3.new(34, 1, 3.4)
-foundation.CFrame = CFrame.new(WALL_SITE_POS.X, groundHeight(WALL_SITE_POS.X, WALL_SITE_POS.Z) + 0.5, WALL_SITE_POS.Z)
-foundation.Anchored = true
-foundation.Material = Enum.Material.Sandstone
-foundation.Color = Color3.fromRGB(168, 152, 126)
-foundation.TopSurface = Enum.SurfaceType.Smooth
-foundation.BottomSurface = Enum.SurfaceType.Smooth
-foundation.Parent = wallSite
+	local foundation = Instance.new("Part")
+	foundation.Name = "Foundation"
+	foundation.Size = footprint
+	foundation.Position = position
+	foundation.Anchored = true
+	foundation.Material = Enum.Material.Sandstone
+	foundation.Color = Color3.fromRGB(168, 152, 126)
+	foundation.TopSurface = Enum.SurfaceType.Smooth
+	foundation.BottomSurface = Enum.SurfaceType.Smooth
+	foundation.Parent = site
 
-local prompt = Instance.new("ProximityPrompt")
-prompt.Name = "BuildPrompt"
-prompt.ActionText = "Build wall section"
-prompt.ObjectText = "Wall"
-prompt.HoldDuration = 0.35
-prompt.MaxActivationDistance = 14
-prompt.RequiresLineOfSight = false
-prompt.Parent = foundation
+	local prompt = Instance.new("ProximityPrompt")
+	prompt.Name = "BuildPrompt"
+	prompt.ActionText = "Build"
+	prompt.ObjectText = kind
+	prompt.HoldDuration = 0.35
+	prompt.MaxActivationDistance = 14
+	prompt.RequiresLineOfSight = false
+	prompt.Parent = foundation
 
-local sections = Instance.new("Folder")
-sections.Name = "Sections"
-sections.Parent = wallSite
+	local sections = Instance.new("Folder")
+	sections.Name = "Sections"
+	sections.Parent = site
 
-wallSite.PrimaryPart = foundation
-wallSite.Parent = buildSites
+	site.PrimaryPart = foundation
+	site.Parent = buildSites
+	return site
+end
+
+-- The starter wall, kept from Tier 1 so its verified behaviour survives.
+makeSite(
+	"WallSite",
+	"Wall",
+	Vector3.new(WALL_SITE_POS.X, groundHeight(WALL_SITE_POS.X, WALL_SITE_POS.Z) + 0.5, WALL_SITE_POS.Z),
+	Vector3.new(34, 1, 3.4)
+)
+
+-- A castle plot on every interior tile corner - the Catan settlement spots.
+local plotCount = 0
+for i = 2, GRID do
+	for j = 2, GRID do
+		local point = cornerPoint(i, j)
+		-- Skip anything that would sit in the lake.
+		if point.Magnitude > LAKE_RADIUS + 8 then
+			plotCount += 1
+			makeSite(
+				("CastlePlot_%02d"):format(plotCount),
+				"Castle",
+				Vector3.new(point.X, groundHeight(point.X, point.Y) + 0.5, point.Y),
+				Vector3.new(11, 1, 11)
+			)
+		end
+	end
+end
 
 -- ---------------------------------------------------------------- pickaxe
 -- Built here rather than by hand in Studio so the tool is reproducible from
@@ -545,8 +613,7 @@ local function buildPickaxe(): Tool
 	-- The Handle is a plain unrotated block and is invisible; the wooden shaft
 	-- you actually see is a cylinder welded over it. Tool.Grip is expressed in
 	-- the Handle's own frame, so rotating the Handle to lay a cylinder along Z
-	-- would twist every Grip value with it. Keeping the Handle axis-aligned
-	-- keeps Grip readable.
+	-- would twist every Grip value with it.
 	local handle = Instance.new("Part")
 	handle.Name = "Handle"
 	handle.Size = Vector3.new(0.30, 0.30, 3.9)
@@ -557,16 +624,15 @@ local function buildPickaxe(): Tool
 	handle.Massless = true
 	handle.Parent = tool
 
-	-- Everything is positioned in the handle's frame first, then welded. An
-	-- explicit Weld rather than a WeldConstraint: a WeldConstraint only captures
-	-- its offset once both parts are live in the world, and this tool is built
-	-- straight into StarterPack.
-	local handleFrame = CFrame.new() -- the shaft's logical frame, ignoring the roll
+	local handleFrame = CFrame.new()
 	local function attach(part: BasePart, localCFrame: CFrame)
 		part.CFrame = handleFrame * localCFrame
 		part.Anchored = false
 		part.CanCollide = false
 		part.Massless = true
+		-- Explicit Weld, not WeldConstraint: a WeldConstraint only captures its
+		-- offset once both parts are live in the world, and this tool is built
+		-- straight into StarterPack.
 		local weld = Instance.new("Weld")
 		weld.Part0 = handle
 		weld.Part1 = part
@@ -587,8 +653,6 @@ local function buildPickaxe(): Tool
 		attach(part, localCFrame)
 	end
 
-	-- Cylinder parts run along their X axis, so a 90 degree yaw lays the shaft
-	-- down the handle's Z.
 	local shaft = Instance.new("Part")
 	shaft.Name = "Shaft"
 	shaft.Shape = Enum.PartType.Cylinder
@@ -597,23 +661,18 @@ local function buildPickaxe(): Tool
 	shaft.Color = WOOD
 	attach(shaft, CFrame.Angles(0, math.rad(90), 0))
 
-	-- The head. A pickaxe is not a bar across a stick: both arms sweep BACK
-	-- toward the user in a curve, and taper to a point. Each arm is five short
-	-- segments, each one rotated a little further round than the last.
-	local HEAD_AT = CFrame.new(0, 0, -1.72) -- where the head crosses the shaft
+	-- Both arms of the head sweep BACK toward the user in a curve and taper to a
+	-- point. Each arm is five short segments, each rotated a little further round.
+	local HEAD_AT = CFrame.new(0, 0, -1.72)
 	local ARM_SEGMENTS = 5
 	local SEG_LENGTH = 0.42
-	local SEG_CURVE = math.rad(13) -- per segment; five of these is a 65 degree sweep
+	local SEG_CURVE = math.rad(13)
 
 	for _, side in { 1, -1 } do
-		-- side 1 sweeps the upper arm, side -1 the lower. Rolling the start frame
-		-- 180 degrees mirrors the whole arm without duplicating the maths.
 		local cursor = HEAD_AT * CFrame.Angles(0, 0, if side == 1 then 0 else math.pi)
 		cursor = cursor * CFrame.new(0, 0.16, 0)
 
 		for seg = 1, ARM_SEGMENTS do
-			-- Rotating about local X tips local +Y toward local +Z, which is back
-			-- toward the hand: the pick's curve.
 			cursor = cursor * CFrame.Angles(SEG_CURVE, 0, 0)
 
 			local taper = 1 - (seg - 1) / ARM_SEGMENTS
@@ -630,7 +689,6 @@ local function buildPickaxe(): Tool
 			cursor = cursor * CFrame.new(0, SEG_LENGTH, 0)
 		end
 
-		-- The point itself.
 		metal(
 			("Tip%s"):format(if side == 1 then "Up" else "Down"),
 			Vector3.new(0.09, 0.28, 0.11),
@@ -639,10 +697,7 @@ local function buildPickaxe(): Tool
 		)
 	end
 
-	-- The eye: the block the shaft passes through, holding the head on.
 	metal("Eye", Vector3.new(0.52, 0.62, 0.62), HEAD_AT, IRON_DARK)
-
-	-- Wedge above the eye, the way a real head is pinned to the haft.
 	metal("Wedge", Vector3.new(0.30, 0.18, 0.42), HEAD_AT * CFrame.new(0, 0.42, 0), IRON)
 
 	local ferrule = Instance.new("Part")
@@ -726,4 +781,8 @@ bloom.Size = 20
 bloom.Threshold = 1.6
 bloom.Parent = Lighting
 
-print(("[Medieval Land] Tier 1 world built: %d palms, %d nodes, 1 wall site."):format(placed, #NODE_POSITIONS))
+print(("[Medieval Land] Board built: %dx%d tiles, %d stone nodes, %d castle plots."):format(
+	GRID, GRID, nodeCount, plotCount
+))
+
+end

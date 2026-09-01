@@ -5,6 +5,37 @@
 
     "ServerScriptService": {
       "$path": "src/server"
+    },
+
+    "ServerStorage": {
+      "$className": "ServerStorage",
+      "$ignoreUnknownInstances": true,
+
+      "BuildWorld": {
+        "$path": "scripts/build-world.luau"
+      }
+    },
+
+    "ReplicatedStorage": {
+      "$className": "ReplicatedStorage",
+      "$ignoreUnknownInstances": true,
+
+      "Remotes": {
+        "$className": "Folder",
+        "Notify": {
+          "$className": "RemoteEvent"
+        }
+      }
+    },
+
+    "StarterPlayer": {
+      "$className": "StarterPlayer",
+      "$ignoreUnknownInstances": true,
+
+      "StarterPlayerScripts": {
+        "$className": "StarterPlayerScripts",
+        "$path": "src/client"
+      }
     }
   }
 }

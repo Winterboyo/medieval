@@ -1,12 +1,18 @@
 --!strict
--- Medieval Land - Tier 2 resource economy.
+-- Medieval Land - Tier 3 resource economy.
 -- Lives in ServerScriptService. Server-authoritative on purpose: Tier 4 is a
 -- theft system, and a counter the client can write to would be worthless there.
 --
 -- Tier 0 was: swing at a rock, a number goes up. Tier 1 made the rock run out and
--- come back at a flat rate, and gave the stone somewhere to go. Tier 2 replaces
--- that flat rate with the real curve - see regenRate below. It is the first
--- number in this project that is a design decision rather than a placeholder.
+-- come back at a flat rate, and gave the stone somewhere to go. Tier 2 replaced
+-- that flat rate with the real curve - see regenRate below.
+--
+-- Tier 3 is two players. Most of it was already done, because everything here
+-- has been server-authoritative from Tier 0: node amounts live in one table on
+-- the server, characters and leaderstats replicate themselves, and mining goes
+-- through Tool.Activated which the engine fires server-side. What was NOT right
+-- was feedback - see notifyPlayer. That is what the RemoteEvent is for, and it
+-- arrived because a bug demanded it rather than because a checklist did.
 --
 -- Mining is a pickaxe swing, not a click. The swing is Roblox's own R15 ToolSlash
 -- asset, played from the server so every client sees it (that matters from Tier 3
@@ -20,6 +26,11 @@ local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
 local Debris = game:GetService("Debris")
 local TweenService = game:GetService("TweenService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+-- Declared in default.project.json rather than created here, so the remote is
+-- version-controlled instead of appearing at runtime.
+local notifyRemote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("Notify")
 
 local STONE_PER_SWING = 1
 local MINE_RANGE = 15 -- studs, character root to node
@@ -38,12 +49,29 @@ local NODE_REGEN_PEAK = 0.55 -- stone/second at half full
 local NODE_REGEN_FLOOR = 0.06 -- stone/second at empty or full
 local REGEN_TICK = 0.25 -- seconds between accumulation steps
 
--- Roughly 40 seconds of mining a single node buys one wall section, which is
--- slow enough that running between the three outcrops is worth doing.
-local WALL_COST = 10
+-- Roughly 40 seconds of mining a single node buys one block, which is slow
+-- enough that running between the outcrops is worth doing.
+local BUILD_COST = 10
+
+-- Two site layouts, chosen by the Kind attribute the world builder sets on each
+-- site model. Both are 24 blocks, so a castle and a wall cost the same.
 local WALL_SECTIONS_PER_COURSE = 8
 local WALL_COURSES = 3
 local WALL_SECTION_SIZE = Vector3.new(4, 3, 2.2)
+
+-- A square ring, corners included, laid anticlockwise. Stacking it makes a tower.
+local CASTLE_RING = {
+	Vector2.new(-3, -3),
+	Vector2.new(0, -3),
+	Vector2.new(3, -3),
+	Vector2.new(3, 0),
+	Vector2.new(3, 3),
+	Vector2.new(0, 3),
+	Vector2.new(-3, 3),
+	Vector2.new(-3, 0),
+}
+local CASTLE_COURSES = 3
+local CASTLE_BLOCK_SIZE = Vector3.new(3, 3, 3)
 
 local rng = Random.new()
 
@@ -65,6 +93,7 @@ type State = {
 	track: AnimationTrack?,
 	swingSpeed: number,
 	nextSwing: number,
+	nextNotice: number,
 }
 
 local state: { [Player]: State } = {}
@@ -89,6 +118,28 @@ local function setupPlayer(player: Player)
 	stone.Parent = leaderstats
 
 	leaderstats.Parent = player
+end
+
+-- ---------------------------------------------------------------- notices
+-- Anything true of one player and not another goes down this channel.
+--
+-- The rule this enforces: shared world state may live on a shared instance -
+-- the wall's "Wall 6/24" is the same fact for everybody, and still sits on the
+-- prompt. Per-player facts may not. Writing "Need 10 Stone" onto the prompt's
+-- ActionText looked fine with one player and was wrong the moment there were
+-- two: it is one property on one instance, so a broke player relabelled the
+-- wall for someone standing next to them who could afford it.
+local function notifyPlayer(player: Player, text: string, throttleSeconds: number?)
+	if throttleSeconds then
+		local playerState = state[player]
+		if playerState then
+			if os.clock() < playerState.nextNotice then
+				return
+			end
+			playerState.nextNotice = os.clock() + throttleSeconds
+		end
+	end
+	notifyRemote:FireClient(player, text)
 end
 
 local function stoneValue(player: Player): IntValue?
@@ -428,8 +479,11 @@ local function attemptSwing(player: Player)
 			+ Vector3.new(0, rng:NextNumber(-0.5, 1.2), 0)
 
 		if node.amount <= 0 then
-			-- Spent. The swing still connects, it just does not pay.
+			-- Spent. The swing still connects, it just does not pay. Throttled:
+			-- you can swing at a dead rock once a second and do not need telling
+			-- once a second.
 			spawnChips(impactPoint, away, 2)
+			notifyPlayer(player, "This rock is spent", 4)
 			return
 		end
 
@@ -459,36 +513,59 @@ local function registerSite(site: Instance)
 		return
 	end
 
-	local maxSections = WALL_SECTIONS_PER_COURSE * WALL_COURSES
+	-- The world builder tags each site; the service owns what that tag means.
+	local kind = site:GetAttribute("Kind")
+	if typeof(kind) ~= "string" then
+		kind = "Wall"
+	end
+	local isCastle = kind == "Castle"
+
+	local blockSize = if isCastle then CASTLE_BLOCK_SIZE else WALL_SECTION_SIZE
+	local maxSections = if isCastle
+		then #CASTLE_RING * CASTLE_COURSES
+		else WALL_SECTIONS_PER_COURSE * WALL_COURSES
 	local built = 0
 
+	-- Where block `index` (0-based) ends up, in the foundation's frame. A wall
+	-- runs along X; a castle stacks a square ring into a tower.
+	local function layoutOf(index: number): CFrame
+		local baseY = foundation.Size.Y / 2 + blockSize.Y / 2
+
+		if isCastle then
+			local course = index // #CASTLE_RING
+			local slot = CASTLE_RING[index % #CASTLE_RING + 1]
+			return CFrame.new(slot.X, baseY + course * blockSize.Y, slot.Y)
+		end
+
+		local course = index // WALL_SECTIONS_PER_COURSE
+		local column = index % WALL_SECTIONS_PER_COURSE
+		return CFrame.new(
+			(column - (WALL_SECTIONS_PER_COURSE - 1) / 2) * blockSize.X,
+			baseY + course * blockSize.Y,
+			0
+		)
+	end
+
 	local function updatePrompt()
+		prompt.ObjectText = ("%s %d/%d"):format(kind, built, maxSections)
 		if built >= maxSections then
-			prompt.ActionText = "Wall complete"
-			prompt.ObjectText = ("Wall %d/%d"):format(built, maxSections)
+			prompt.ActionText = ("%s complete"):format(kind)
 			prompt.Enabled = false
 		else
-			prompt.ActionText = ("Build section (%d Stone)"):format(WALL_COST)
-			prompt.ObjectText = ("Wall %d/%d"):format(built, maxSections)
+			prompt.ActionText = ("Build (%d Stone)"):format(BUILD_COST)
 		end
 	end
 	updatePrompt()
 
 	local function placeSection(index: number)
-		local course = index // WALL_SECTIONS_PER_COURSE
-		local column = index % WALL_SECTIONS_PER_COURSE
-
-		local offset = CFrame.new(
-			(column - (WALL_SECTIONS_PER_COURSE - 1) / 2) * WALL_SECTION_SIZE.X,
-			foundation.Size.Y / 2 + course * WALL_SECTION_SIZE.Y + WALL_SECTION_SIZE.Y / 2,
-			0
-		)
 		-- A touch of yaw per block so the courses do not look extruded.
-		local final = foundation.CFrame * offset * CFrame.Angles(0, rng:NextNumber(-0.03, 0.03), 0)
+		local final = foundation.CFrame
+			* layoutOf(index)
+			* CFrame.Angles(0, rng:NextNumber(-0.03, 0.03), 0)
 
 		local block = Instance.new("Part")
 		block.Name = "Section" .. (index + 1)
-		block.Size = WALL_SECTION_SIZE - Vector3.new(0.15, 0.12, 0)
+		block.Size = blockSize - Vector3.new(0.15, 0.12, 0.15)
 		block.Anchored = true
 		block.Material = Enum.Material.Sandstone
 		local tone = rng:NextInteger(158, 186)
@@ -513,18 +590,15 @@ local function registerSite(site: Instance)
 		end
 
 		local stone = stoneValue(player)
-		if not stone or stone.Value < WALL_COST then
-			-- No error channel on a prompt, so the prompt itself says it.
-			prompt.ActionText = ("Need %d Stone"):format(WALL_COST)
-			task.delay(1.5, function()
-				if built < maxSections then
-					updatePrompt()
-				end
-			end)
+		if not stone or stone.Value < BUILD_COST then
+			-- Straight to the one player who cannot afford it. This used to
+			-- write the prompt's ActionText, which every player at the wall
+			-- shares - see notifyPlayer.
+			notifyPlayer(player, ("Need %d Stone"):format(BUILD_COST))
 			return
 		end
 
-		stone.Value -= WALL_COST
+		stone.Value -= BUILD_COST
 		placeSection(built)
 		built += 1
 		updatePrompt()
@@ -595,7 +669,7 @@ end
 
 local function onPlayerAdded(player: Player)
 	setupPlayer(player)
-	state[player] = { track = nil, swingSpeed = 1, nextSwing = 0 }
+	state[player] = { track = nil, swingSpeed = 1, nextSwing = 0, nextNotice = 0 }
 
 	player.CharacterAdded:Connect(function(character)
 		onCharacterAdded(player, character)
