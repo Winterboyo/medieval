@@ -176,12 +176,26 @@ to shorten them, and `Terrain.Decoration` is not reachable from the MCP's
 scripting context. The ground is `LeafyGrass`, which reads as lush from a
 distance and grows nothing.
 
-**The swing animation is Roblox's own R15 ToolSlash** (`rbxassetid://522635514`),
-played from the server at half speed to stretch its 0.5s to 1s. Two procedural
-approaches were tried first and do not work on this place's rig: the characters
-here use `AnimationConstraint` joints rather than `Motor6D`, so there is no `C0`
-to drive, and writing the constraint's `Attachment0` from the server does not
-replicate to clients.
+**The swing is a custom overhead cut** (`rbxassetid://137439580267496`), authored
+in the Animation Editor and played from the server so every client sees it.
+Exactly 1.0s, so it plays at speed 1.
+
+Two procedural approaches were tried before resorting to an asset, and neither
+works on this place's rig: the characters here use `AnimationConstraint` joints
+rather than `Motor6D`, so there is no `C0` to drive, and writing the constraint's
+`Attachment0` from the server does not replicate to clients.
+
+**The contact frame was measured, not guessed.** Stone is granted at `IMPACT_AT`,
+so that constant has to match where the pick actually lands or the payout floats
+free of the animation. To find it: play the track, `AdjustSpeed(0)` to turn
+`TimePosition` into a scrubber, then step through it sampling the pick tip's
+position. For this animation the tip peaks overhead at t≈0.45, reaches maximum
+forward reach at t≈0.66, and descends at full speed until t≈0.71 where it
+decelerates hard (step 1.01 → 0.82 → 0.45). That arrest is the strike; everything
+after is follow-through. Hence `IMPACT_AT = 0.70`.
+
+Note the naive heuristic — "lowest point of the tip" — returns t=0.05, which is
+just the rest pose before the raise. Swap the animation and you must re-measure.
 
 **`Tool.Grip` is expressed in the Handle's own frame.** The Handle is therefore a
 plain unrotated invisible block, with the visible round shaft welded over it —

@@ -14,13 +14,13 @@
 -- was feedback - see notifyPlayer. That is what the RemoteEvent is for, and it
 -- arrived because a bug demanded it rather than because a checklist did.
 --
--- Mining is a pickaxe swing, not a click. The swing is Roblox's own R15 ToolSlash
--- asset, played from the server so every client sees it (that matters from Tier 3
--- on). Two procedural approaches were tried first and do not work on this place's
--- rig: the characters here use AnimationConstraint joints, not Motor6D, so there
--- is no C0 to drive, and writing the constraint's Attachment0 on the server does
--- not replicate. ToolSlash is half a second long and is played at half speed so
--- the pickaxe lands like a tool with weight behind it rather than a fencing flick.
+-- Mining is a pickaxe swing, not a click. The swing is a custom overhead cut
+-- authored in the Animation Editor, played from the server so every client sees
+-- it (that matters from Tier 3 on). Two procedural approaches were tried first
+-- and do not work on this place's rig: the characters here use AnimationConstraint
+-- joints, not Motor6D, so there is no C0 to drive, and writing the constraint's
+-- Attachment0 on the server does not replicate. See SWING_ANIMATION_ID for how
+-- the contact frame was measured rather than guessed.
 
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
@@ -36,9 +36,18 @@ local STONE_PER_SWING = 1
 local MINE_RANGE = 15 -- studs, character root to node
 local FACING_DOT = 0.25 -- must be roughly looking at the node, not just near it
 
-local SWING_ANIMATION_ID = "rbxassetid://522635514" -- Roblox R15 ToolSlash
-local SWING_TIME = 1.0 -- the asset is stretched to fill this
-local IMPACT_AT = 0.5 -- where in the swing the pick actually bites
+-- Winter's overhead cut, authored in the Animation Editor. Exactly 1.0s long, so
+-- it plays at speed 1 and needs no stretching.
+local SWING_ANIMATION_ID = "rbxassetid://137439580267496"
+local SWING_TIME = 1.0 -- also the cooldown: one swing per second
+
+-- Where the pick actually bites, measured rather than guessed. Freezing the
+-- track and scrubbing it, the tip reaches maximum forward reach at t=0.66 and
+-- keeps descending at full speed until t=0.71, where it decelerates hard
+-- (step 1.01 -> 0.82 -> 0.45). That arrest is the strike; the rest is follow
+-- through. Granting at the old 0.5 would have paid out while the pick was still
+-- above the player's head.
+local IMPACT_AT = 0.70
 
 -- Node regeneration. See regenRate for the shape and why it has a floor.
 -- Mining is one stone a second, which is above NODE_REGEN_PEAK on purpose: a
