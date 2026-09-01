@@ -10,12 +10,55 @@ on a curve, and a wall you spend the stone on.
 
 | Path | What |
 |---|---|
-| `medieval-land.rbxl` | The place file. Save it here from Studio: File → Save to File As. |
-| `scripts/build-world.luau` | One-shot world setup: terrain, the lake, palms, the rock nodes, the wall site, and the pickaxe tool. Run in Studio, don't put it in the place. Re-runnable. |
-| `src/ResourceService.server.luau` | Source of truth for the `ResourceService` Script in `ServerScriptService`. |
+| `src/server/ResourceService.server.luau` | The `ResourceService` Script in `ServerScriptService`. Rojo syncs it. |
+| `scripts/build-world.luau` | One-shot world setup: terrain, the lake, palms, the rock nodes, the wall site, and the pickaxe tool. Run it in Studio by hand; it is not part of the place. Re-runnable. |
+| `default.project.json` | Rojo's map from this repo into the DataModel. |
+| `rokit.toml` | Pins the toolchain (Rojo 7.7.0) so it is reproducible. |
 
-These `.luau` files are the source of truth; they get pushed into the place via
-the Studio MCP. Edit here, not in Studio, or the two drift.
+The published experience on Roblox is the artifact. This repo is the source. A
+local `.rbxl` is a working copy and is gitignored — it goes stale the moment you
+publish, and a binary that contradicts the source sitting next to it is worse
+than no binary at all.
+
+## Working on it
+
+Install the toolchain once, on a new machine:
+
+```
+rokit install          # gets Rojo at the pinned version
+rojo plugin install    # installs the Rojo plugin into Studio
+```
+
+Then, every session:
+
+```
+rojo serve
+```
+
+Open the place in Studio, hit the Rojo plugin's **Connect**, and `src/` syncs
+live on every file save. Edit here, not in Studio.
+
+**`ServerScriptService` is a mirror of `src/server/`.** Rojo is not set to ignore
+unknown instances there, so a Script you create by hand in Studio will be deleted
+on the next sync. That is the point — it is what stops the two copies drifting.
+
+### What Rojo does not cover
+
+`default.project.json` deliberately maps **only** `ServerScriptService`. Nothing
+else is named in it, so Rojo will not touch Workspace, Terrain, Lighting or
+StarterPack.
+
+That is not laziness, it is a limit. Terrain is binary voxel data and cannot be
+live-synced at all. And the world is *generated* — 44 palms, three outcrops, the
+wall site and the pickaxe are the output of a script, not files on disk. Rojo
+syncs static instance trees from files; it does not run generators. Freezing the
+output into an `.rbxmx` for Rojo to sync would trade a readable 700-line
+generator for a binary blob, which is a downgrade.
+
+So the split is: the thing that changes every session (the service) syncs
+automatically; the thing that changes rarely (the world) stays a deliberate
+one-shot. To rebuild a place from scratch: run `scripts/build-world.luau` in the
+command bar, then connect Rojo.
 
 ## The loop
 

@@ -6,3 +6,15 @@
 *.rbxl.bak
 *.rbxlx.bak
 AutoSaves/
+
+# Rojo build output
+/build/
+
+# The place file is a working copy, not source.
+#
+# The experience on Roblox is the published artifact; src/ and
+# scripts/build-world.luau are the source. A local .rbxl is stale the moment you
+# publish, and committing a binary that contradicts the source next to it is
+# worse than not having it. Rebuild it: run scripts/build-world.luau once for the
+# terrain and scenery, and let Rojo sync src/.
+medieval-land.rbxl
