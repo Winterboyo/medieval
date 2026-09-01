@@ -3,9 +3,13 @@
 Roblox game, built in tiers. See the tier order in
 `~/.claude/projects/C--Users-winter-projects-medieval-land/memory/tier-build-order.md`.
 
-**Current tier: T3** — built, not yet signed off. Five rock nodes on a Catan-style
-board that deplete and refill on a curve, walls and castles to spend stone on,
-and per-player notices over a RemoteEvent. The two-player playtest is outstanding.
+**Current tier: T4** — built, not yet signed off. Five rock nodes on a Catan-style
+board that deplete and refill on a curve; walls and castles to spend stone on;
+owned castles you can raid; and combat with health, death and respawn.
+
+**T3 and the combat half of T4 have never been run with two players.** Everything
+solo-testable is verified and the numbers are below; everything that needs a
+second person is not. Treat those parts as written, not working.
 
 ## Layout
 
@@ -100,6 +104,37 @@ site to spend 10 Stone on a block. Two site kinds, both 24 blocks:
 The world builder tags each site with a `Kind` attribute; `ResourceService` owns
 what that tag means. Adding a third shape is a new branch in `layoutOf` and
 nothing else.
+
+**Castles are owned.** Whoever lays the first block claims the plot; nobody else
+can build there, but anybody can raid it. The starter wall is left unowned on
+purpose — it is the shared sink the loop is learned on, and nobody should be able
+to fence it off.
+
+## Raiding
+
+One swing does three different things depending on what is in front of you, and
+the order matters:
+
+| Priority | Target | Effect |
+|---|---|---|
+| 1 | Another player | 20 damage. Five swings kills from full. |
+| 2 | Someone else's castle | Tears off the top block, pays the raider 6 Stone. |
+| 3 | A rock | Mines 1 Stone. |
+
+A person in front of you beats their wall, and both beat the rock you happen to
+be standing next to — otherwise you could not fight beside a node.
+
+**Raiding moves stone at a loss.** A block costs 10 to place and yields 6 when
+torn off. That is deliberate: raiding should sting the victim more than it
+enriches the raider, and it must not out-earn mining.
+
+The tear takes the *most recently placed* block, not the nearest one — pulling
+one out of the middle would leave the blocks above it floating. Torn blocks are
+renamed before they start falling, because they live on as debris for a couple of
+seconds and a rebuild in that window would otherwise create a second `Section3`.
+
+The spawn pad has an 8 second forcefield. It was 0 while nothing could hurt you;
+with combat, a forcefield-free spawn is a place to be farmed on respawn.
 
 The world builder places geometry only. Everything that changes at runtime —
 how much stone a node holds, how fast it comes back, what a block costs —

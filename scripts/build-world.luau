@@ -412,7 +412,9 @@ spawnPad.Position = Vector3.new(SPAWN_POS.X, groundHeight(SPAWN_POS.X, SPAWN_POS
 spawnPad.Anchored = true
 spawnPad.Material = Enum.Material.Sandstone
 spawnPad.Color = Color3.fromRGB(196, 174, 138)
-spawnPad.Duration = 0
+-- Spawn protection. It was 0 while nothing could hurt you; from Tier 4 there is
+-- combat, and a forcefield-free spawn pad is a place to be farmed on respawn.
+spawnPad.Duration = 8
 spawnPad.Parent = Workspace
 
 -- ---------------------------------------------------------------- resource nodes

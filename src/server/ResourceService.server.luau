@@ -1,7 +1,16 @@
 --!strict
--- Medieval Land - Tier 3 resource economy.
--- Lives in ServerScriptService. Server-authoritative on purpose: Tier 4 is a
--- theft system, and a counter the client can write to would be worthless there.
+-- Medieval Land - Tier 4 resource economy and raiding.
+-- Lives in ServerScriptService. Server-authoritative from the first tier on
+-- purpose, which is what makes theft possible to write at all: a counter the
+-- client could edit would be worthless the moment stone is worth stealing.
+--
+-- Tier 4 is a raid in stripped form. One swing does three different things
+-- depending on what is in front of you - hit a person, tear a block off their
+-- castle, or mine a rock - see attemptSwing for the priority and why.
+--
+-- Castles are claimed by whoever lays the first block. The starter wall stays
+-- unowned: it is the shared sink the loop is learned on, and nobody should be
+-- able to fence it off.
 --
 -- Tier 0 was: swing at a rock, a number goes up. Tier 1 made the rock run out and
 -- come back at a flat rate, and gave the stone somewhere to go. Tier 2 replaced
@@ -81,6 +90,15 @@ local CASTLE_RING = {
 }
 local CASTLE_COURSES = 3
 local CASTLE_BLOCK_SIZE = Vector3.new(3, 3, 3)
+
+-- Tier 4: raiding. The same swing that mines also fights and plunders.
+local SWING_DAMAGE = 20 -- five swings to put someone down from full health
+
+-- A block costs BUILD_COST to place and yields less than that when torn off, so
+-- raiding moves stone around at a loss. That is deliberate and it matches the
+-- design: the sting of being raided should exceed the material value taken, and
+-- raiding should not out-earn mining.
+local PLUNDER_PER_BLOCK = 6
 
 local rng = Random.new()
 
@@ -306,10 +324,23 @@ local function registerNode(model: Instance)
 	refreshNode(node)
 end
 
--- Nearest node that is both in range and roughly in front of the player. The
--- facing check is what makes this an aimed swing instead of a proximity button.
--- Depleted nodes are still returned: you should be able to hit a spent rock and
--- see that it gives nothing.
+-- In range AND roughly in front. The facing half is what makes a swing aimed
+-- rather than a proximity button, and every target type shares it.
+local function isAimedAt(root: BasePart, position: Vector3, range: number): (boolean, number)
+	local delta = position - root.Position
+	local distance = delta.Magnitude
+	if distance > range then
+		return false, distance
+	end
+	local flat = Vector3.new(delta.X, 0, delta.Z)
+	if flat.Magnitude <= 0.01 then
+		return false, distance
+	end
+	return root.CFrame.LookVector:Dot(flat.Unit) >= FACING_DOT, distance
+end
+
+-- Nearest aimed-at node. Depleted nodes are still returned: you should be able
+-- to hit a spent rock and see that it gives nothing.
 local function findNode(character: Model): Node?
 	local root = character:FindFirstChild("HumanoidRootPart")
 	if not root or not root:IsA("BasePart") then
@@ -320,18 +351,44 @@ local function findNode(character: Model): Node?
 	local bestDistance = math.huge
 
 	for _, node in nodes do
-		local delta = node.part.Position - root.Position
-		local distance = delta.Magnitude
-		if distance <= MINE_RANGE and distance < bestDistance then
-			local flat = Vector3.new(delta.X, 0, delta.Z)
-			if flat.Magnitude > 0.01 and root.CFrame.LookVector:Dot(flat.Unit) >= FACING_DOT then
-				best = node
-				bestDistance = distance
-			end
+		local aimed, distance = isAimedAt(root, node.part.Position, MINE_RANGE)
+		if aimed and distance < bestDistance then
+			best = node
+			bestDistance = distance
 		end
 	end
 
 	return best
+end
+
+-- Nearest other player you are aimed at and who is still alive.
+local function findVictim(attacker: Player, character: Model): (Player?, Humanoid?)
+	local root = character:FindFirstChild("HumanoidRootPart")
+	if not root or not root:IsA("BasePart") then
+		return nil, nil
+	end
+
+	local bestPlayer: Player? = nil
+	local bestHumanoid: Humanoid? = nil
+	local bestDistance = math.huge
+
+	for _, other in Players:GetPlayers() do
+		if other ~= attacker then
+			local otherCharacter = other.Character
+			local otherRoot = otherCharacter and otherCharacter:FindFirstChild("HumanoidRootPart")
+			local otherHumanoid = otherCharacter and otherCharacter:FindFirstChildOfClass("Humanoid")
+			if otherRoot and otherRoot:IsA("BasePart") and otherHumanoid and otherHumanoid.Health > 0 then
+				local aimed, distance = isAimedAt(root, otherRoot.Position, MINE_RANGE)
+				if aimed and distance < bestDistance then
+					bestPlayer = other
+					bestHumanoid = otherHumanoid
+					bestDistance = distance
+				end
+			end
+		end
+	end
+
+	return bestPlayer, bestHumanoid
 end
 
 local CHIP_COLORS = {
@@ -395,6 +452,217 @@ task.spawn(function()
 	end
 end)
 
+-- ---------------------------------------------------------------- build sites
+-- Somewhere for the stone to go, and from Tier 4, somewhere it can be taken
+-- from. Held as records rather than closures because raiding has to reach in
+-- from outside and knock a block back off.
+type Site = {
+	model: Model,
+	foundation: BasePart,
+	prompt: ProximityPrompt,
+	sections: Instance,
+	kind: string,
+	blockSize: Vector3,
+	maxSections: number,
+	built: number,
+	layoutOf: (number) -> CFrame,
+	refresh: () -> (),
+}
+
+local sites: { Site } = {}
+
+-- Castles are claimed by whoever lays the first block. The starter wall is left
+-- unowned on purpose: it is the shared sink everyone learns the loop on, and
+-- nobody should be able to fence it off.
+local function siteOwner(site: Site): number?
+	local owner = site.model:GetAttribute("Owner")
+	return if typeof(owner) == "number" then owner else nil
+end
+
+local function placeBlock(site: Site, index: number)
+	-- A touch of yaw per block so the courses do not look extruded.
+	local final = site.foundation.CFrame
+		* site.layoutOf(index)
+		* CFrame.Angles(0, rng:NextNumber(-0.03, 0.03), 0)
+
+	local block = Instance.new("Part")
+	block.Name = "Section" .. (index + 1)
+	block.Size = site.blockSize - Vector3.new(0.15, 0.12, 0.15)
+	block.Anchored = true
+	block.Material = Enum.Material.Sandstone
+	local tone = rng:NextInteger(158, 186)
+	block.Color = Color3.fromRGB(tone, tone - 14, tone - 38)
+	block.TopSurface = Enum.SurfaceType.Smooth
+	block.BottomSurface = Enum.SurfaceType.Smooth
+	-- Dropped in rather than blinked in: spending should be visible.
+	block.CFrame = final * CFrame.new(0, 7, 0)
+	block.Transparency = 1
+	block.Parent = site.sections
+
+	TweenService:Create(
+		block,
+		TweenInfo.new(0.32, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
+		{ CFrame = final, Transparency = 0 }
+	):Play()
+end
+
+-- Takes the most recently placed block, not the nearest one. Pulling a block out
+-- of the middle would leave the ones above it floating.
+local function tearOffBlock(site: Site): boolean
+	if site.built <= 0 then
+		return false
+	end
+
+	local block = site.sections:FindFirstChild("Section" .. site.built)
+	site.built -= 1
+	site.refresh()
+
+	if block and block:IsA("BasePart") then
+		-- Rename before it starts falling. A torn block lives on for a couple of
+		-- seconds as debris, and if the owner rebuilt in that window there would
+		-- be two children called Section3 - so the next tear could pick the one
+		-- already tumbling away and leave the real block standing.
+		block.Name = "TornBlock"
+		block.Anchored = false
+		block.CanCollide = false
+		block.AssemblyLinearVelocity = Vector3.new(
+			rng:NextNumber(-12, 12),
+			rng:NextNumber(8, 16),
+			rng:NextNumber(-12, 12)
+		)
+		Debris:AddItem(block, 2.5)
+	end
+	return true
+end
+
+local function registerSite(model: Instance)
+	if not model:IsA("Model") then
+		return
+	end
+
+	local foundation = model.PrimaryPart or model:FindFirstChildWhichIsA("BasePart")
+	local prompt = foundation and foundation:FindFirstChildOfClass("ProximityPrompt")
+	local sections = model:FindFirstChild("Sections")
+	if not foundation or not prompt or not sections then
+		return
+	end
+
+	-- The world builder tags each site; the service owns what that tag means.
+	local kind = model:GetAttribute("Kind")
+	if typeof(kind) ~= "string" then
+		kind = "Wall"
+	end
+	local isCastle = kind == "Castle"
+	local blockSize = if isCastle then CASTLE_BLOCK_SIZE else WALL_SECTION_SIZE
+
+	local site: Site = {
+		model = model,
+		foundation = foundation,
+		prompt = prompt,
+		sections = sections,
+		kind = kind,
+		blockSize = blockSize,
+		maxSections = if isCastle
+			then #CASTLE_RING * CASTLE_COURSES
+			else WALL_SECTIONS_PER_COURSE * WALL_COURSES,
+		built = 0,
+		layoutOf = function(index: number): CFrame
+			local baseY = foundation.Size.Y / 2 + blockSize.Y / 2
+			if isCastle then
+				local course = index // #CASTLE_RING
+				local slot = CASTLE_RING[index % #CASTLE_RING + 1]
+				return CFrame.new(slot.X, baseY + course * blockSize.Y, slot.Y)
+			end
+			local course = index // WALL_SECTIONS_PER_COURSE
+			local column = index % WALL_SECTIONS_PER_COURSE
+			return CFrame.new(
+				(column - (WALL_SECTIONS_PER_COURSE - 1) / 2) * blockSize.X,
+				baseY + course * blockSize.Y,
+				0
+			)
+		end,
+		refresh = function() end,
+	}
+
+	site.refresh = function()
+		local ownerName = model:GetAttribute("OwnerName")
+		local label = if typeof(ownerName) == "string" then ("%s's %s"):format(ownerName, kind) else kind
+		prompt.ObjectText = ("%s %d/%d"):format(label, site.built, site.maxSections)
+
+		if site.built >= site.maxSections then
+			prompt.ActionText = "Complete"
+			prompt.Enabled = false
+		else
+			-- Re-enabled deliberately: a raid knocking a block off a finished
+			-- castle has to make it buildable again.
+			prompt.Enabled = true
+			prompt.ActionText = ("Build (%d Stone)"):format(BUILD_COST)
+		end
+	end
+	site.refresh()
+
+	prompt.Triggered:Connect(function(player: Player)
+		if site.built >= site.maxSections then
+			return
+		end
+
+		local owner = siteOwner(site)
+		if owner and owner ~= player.UserId then
+			notifyPlayer(player, ("%s's castle - raid it, do not build it"):format(
+				tostring(model:GetAttribute("OwnerName") or "Someone")))
+			return
+		end
+
+		local stone = stoneValue(player)
+		if not stone or stone.Value < BUILD_COST then
+			-- Straight to the one player who cannot afford it. This used to
+			-- write the prompt's ActionText, which every player at the wall
+			-- shares - see notifyPlayer.
+			notifyPlayer(player, ("Need %d Stone"):format(BUILD_COST))
+			return
+		end
+
+		stone.Value -= BUILD_COST
+		placeBlock(site, site.built)
+		site.built += 1
+
+		-- Laying the first block on a castle claims it.
+		if isCastle and not owner then
+			model:SetAttribute("Owner", player.UserId)
+			model:SetAttribute("OwnerName", player.Name)
+		end
+
+		site.refresh()
+	end)
+
+	table.insert(sites, site)
+end
+
+-- Nearest aimed-at site that belongs to somebody else and still has something
+-- to take.
+local function findRaidTarget(raider: Player, character: Model): Site?
+	local root = character:FindFirstChild("HumanoidRootPart")
+	if not root or not root:IsA("BasePart") then
+		return nil
+	end
+
+	local best: Site? = nil
+	local bestDistance = math.huge
+
+	for _, site in sites do
+		local owner = siteOwner(site)
+		if owner and owner ~= raider.UserId and site.built > 0 then
+			local aimed, distance = isAimedAt(root, site.foundation.Position, MINE_RANGE)
+			if aimed and distance < bestDistance then
+				best = site
+				bestDistance = distance
+			end
+		end
+	end
+
+	return best
+end
+
 -- ---------------------------------------------------------------- off hand
 -- The swing animation only poses the arm holding the tool. To make it look
 -- two-handed, an IKControl drags the left hand onto a second grip point on the
@@ -411,6 +679,7 @@ end)
 -- grip; the exact version is to pose the left arm in the animation itself,
 -- where the hand can be put on the shaft by eye.
 local OFF_HAND_IK = "OffHandIK"
+local OFF_HAND_RAMP = 0.12 -- seconds to bring the second hand on and off the shaft
 
 local function buildOffHandIK(character: Model): IKControl?
 	local humanoid = character:FindFirstChildOfClass("Humanoid")
@@ -438,8 +707,8 @@ local function buildOffHandIK(character: Model): IKControl?
 	return ik
 end
 
--- Called on equip and unequip. Passing nil drops the off hand back to whatever
--- the animation wants.
+-- Called on equip and unequip. This only ARMS the off hand - it points the IK at
+-- the shaft and leaves it switched off. Holding the tool is a one-handed pose.
 local function setOffHandTarget(player: Player, tool: Tool?)
 	local playerState = state[player]
 	local ik = playerState and playerState.offHandIK
@@ -450,7 +719,40 @@ local function setOffHandTarget(player: Player, tool: Tool?)
 	local handle = tool and tool:FindFirstChild("Handle")
 	local grip = handle and handle:FindFirstChild("LeftGrip")
 	ik.Target = if grip and grip:IsA("Attachment") then grip else nil
-	ik.Enabled = ik.Target ~= nil
+	ik.Weight = 0
+	ik.Enabled = false
+end
+
+-- The off hand comes up for the swing and drops again afterwards.
+--
+-- Leaving it engaged the whole time the tool was equipped was a mistake: it
+-- dragged the left arm across the body permanently and fought the idle and walk
+-- animations, which read as constant glitching. Standing still holding a pickaxe
+-- is a one-handed pose; you only bring the second hand up to swing it.
+--
+-- Weight is ramped rather than switched so the arm arrives and leaves smoothly
+-- instead of snapping.
+local function engageOffHand(player: Player, engaged: boolean)
+	local playerState = state[player]
+	local ik = playerState and playerState.offHandIK
+	if not ik or not ik.Parent or not ik.Target then
+		return
+	end
+
+	if engaged then
+		ik.Enabled = true
+		TweenService:Create(ik, TweenInfo.new(OFF_HAND_RAMP), { Weight = 1 }):Play()
+		return
+	end
+
+	local release = TweenService:Create(ik, TweenInfo.new(OFF_HAND_RAMP), { Weight = 0 })
+	release.Completed:Connect(function()
+		-- Only actually switch off if nothing re-engaged it in the meantime.
+		if ik.Parent and ik.Weight <= 0.01 then
+			ik.Enabled = false
+		end
+	end)
+	release:Play()
 end
 
 -- ---------------------------------------------------------------- the swing
@@ -516,6 +818,12 @@ local function attemptSwing(player: Player)
 		track:Play(0.1, 1, playerState.swingSpeed)
 	end
 
+	-- Second hand on for the duration of the swing only.
+	engageOffHand(player, true)
+	task.delay(SWING_TIME, function()
+		engageOffHand(player, false)
+	end)
+
 	-- Resolved at impact, not at the start of the swing: walk away mid-swing and
 	-- you get nothing.
 	task.delay(IMPACT_AT, function()
@@ -529,18 +837,64 @@ local function attemptSwing(player: Player)
 			return
 		end
 
+		local root = liveCharacter:FindFirstChild("HumanoidRootPart")
+		if not root or not root:IsA("BasePart") then
+			return
+		end
+
+		-- One swing, three possible things to hit. Order matters: a person in
+		-- front of you takes precedence over their wall, and both take
+		-- precedence over the rock you happen to be standing next to. Otherwise
+		-- you could not fight beside a node.
+
+		-- 1. someone standing in front of you
+		local victim, victimHumanoid = findVictim(player, liveCharacter)
+		if victim and victimHumanoid then
+			victimHumanoid:TakeDamage(SWING_DAMAGE)
+			local killed = victimHumanoid.Health <= 0
+			notifyPlayer(player, if killed
+				then ("You killed %s"):format(victim.Name)
+				else ("Hit %s"):format(victim.Name))
+			notifyPlayer(victim, if killed
+				then ("%s killed you"):format(player.Name)
+				else ("%s is attacking you"):format(player.Name), 2)
+			return
+		end
+
+		-- 2. somebody else's castle
+		local raidTarget = findRaidTarget(player, liveCharacter)
+		if raidTarget then
+			local ownerName = tostring(raidTarget.model:GetAttribute("OwnerName") or "someone")
+			if tearOffBlock(raidTarget) then
+				local stone = stoneValue(player)
+				if stone then
+					stone.Value += PLUNDER_PER_BLOCK
+				end
+				notifyPlayer(player, ("Plundered %d Stone from %s"):format(PLUNDER_PER_BLOCK, ownerName))
+
+				local ownerId = siteOwner(raidTarget)
+				local owner = ownerId and Players:GetPlayerByUserId(ownerId)
+				if owner then
+					notifyPlayer(owner, ("%s is raiding your %s"):format(player.Name, raidTarget.kind), 3)
+				end
+
+				local away = (root.Position - raidTarget.foundation.Position)
+				away = Vector3.new(away.X, 0, away.Z)
+				away = if away.Magnitude > 0.01 then away.Unit else Vector3.new(0, 0, 1)
+				spawnChips(raidTarget.foundation.Position + Vector3.new(0, 4, 0), away, 6)
+			end
+			return
+		end
+
+		-- 3. a rock
 		local node = findNode(liveCharacter)
 		if not node then
 			return
 		end
 
-		local root = liveCharacter:FindFirstChild("HumanoidRootPart")
-		local away = Vector3.new(0, 0, 1)
-		if root and root:IsA("BasePart") then
-			local delta = root.Position - node.part.Position
-			delta = Vector3.new(delta.X, 0, delta.Z)
-			away = if delta.Magnitude > 0.01 then delta.Unit else away
-		end
+		local away = (root.Position - node.part.Position)
+		away = Vector3.new(away.X, 0, away.Z)
+		away = if away.Magnitude > 0.01 then away.Unit else Vector3.new(0, 0, 1)
 
 		local impactPoint = node.part.Position
 			+ away * (node.part.Size.Magnitude * 0.25)
@@ -564,112 +918,6 @@ local function attemptSwing(player: Player)
 		end
 
 		spawnChips(impactPoint, away, 7)
-	end)
-end
-
--- ---------------------------------------------------------------- wall site
--- Somewhere for the stone to go. One prompt, one growing wall, a fixed cost.
-local function registerSite(site: Instance)
-	if not site:IsA("Model") then
-		return
-	end
-
-	local foundation = site.PrimaryPart or site:FindFirstChildWhichIsA("BasePart")
-	local prompt = foundation and foundation:FindFirstChildOfClass("ProximityPrompt")
-	local sections = site:FindFirstChild("Sections")
-	if not foundation or not prompt or not sections then
-		return
-	end
-
-	-- The world builder tags each site; the service owns what that tag means.
-	local kind = site:GetAttribute("Kind")
-	if typeof(kind) ~= "string" then
-		kind = "Wall"
-	end
-	local isCastle = kind == "Castle"
-
-	local blockSize = if isCastle then CASTLE_BLOCK_SIZE else WALL_SECTION_SIZE
-	local maxSections = if isCastle
-		then #CASTLE_RING * CASTLE_COURSES
-		else WALL_SECTIONS_PER_COURSE * WALL_COURSES
-	local built = 0
-
-	-- Where block `index` (0-based) ends up, in the foundation's frame. A wall
-	-- runs along X; a castle stacks a square ring into a tower.
-	local function layoutOf(index: number): CFrame
-		local baseY = foundation.Size.Y / 2 + blockSize.Y / 2
-
-		if isCastle then
-			local course = index // #CASTLE_RING
-			local slot = CASTLE_RING[index % #CASTLE_RING + 1]
-			return CFrame.new(slot.X, baseY + course * blockSize.Y, slot.Y)
-		end
-
-		local course = index // WALL_SECTIONS_PER_COURSE
-		local column = index % WALL_SECTIONS_PER_COURSE
-		return CFrame.new(
-			(column - (WALL_SECTIONS_PER_COURSE - 1) / 2) * blockSize.X,
-			baseY + course * blockSize.Y,
-			0
-		)
-	end
-
-	local function updatePrompt()
-		prompt.ObjectText = ("%s %d/%d"):format(kind, built, maxSections)
-		if built >= maxSections then
-			prompt.ActionText = ("%s complete"):format(kind)
-			prompt.Enabled = false
-		else
-			prompt.ActionText = ("Build (%d Stone)"):format(BUILD_COST)
-		end
-	end
-	updatePrompt()
-
-	local function placeSection(index: number)
-		-- A touch of yaw per block so the courses do not look extruded.
-		local final = foundation.CFrame
-			* layoutOf(index)
-			* CFrame.Angles(0, rng:NextNumber(-0.03, 0.03), 0)
-
-		local block = Instance.new("Part")
-		block.Name = "Section" .. (index + 1)
-		block.Size = blockSize - Vector3.new(0.15, 0.12, 0.15)
-		block.Anchored = true
-		block.Material = Enum.Material.Sandstone
-		local tone = rng:NextInteger(158, 186)
-		block.Color = Color3.fromRGB(tone, tone - 14, tone - 38)
-		block.TopSurface = Enum.SurfaceType.Smooth
-		block.BottomSurface = Enum.SurfaceType.Smooth
-		-- Dropped in rather than blinked in: spending should be visible.
-		block.CFrame = final * CFrame.new(0, 7, 0)
-		block.Transparency = 1
-		block.Parent = sections
-
-		TweenService:Create(
-			block,
-			TweenInfo.new(0.32, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
-			{ CFrame = final, Transparency = 0 }
-		):Play()
-	end
-
-	prompt.Triggered:Connect(function(player: Player)
-		if built >= maxSections then
-			return
-		end
-
-		local stone = stoneValue(player)
-		if not stone or stone.Value < BUILD_COST then
-			-- Straight to the one player who cannot afford it. This used to
-			-- write the prompt's ActionText, which every player at the wall
-			-- shares - see notifyPlayer.
-			notifyPlayer(player, ("Need %d Stone"):format(BUILD_COST))
-			return
-		end
-
-		stone.Value -= BUILD_COST
-		placeSection(built)
-		built += 1
-		updatePrompt()
 	end)
 end
 
