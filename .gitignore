@@ -1,0 +1,8 @@
+# Roblox Studio holds this while the place is open
+*.rbxl.lock
+*.rbxlx.lock
+
+# Studio backups / autosaves
+*.rbxl.bak
+*.rbxlx.bak
+AutoSaves/
