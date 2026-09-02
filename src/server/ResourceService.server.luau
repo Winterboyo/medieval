@@ -152,34 +152,21 @@ local function describeCost(): string
 	return table.concat(bits, " + ")
 end
 
--- Two site layouts, chosen by the Kind attribute the world builder sets on each
--- site model. Both are 24 blocks, so a castle and a wall cost the same.
-local WALL_SECTIONS_PER_COURSE = 8
-local WALL_COURSES = 3
-local WALL_SECTION_SIZE = Vector3.new(4, 3, 2.2)
+-- The wall is ONE hitpoint value. The ring of blocks is how much of it is
+-- standing, drawn from that value - not twenty-odd separate little walls.
+local WALL_BLOCK_SIZE = Vector3.new(4.6, 4.5, 2.6)
+local WALL_HP_PER_SECTION = 25 -- what one purchase buys, and one block draws
 
--- A square ring, corners included, laid anticlockwise. Stacking it makes a tower.
-local CASTLE_RING = {
-	Vector2.new(-3, -3),
-	Vector2.new(0, -3),
-	Vector2.new(3, -3),
-	Vector2.new(3, 0),
-	Vector2.new(3, 3),
-	Vector2.new(0, 3),
-	Vector2.new(-3, 3),
-	Vector2.new(-3, 0),
-}
-local CASTLE_COURSES = 3
-local CASTLE_BLOCK_SIZE = Vector3.new(3, 3, 3)
-
--- Tier 4: raiding. The same swing that mines also fights and plunders.
+-- Raiding. The same swing that harvests also fights, batters a gate and loots.
 local SWING_DAMAGE = 20 -- five swings to put someone down from full health
+local GATE_DAMAGE = 25 -- one purchase of wall per swing, so a wall is as slow to
+-- break as it was to raise
 
--- A block costs BUILD_COST to place and yields less than that when torn off, so
--- raiding moves stone around at a loss. That is deliberate and it matches the
--- design: the sting of being raided should exceed the material value taken, and
--- raiding should not out-earn mining.
-local PLUNDER_PER_BLOCK = 6
+-- The doc's number: a capped 15-25% of what the owner holds sits in the
+-- stockpile and is the only thing a raid can take. The rest is safe, which is
+-- what makes a loss sting without being a wipe.
+local EXPOSED_FRACTION = 0.20
+local LOOT_PER_SWING = 4
 
 local rng = Random.new()
 
@@ -618,214 +605,252 @@ task.spawn(function()
 	end
 end)
 
--- ---------------------------------------------------------------- build sites
--- Somewhere for the stone to go, and from Tier 4, somewhere it can be taken
--- from. Held as records rather than closures because raiding has to reach in
--- from outside and knock a block back off.
-type Site = {
+-- ---------------------------------------------------------------- bases
+-- DESIGN.md v1: a perimeter wall on a SINGLE HP value, one gate, and a stockpile
+-- holding a capped exposed slice of the owner's goods. The rest of what they own
+-- is safe. That is what makes a loss sting without being a wipe.
+--
+-- The ring of blocks is NOT twenty-odd little hitpoints. It is a readout: how
+-- many stand is drawn from the one wall value. Building raises that value and
+-- raises blocks to match; damage lowers it and drops blocks to match.
+type Base = {
 	model: Model,
 	foundation: BasePart,
+	gate: BasePart,
+	stockpile: BasePart,
 	prompt: ProximityPrompt,
 	sections: Instance,
-	kind: string,
-	blockSize: Vector3,
-	maxSections: number,
-	built: number,
-	layoutOf: (number) -> CFrame,
+	slots: { Attachment },
+	wall: number, -- the single HP value
+	wallMax: number,
+	breached: boolean,
+	-- Snapshot of what can be taken, taken at the moment of the breach. Without
+	-- the snapshot, "20% of what they hold" recomputed per swing converges on
+	-- taking everything, which is the wipe the doc is trying to avoid.
+	loot: { [string]: number },
 	refresh: () -> (),
 }
 
-local sites: { Site } = {}
+local bases: { Base } = {}
 
--- Castles are claimed by whoever lays the first block. The starter wall is left
--- unowned on purpose: it is the shared sink everyone learns the loop on, and
--- nobody should be able to fence it off.
-local function siteOwner(site: Site): number?
-	local owner = site.model:GetAttribute("Owner")
+local function baseOwner(base: Base): number?
+	local owner = base.model:GetAttribute("Owner")
 	return if typeof(owner) == "number" then owner else nil
 end
 
-local function placeBlock(site: Site, index: number)
-	-- A touch of yaw per block so the courses do not look extruded.
-	local final = site.foundation.CFrame
-		* site.layoutOf(index)
-		* CFrame.Angles(0, rng:NextNumber(-0.03, 0.03), 0)
-
-	local block = Instance.new("Part")
-	block.Name = "Section" .. (index + 1)
-	block.Size = site.blockSize - Vector3.new(0.15, 0.12, 0.15)
-	block.Anchored = true
-	block.Material = Enum.Material.Sandstone
-	local tone = rng:NextInteger(158, 186)
-	block.Color = Color3.fromRGB(tone, tone - 14, tone - 38)
-	block.TopSurface = Enum.SurfaceType.Smooth
-	block.BottomSurface = Enum.SurfaceType.Smooth
-	-- Dropped in rather than blinked in: spending should be visible.
-	block.CFrame = final * CFrame.new(0, 7, 0)
-	block.Transparency = 1
-	block.Parent = site.sections
-
-	TweenService:Create(
-		block,
-		TweenInfo.new(0.32, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
-		{ CFrame = final, Transparency = 0 }
-	):Play()
+-- How many blocks should be standing for the current wall value.
+local function standingSections(base: Base): number
+	if base.wallMax <= 0 then
+		return 0
+	end
+	return math.ceil((base.wall / base.wallMax) * #base.slots)
 end
 
--- Takes the most recently placed block, not the nearest one. Pulling a block out
--- of the middle would leave the ones above it floating.
-local function tearOffBlock(site: Site): boolean
-	if site.built <= 0 then
-		return false
+local function redrawWall(base: Base)
+	local wanted = standingSections(base)
+	for index, slot in base.slots do
+		local existing = base.sections:FindFirstChild(slot.Name)
+		if index <= wanted and not existing then
+			local block = Instance.new("Part")
+			block.Name = slot.Name
+			block.Size = WALL_BLOCK_SIZE
+			block.CFrame = slot.WorldCFrame
+			block.Anchored = true
+			block.Material = Enum.Material.Sandstone
+			local tone = rng:NextInteger(158, 186)
+			block.Color = Color3.fromRGB(tone, tone - 14, tone - 38)
+			block.TopSurface = Enum.SurfaceType.Smooth
+			block.BottomSurface = Enum.SurfaceType.Smooth
+			-- Dropped in rather than blinked in: spending should be visible.
+			block.CFrame = slot.WorldCFrame * CFrame.new(0, 7, 0)
+			block.Transparency = 1
+			block.Parent = base.sections
+			TweenService:Create(
+				block,
+				TweenInfo.new(0.28, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
+				{ CFrame = slot.WorldCFrame, Transparency = 0 }
+			):Play()
+		elseif index > wanted and existing and existing:IsA("BasePart") then
+			existing.Name = "Rubble"
+			existing.Anchored = false
+			existing.CanCollide = false
+			existing.AssemblyLinearVelocity = Vector3.new(
+				rng:NextNumber(-10, 10),
+				rng:NextNumber(6, 13),
+				rng:NextNumber(-10, 10)
+			)
+			Debris:AddItem(existing, 2.5)
+		end
 	end
-
-	local block = site.sections:FindFirstChild("Section" .. site.built)
-	site.built -= 1
-	site.refresh()
-
-	if block and block:IsA("BasePart") then
-		-- Rename before it starts falling. A torn block lives on for a couple of
-		-- seconds as debris, and if the owner rebuilt in that window there would
-		-- be two children called Section3 - so the next tear could pick the one
-		-- already tumbling away and leave the real block standing.
-		block.Name = "TornBlock"
-		block.Anchored = false
-		block.CanCollide = false
-		block.AssemblyLinearVelocity = Vector3.new(
-			rng:NextNumber(-12, 12),
-			rng:NextNumber(8, 16),
-			rng:NextNumber(-12, 12)
-		)
-		Debris:AddItem(block, 2.5)
-	end
-	return true
 end
 
-local function registerSite(model: Instance)
-	if not model:IsA("Model") then
+local function registerBase(model: Instance)
+	if not model:IsA("Model") or model:GetAttribute("Kind") ~= "Base" then
 		return
 	end
 
-	local foundation = model.PrimaryPart or model:FindFirstChildWhichIsA("BasePart")
-	local prompt = foundation and foundation:FindFirstChildOfClass("ProximityPrompt")
+	local foundation = model.PrimaryPart or model:FindFirstChild("Foundation")
+	local gate = model:FindFirstChild("Gate")
+	local stockpile = model:FindFirstChild("Stockpile")
 	local sections = model:FindFirstChild("Sections")
-	if not foundation or not prompt or not sections then
+	local prompt = foundation and foundation:FindFirstChildOfClass("ProximityPrompt")
+	if not (foundation and foundation:IsA("BasePart") and gate and gate:IsA("BasePart")
+		and stockpile and stockpile:IsA("BasePart") and sections and prompt) then
 		return
 	end
 
-	-- The world builder tags each site; the service owns what that tag means.
-	local kind = model:GetAttribute("Kind")
-	if typeof(kind) ~= "string" then
-		kind = "Wall"
+	local slots: { Attachment } = {}
+	for _, child in foundation:GetChildren() do
+		if child:IsA("Attachment") and child.Name:match("^Slot%d+$") then
+			table.insert(slots, child)
+		end
 	end
-	local isCastle = kind == "Castle"
-	local blockSize = if isCastle then CASTLE_BLOCK_SIZE else WALL_SECTION_SIZE
+	table.sort(slots, function(a, b)
+		return a.Name < b.Name
+	end)
 
-	local site: Site = {
+	local base: Base = {
 		model = model,
 		foundation = foundation,
+		gate = gate,
+		stockpile = stockpile,
 		prompt = prompt,
 		sections = sections,
-		kind = kind,
-		blockSize = blockSize,
-		maxSections = if isCastle
-			then #CASTLE_RING * CASTLE_COURSES
-			else WALL_SECTIONS_PER_COURSE * WALL_COURSES,
-		built = 0,
-		layoutOf = function(index: number): CFrame
-			local baseY = foundation.Size.Y / 2 + blockSize.Y / 2
-			if isCastle then
-				local course = index // #CASTLE_RING
-				local slot = CASTLE_RING[index % #CASTLE_RING + 1]
-				return CFrame.new(slot.X, baseY + course * blockSize.Y, slot.Y)
-			end
-			local course = index // WALL_SECTIONS_PER_COURSE
-			local column = index % WALL_SECTIONS_PER_COURSE
-			return CFrame.new(
-				(column - (WALL_SECTIONS_PER_COURSE - 1) / 2) * blockSize.X,
-				baseY + course * blockSize.Y,
-				0
-			)
-		end,
+		slots = slots,
+		wall = 0,
+		wallMax = #slots * WALL_HP_PER_SECTION,
+		breached = true, -- an unbuilt base has nothing keeping anyone out
+		loot = {},
 		refresh = function() end,
 	}
 
-	site.refresh = function()
+	base.refresh = function()
 		local ownerName = model:GetAttribute("OwnerName")
-		local label = if typeof(ownerName) == "string" then ("%s's %s"):format(ownerName, kind) else kind
-		prompt.ObjectText = ("%s %d/%d"):format(label, site.built, site.maxSections)
+		local who = if typeof(ownerName) == "string" then ownerName .. "'s base" else "Unclaimed base"
+		base.prompt.ObjectText = ("%s  wall %d/%d"):format(who, math.floor(base.wall), base.wallMax)
 
-		if site.built >= site.maxSections then
-			prompt.ActionText = "Complete"
-			prompt.Enabled = false
+		if base.wall >= base.wallMax then
+			base.prompt.ActionText = "Wall complete"
+			base.prompt.Enabled = false
 		else
-			-- Re-enabled deliberately: a raid knocking a block off a finished
-			-- castle has to make it buildable again.
-			prompt.Enabled = true
-			prompt.ActionText = ("Build (%s)"):format(describeCost())
+			-- Re-enabled deliberately: a breach has to make the wall repairable.
+			base.prompt.Enabled = true
+			base.prompt.ActionText = ("%s (%s)"):format(
+				if base.wall > 0 then "Repair" else "Build wall", describeCost())
 		end
-	end
-	site.refresh()
 
-	prompt.Triggered:Connect(function(player: Player)
-		if site.built >= site.maxSections then
+		model:SetAttribute("Wall", math.floor(base.wall))
+		model:SetAttribute("Breached", base.breached)
+		-- The gate darkens as the wall fails, so an attacker can read how close
+		-- a base is to falling without a health bar.
+		local fraction = if base.wallMax > 0 then base.wall / base.wallMax else 0
+		base.gate.Color = Color3.fromRGB(58, 40, 26):Lerp(Color3.fromRGB(104, 72, 44), fraction)
+	end
+	base.refresh()
+
+	base.prompt.Triggered:Connect(function(player: Player)
+		if base.wall >= base.wallMax then
 			return
 		end
 
-		local owner = siteOwner(site)
+		local owner = baseOwner(base)
 		if owner and owner ~= player.UserId then
-			notifyPlayer(player, ("%s's castle - raid it, do not build it"):format(
+			notifyPlayer(player, ("%s's base - raid it, do not build it"):format(
 				tostring(model:GetAttribute("OwnerName") or "Someone")))
 			return
 		end
 
 		local affordable, missing = canAfford(player, BUILD_COST)
 		if not affordable then
-			-- Straight to the one player who cannot afford it, and it names the
-			-- resource they are short of. This used to write the prompt's
-			-- ActionText, which every player at the wall shares - see notifyPlayer.
+			-- Straight to the one player who cannot afford it, naming what they
+			-- are short of. This used to write the prompt's ActionText, which
+			-- every player at the base shares - see notifyPlayer.
 			notifyPlayer(player, ("Need %d %s"):format(BUILD_COST[missing :: string], tostring(missing)))
 			return
 		end
 
 		spend(player, BUILD_COST)
-		placeBlock(site, site.built)
-		site.built += 1
+		base.wall = math.min(base.wallMax, base.wall + WALL_HP_PER_SECTION)
+		if base.wall > 0 then
+			base.breached = false
+		end
 
-		-- Laying the first block on a castle claims it.
-		if isCastle and not owner then
+		-- Raising the first stretch of wall claims the plot.
+		if not owner then
 			model:SetAttribute("Owner", player.UserId)
 			model:SetAttribute("OwnerName", player.Name)
 		end
 
-		site.refresh()
+		redrawWall(base)
+		base.refresh()
 	end)
 
-	table.insert(sites, site)
+	table.insert(bases, base)
 end
 
--- Nearest aimed-at site that belongs to somebody else and still has something
--- to take.
-local function findRaidTarget(raider: Player, character: Model): Site?
+-- Take the snapshot. Only ever called on the swing that drops the wall to zero.
+local function openStockpile(base: Base)
+	local ownerId = baseOwner(base)
+	local owner = ownerId and Players:GetPlayerByUserId(ownerId)
+	base.loot = {}
+	if not owner then
+		return
+	end
+	for _, name in RESOURCE_ORDER do
+		local held = counterFor(owner, name)
+		base.loot[name] = if held then math.floor(held.Value * EXPOSED_FRACTION) else 0
+	end
+end
+
+local function lootRemaining(base: Base): number
+	local total = 0
+	for _, amount in base.loot do
+		total += amount
+	end
+	return total
+end
+
+-- Nearest enemy GATE you are aimed at on a base that still has a wall. The gate
+-- is the only place the wall can be hurt: that is the whole point of there being
+-- one, per the doc - a single chokepoint you have to commit to.
+local function findGateTarget(raider: Player, character: Model): Base?
 	local root = character:FindFirstChild("HumanoidRootPart")
 	if not root or not root:IsA("BasePart") then
 		return nil
 	end
-
-	local best: Site? = nil
+	local best: Base? = nil
 	local bestDistance = math.huge
-
-	for _, site in sites do
-		local owner = siteOwner(site)
-		if owner and owner ~= raider.UserId and site.built > 0 then
-			local aimed, distance = isAimedAt(root, site.foundation.Position, MINE_RANGE)
+	for _, base in bases do
+		local owner = baseOwner(base)
+		if owner and owner ~= raider.UserId and base.wall > 0 then
+			local aimed, distance = isAimedAt(root, base.gate.Position, MINE_RANGE)
 			if aimed and distance < bestDistance then
-				best = site
+				best = base
 				bestDistance = distance
 			end
 		end
 	end
+	return best
+end
 
+-- Nearest enemy STOCKPILE you are aimed at on a base whose wall has fallen.
+local function findStockpileTarget(raider: Player, character: Model): Base?
+	local root = character:FindFirstChild("HumanoidRootPart")
+	if not root or not root:IsA("BasePart") then
+		return nil
+	end
+	local best: Base? = nil
+	local bestDistance = math.huge
+	for _, base in bases do
+		local owner = baseOwner(base)
+		if owner and owner ~= raider.UserId and base.breached then
+			local aimed, distance = isAimedAt(root, base.stockpile.Position, MINE_RANGE)
+			if aimed and distance < bestDistance then
+				best = base
+				bestDistance = distance
+			end
+		end
+	end
 	return best
 end
 
@@ -1027,33 +1052,93 @@ local function attemptSwing(player: Player, toolName: string)
 			return
 		end
 
-		-- 2. somebody else's castle
-		local raidTarget = findRaidTarget(player, liveCharacter)
-		if raidTarget then
-			local ownerName = tostring(raidTarget.model:GetAttribute("OwnerName") or "someone")
-			if tearOffBlock(raidTarget) then
-				-- Masonry comes off as stone, whatever it was built from.
-				local stone = counterFor(player, "Stone")
-				if stone then
-					stone.Value += PLUNDER_PER_BLOCK
-				end
-				notifyPlayer(player, ("Plundered %d Stone from %s"):format(PLUNDER_PER_BLOCK, ownerName))
+		-- 2. an enemy gate. The wall can only be hurt here, so a raid is a
+		-- commitment to one approach rather than chipping at whichever face
+		-- happens to be nearest.
+		local gateTarget = findGateTarget(player, liveCharacter)
+		if gateTarget then
+			local ownerName = tostring(gateTarget.model:GetAttribute("OwnerName") or "someone")
+			gateTarget.wall = math.max(0, gateTarget.wall - GATE_DAMAGE)
 
-				local ownerId = siteOwner(raidTarget)
-				local owner = ownerId and Players:GetPlayerByUserId(ownerId)
-				if owner then
-					notifyPlayer(owner, ("%s is raiding your %s"):format(player.Name, raidTarget.kind), 3)
-				end
-
-				local away = (root.Position - raidTarget.foundation.Position)
-				away = Vector3.new(away.X, 0, away.Z)
-				away = if away.Magnitude > 0.01 then away.Unit else Vector3.new(0, 0, 1)
-				spawnChips(raidTarget.foundation.Position + Vector3.new(0, 4, 0), away, 6)
+			local justBreached = gateTarget.wall <= 0 and not gateTarget.breached
+			if justBreached then
+				gateTarget.breached = true
+				openStockpile(gateTarget)
 			end
+
+			redrawWall(gateTarget)
+			gateTarget.refresh()
+
+			local ownerId = baseOwner(gateTarget)
+			local owner = ownerId and Players:GetPlayerByUserId(ownerId)
+			if justBreached then
+				notifyPlayer(player, ("%s's wall is down - the stockpile is open"):format(ownerName))
+				if owner then
+					notifyPlayer(owner, ("%s has breached your wall"):format(player.Name))
+				end
+			else
+				notifyPlayer(player, ("Battering %s's gate"):format(ownerName), 2)
+				if owner then
+					notifyPlayer(owner, ("%s is at your gate"):format(player.Name), 3)
+				end
+			end
+
+			local away = (root.Position - gateTarget.gate.Position)
+			away = Vector3.new(away.X, 0, away.Z)
+			away = if away.Magnitude > 0.01 then away.Unit else Vector3.new(0, 0, 1)
+			spawnChips(gateTarget.gate.Position, away, 5, { Color3.fromRGB(120, 84, 52), Color3.fromRGB(92, 64, 40) })
 			return
 		end
 
-		-- 3. something to harvest, if this tool can harvest it
+		-- 3. an open stockpile. Only the exposed slice snapshotted at the breach
+		-- can be taken; everything else the owner holds is safe.
+		local lootTarget = findStockpileTarget(player, liveCharacter)
+		if lootTarget then
+			local ownerId = baseOwner(lootTarget)
+			local owner = ownerId and Players:GetPlayerByUserId(ownerId)
+			local ownerName = tostring(lootTarget.model:GetAttribute("OwnerName") or "someone")
+
+			-- Take from whichever resource has the most left, so a raid empties
+			-- the pot evenly rather than draining one column first.
+			local pick, most = nil, 0
+			for _, name in RESOURCE_ORDER do
+				local left = lootTarget.loot[name] or 0
+				if left > most then
+					pick, most = name, left
+				end
+			end
+
+			if not pick then
+				notifyPlayer(player, ("%s's stockpile is empty"):format(ownerName), 3)
+				return
+			end
+
+			local taken = math.min(LOOT_PER_SWING, most)
+			lootTarget.loot[pick] = most - taken
+
+			if owner then
+				local held = counterFor(owner, pick)
+				if held then
+					held.Value = math.max(0, held.Value - taken)
+				end
+				notifyPlayer(owner, ("%s is looting your stockpile"):format(player.Name), 3)
+			end
+			local mine = counterFor(player, pick)
+			if mine then
+				mine.Value += taken
+			end
+
+			notifyPlayer(player, ("Looted %d %s from %s"):format(taken, pick, ownerName))
+			lootTarget.model:SetAttribute("LootLeft", lootRemaining(lootTarget))
+
+			local away = (root.Position - lootTarget.stockpile.Position)
+			away = Vector3.new(away.X, 0, away.Z)
+			away = if away.Magnitude > 0.01 then away.Unit else Vector3.new(0, 0, 1)
+			spawnChips(lootTarget.stockpile.Position + Vector3.new(0, 2, 0), away, 5)
+			return
+		end
+
+		-- 4. something to harvest, if this tool can harvest it
 		local node = findNode(liveCharacter, toolName)
 		if not node then
 			-- Aimed at something harvestable but holding the wrong thing. Worth
@@ -1204,9 +1289,9 @@ nodeFolder.ChildAdded:Connect(registerNode)
 
 local siteFolder = Workspace:WaitForChild("BuildSites")
 for _, model in siteFolder:GetChildren() do
-	registerSite(model)
+	registerBase(model)
 end
-siteFolder.ChildAdded:Connect(registerSite)
+siteFolder.ChildAdded:Connect(registerBase)
 
 Players.PlayerAdded:Connect(onPlayerAdded)
 Players.PlayerRemoving:Connect(function(player)

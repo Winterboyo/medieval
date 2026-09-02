@@ -478,63 +478,159 @@ spawnPad.Color = Color3.fromRGB(196, 174, 138)
 spawnPad.Duration = 8
 spawnPad.Parent = Workspace
 
--- ---------------------------------------------------------------- build sites
+-- ---------------------------------------------------------------- bases
+-- DESIGN.md v1 base: a perimeter wall on a SINGLE HP value, one gate as the only
+-- chokepoint, and a stockpile holding the exposed slice of the owner's goods.
+-- Everything else inside the ring is dressing - the doc asks for the village to
+-- be laid out with distinct buildings now, visually, with only one of them
+-- functionally the stockpile until specialists exist.
+--
+-- The ring is geometry: how much of it stands is drawn from the wall's one HP
+-- value by ResourceService. There are no per-block hitpoints.
 local buildSites = Instance.new("Folder")
 buildSites.Name = "BuildSites"
 buildSites.Parent = Workspace
 
-local function makeSite(name: string, kind: string, position: Vector3, footprint: Vector3)
+local BASE_FOOTPRINT = 30
+local WALL_HALF = 12 -- ring sits at +/- this
+local WALL_BLOCK = Vector3.new(4.6, 4.5, 2.6)
+local WALL_SPAN = 4.6 -- centre-to-centre along a side
+
+-- Ring slots, walked as a perimeter so the visual wall fills in evenly rather
+-- than growing one wall at a time. The gate takes the middle of the front side.
+local function ringSlots(): { CFrame }
+	local slots: { CFrame } = {}
+	local steps = 5 -- per side
+	local half = (steps - 1) / 2
+	for side = 0, 3 do
+		local yaw = math.rad(90 * side)
+		for i = 0, steps - 1 do
+			local along = (i - half) * WALL_SPAN
+			slots[#slots + 1] = CFrame.Angles(0, yaw, 0) * CFrame.new(along, 0, WALL_HALF)
+		end
+	end
+	return slots
+end
+
+local RING = ringSlots()
+local GATE_SLOT = 3 -- middle of the first side
+
+local function makeBase(name: string, centre: Vector2)
+	local ground = groundHeight(centre.X, centre.Y)
 	local site = Instance.new("Model")
 	site.Name = name
-	site:SetAttribute("Kind", kind)
+	site:SetAttribute("Kind", "Base")
 
 	local foundation = Instance.new("Part")
 	foundation.Name = "Foundation"
-	foundation.Size = footprint
-	foundation.Position = position
+	foundation.Size = Vector3.new(BASE_FOOTPRINT, 1, BASE_FOOTPRINT)
+	foundation.Position = Vector3.new(centre.X, ground + 0.5, centre.Y)
 	foundation.Anchored = true
-	foundation.Material = Enum.Material.Sandstone
-	foundation.Color = Color3.fromRGB(168, 152, 126)
+	foundation.Material = Enum.Material.Cobblestone
+	foundation.Color = Color3.fromRGB(150, 144, 132)
 	foundation.TopSurface = Enum.SurfaceType.Smooth
 	foundation.BottomSurface = Enum.SurfaceType.Smooth
 	foundation.Parent = site
+	site.PrimaryPart = foundation
 
 	local prompt = Instance.new("ProximityPrompt")
 	prompt.Name = "BuildPrompt"
 	prompt.ActionText = "Build"
-	prompt.ObjectText = kind
+	prompt.ObjectText = "Base"
 	prompt.HoldDuration = 0.35
-	prompt.MaxActivationDistance = 14
+	-- Has to cover the whole compound, not just the middle. The foundation is 30
+	-- across and the gate sits 12 out, so a 16 stud reach left the owner unable
+	-- to repair while standing at their own gate - exactly where a defender is.
+	prompt.MaxActivationDistance = 26
 	prompt.RequiresLineOfSight = false
 	prompt.Parent = foundation
 
+	-- Where ResourceService puts the wall blocks it raises. The slot CFrames are
+	-- published as attributes so the service does not need the ring maths.
 	local sections = Instance.new("Folder")
 	sections.Name = "Sections"
 	sections.Parent = site
 
-	site.PrimaryPart = foundation
+	local slots = Instance.new("Folder")
+	slots.Name = "WallSlots"
+	slots.Parent = site
+	for index, slot in RING do
+		if index ~= GATE_SLOT then
+			local marker = Instance.new("Attachment")
+			marker.Name = ("Slot%02d"):format(index)
+			marker.CFrame = slot * CFrame.new(0, WALL_BLOCK.Y / 2 + 0.5, 0)
+			marker.Parent = foundation
+		end
+	end
+
+	-- The gate. One chokepoint, and the only thing an attacker can hit: see
+	-- ResourceService. Always present, whether or not the wall has been raised.
+	local gate = Instance.new("Part")
+	gate.Name = "Gate"
+	gate.Size = Vector3.new(WALL_BLOCK.X + 0.6, WALL_BLOCK.Y + 1.4, WALL_BLOCK.Z)
+	gate.CFrame = foundation.CFrame * RING[GATE_SLOT] * CFrame.new(0, (WALL_BLOCK.Y + 1.4) / 2 + 0.5, 0)
+	gate.Anchored = true
+	gate.Material = Enum.Material.WoodPlanks
+	gate.Color = Color3.fromRGB(104, 72, 44)
+	gate.Parent = site
+
+	local gatePrompt = Instance.new("Attachment")
+	gatePrompt.Name = "GateFace"
+	gatePrompt.Parent = gate
+
+	-- The stockpile: the only building that is functionally anything yet.
+	local stockpile = Instance.new("Part")
+	stockpile.Name = "Stockpile"
+	stockpile.Size = Vector3.new(7, 5.5, 7)
+	stockpile.CFrame = foundation.CFrame * CFrame.new(0, 3.25, 0)
+	stockpile.Anchored = true
+	stockpile.Material = Enum.Material.WoodPlanks
+	stockpile.Color = Color3.fromRGB(150, 116, 76)
+	stockpile.Parent = site
+
+	local roof = Instance.new("Part")
+	roof.Name = "StockpileRoof"
+	roof.Size = Vector3.new(8.2, 1.0, 8.2)
+	roof.CFrame = stockpile.CFrame * CFrame.new(0, 3.2, 0)
+	roof.Anchored = true
+	roof.Material = Enum.Material.Slate
+	roof.Color = Color3.fromRGB(92, 84, 80)
+	roof.Parent = site
+
+	-- Dressing. The doc wants the village laid out with distinct buildings now,
+	-- visually, and explicitly says NOT to wire per-building raid logic yet.
+	local dressing = {
+		{ name = "Blacksmith", offset = Vector3.new(-8, 0, -7), size = Vector3.new(5, 4, 5), color = Color3.fromRGB(88, 80, 74) },
+		{ name = "Alchemist", offset = Vector3.new(8, 0, -7), size = Vector3.new(4.5, 4.5, 4.5), color = Color3.fromRGB(120, 112, 138) },
+		{ name = "Barracks", offset = Vector3.new(-8, 0, 7), size = Vector3.new(5.5, 3.6, 4.5), color = Color3.fromRGB(126, 104, 84) },
+	}
+	for _, spec in dressing do
+		local hut = Instance.new("Part")
+		hut.Name = spec.name
+		hut.Size = spec.size
+		hut.CFrame = foundation.CFrame * CFrame.new(spec.offset + Vector3.new(0, spec.size.Y / 2 + 0.5, 0))
+		hut.Anchored = true
+		hut.Material = Enum.Material.WoodPlanks
+		hut.Color = spec.color
+		hut.Parent = site
+	end
+
 	site.Parent = buildSites
 	return site
 end
 
--- The starter wall, on the village tile. Left unowned by ResourceService on
--- purpose: it is the shared sink the loop is learned on.
-makeSite("WallSite", "Wall", Vector3.new(0, villageGround + 0.5, 26), Vector3.new(34, 1, 3.4))
-
--- A castle plot on every interior tile corner, minus the ring around the
+-- Roughly a dozen claimable bases, which is the player count Conquest is written
+-- for. A checkerboard of the interior tile corners, minus the ring around the
 -- village so spawn does not open onto somebody's keep.
 local plotCount = 0
 for i = 2, GRID do
 	for j = 2, GRID do
-		local point = cornerPoint(i, j)
-		if point.Magnitude > TILE * 0.9 then
-			plotCount += 1
-			makeSite(
-				("CastlePlot_%02d"):format(plotCount),
-				"Castle",
-				Vector3.new(point.X, groundHeight(point.X, point.Y) + 0.5, point.Y),
-				Vector3.new(11, 1, 11)
-			)
+		if (i + j) % 2 == 0 then
+			local point = cornerPoint(i, j)
+			if point.Magnitude > TILE * 1.4 then
+				plotCount += 1
+				makeBase(("Base_%02d"):format(plotCount), point)
+			end
 		end
 	end
 end

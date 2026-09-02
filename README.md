@@ -3,12 +3,20 @@
 Roblox game, built in tiers. See the tier order in
 `~/.claude/projects/C--Users-winter-projects-medieval-land/memory/tier-build-order.md`.
 
-**Where this is:** a Catan board filling the whole map, five resources with a
-tool each, owned castles you can raid, and combat with health, death and respawn.
+**`DESIGN.md` is the authority on scope.** It is v2, post-Conquest-pivot, and it
+says so itself: if anything here conflicts with an older note, the doc wins.
 
-**T5 has not been started.** T5 is the hidden reputation number that shifts on
-theft — the thing T4's raiding exists to feed. The multi-resource economy is
-design-doc content, not a tier, and it was built ahead of T5 by choice.
+**Where this is:** a Catan board filling the whole map, five resources with a tool
+each, and bases with a walled perimeter, a gate and a raidable stockpile.
+
+**Reputation is no longer next.** The doc moves it under "Negotiation & reputation
+— stretch goal, needs specialists first" and corrects it to within-match only.
+The persistent, recency-weighted version is explicitly cut.
+
+**Two things already built now contradict the doc** and need revisiting: combat
+still has death and respawn where the doc specifies a single-hit knockout with
+elimination by base state; and the Conquest match structure (timer, shrinking
+zone, folding eliminated players into surviving teams) does not exist at all.
 
 **T3 and the combat half of T4 have never been run with two players.** Everything
 solo-testable is verified and the numbers are below; everything that needs a
@@ -148,33 +156,44 @@ The world builder tags each site with a `Kind` attribute; `ResourceService` owns
 what that tag means. Adding a third shape is a new branch in `layoutOf` and
 nothing else.
 
-**Castles are owned.** Whoever lays the first block claims the plot; nobody else
-can build there, but anybody can raid it. The starter wall is left unowned on
-purpose — it is the shared sink the loop is learned on, and nobody should be able
-to fence it off.
+**Bases are owned.** Whoever raises the first stretch of wall claims the plot;
+nobody else can build there, but anybody can raid it.
 
-## Raiding
+## Bases and raiding
 
-One swing does three different things depending on what is in front of you, and
-the order matters:
+A base is the doc's v1 structure: a perimeter wall on **one HP value**, **one
+gate**, and a **stockpile**. 16 of them on a checkerboard of the interior tile
+corners — roughly the player count Conquest is written for.
+
+**The ring of blocks is not twenty-odd little walls.** It is a readout: how many
+blocks stand is drawn from the single wall value. Each purchase of 4 Wood + 4
+Stone buys 25 HP and raises one block; damage lowers the value and drops blocks
+to match. A full wall is 19 blocks, 475 HP.
+
+**The gate is the only place the wall can be hurt.** That is the point of there
+being one — a raid is a commitment to one approach rather than chipping at
+whichever face happens to be nearest.
+
+**The stockpile holds the exposed slice.** When the wall falls, a snapshot is
+taken of 20% of what the owner holds; that snapshot is the entire raid. The other
+80% is safe. This is what makes a loss sting without being a wipe.
+
+The snapshot matters. Recomputing "20% of what they hold" on every swing
+converges on taking everything, which is exactly the wipe the doc is avoiding.
+
+One swing does four things depending on what you are aimed at, in order:
 
 | Priority | Target | Effect |
 |---|---|---|
-| 1 | Another player | 20 damage. Five swings kills from full. |
-| 2 | Someone else's castle | Tears off the top block, pays the raider 6 Stone. |
-| 3 | A rock | Mines 1 Stone. |
+| 1 | Another player | 20 damage |
+| 2 | An enemy gate, wall standing | 25 damage to the wall |
+| 3 | An enemy stockpile, wall down | Loots 4 of a resource from the snapshot |
+| 4 | A node your tool can work | Harvests 1 |
 
-A person in front of you beats their wall, and both beat the rock you happen to
-be standing next to — otherwise you could not fight beside a node.
+A person beats their gate, and all of it beats the node you happen to be standing
+next to — otherwise you could not fight beside a node.
 
-**Raiding moves stone at a loss.** A block costs 10 to place and yields 6 when
-torn off. That is deliberate: raiding should sting the victim more than it
-enriches the raider, and it must not out-earn mining.
-
-The tear takes the *most recently placed* block, not the nearest one — pulling
-one out of the middle would leave the blocks above it floating. Torn blocks are
-renamed before they start falling, because they live on as debris for a couple of
-seconds and a rebuild in that window would otherwise create a second `Section3`.
+Breaching re-enables the owner's build prompt, so a wall can be repaired back up.
 
 The spawn pad has an 8 second forcefield. It was 0 while nothing could hurt you;
 with combat, a forcefield-free spawn is a place to be farmed on respawn.
@@ -314,6 +333,11 @@ misses.
 That 1.32 is close, not exact. It is a good approximation, not a real grip. The
 exact version is to pose the left arm in the animation itself, where the hand can
 be placed on the shaft by eye.
+
+**A ProximityPrompt's reach is measured from the part it lives on.** The build
+prompt sits on the base foundation, and the gate is 12 studs out from it, so a
+16 stud reach left the owner unable to repair while standing at their own gate —
+exactly where a defender is. It is 26 now, sized to the compound.
 
 **`require` caches per ModuleScript instance.** Rojo updating
 `ServerStorage.BuildWorld` does *not* invalidate that cache, so a plain
