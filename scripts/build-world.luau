@@ -1,7 +1,7 @@
 --!strict
--- Medieval Land - world builder. A Catan-style board: a 5x5 grid of square
--- resource tiles around a central lake, with castle plots on the tile corners.
--- One-shot setup script. Safe to re-run: it tears down what it built last time first.
+-- Medieval Land - world builder. A Catan board filling the whole map: a 7x7 grid
+-- of square resource tiles, a village at the centre, castle plots on the tile
+-- corners. One-shot setup. Safe to re-run: it tears down what it built first.
 
 local Workspace = game:GetService("Workspace")
 local Lighting = game:GetService("Lighting")
@@ -9,8 +9,7 @@ local StarterPack = game:GetService("StarterPack")
 local Terrain = Workspace.Terrain
 
 -- Exposed as a function so it can be re-run. Rojo syncs this file to
--- ServerStorage.BuildWorld, so rebuilding the world is one line in the command
--- bar rather than pasting the whole file in:
+-- ServerStorage.BuildWorld, so rebuilding the world is a command bar line:
 --
 --   local fresh = game.ServerStorage.BuildWorld:Clone()
 --   fresh.Parent = game.ServerStorage
@@ -20,57 +19,58 @@ local Terrain = Workspace.Terrain
 -- The clone matters: require() caches per ModuleScript INSTANCE, so after Rojo
 -- updates this file a plain require() keeps handing back the stale function.
 --
--- The body below is deliberately left at column 0. Indenting 700 lines by one
--- level to satisfy the wrapper would make every future diff unreadable.
+-- The body below is deliberately left at column 0. Indenting it by one level to
+-- satisfy the wrapper would make every future diff unreadable.
 return function()
 
 local MAP_SIZE = 512
 local SOIL_THICK = 30 -- terrain slab, top surface at y = 0
 
-local GRID = 5 -- tiles per side
-local TILE = 72 -- studs per tile
-local BOARD = GRID * TILE -- 360; the board is centred on the origin
+-- 7 x 72 = 504 against a 512 map, so the board IS the world with a hair of
+-- margin. There is no surrounding countryside any more and no lake.
+local GRID = 7
+local TILE = 72
+local BOARD = GRID * TILE
 
--- The lake occupies the centre tile and is kept well inside it, so the four
--- castle plots on that tile's corners stay on dry land.
-local LAKE_RADIUS = 30
-local LAKE_SINK = 18
-
--- Row-major, row 1 at -Z. Fixed rather than shuffled: the stone tiles need to be
--- spread but not maximally distant, because the walk between them is what makes
--- the regen curve in ResourceService worth anything.
---   L lake   S stone   W wood   G grass   D desert
+-- Row-major, row 1 at -Z. Fixed rather than shuffled so the map is a place you
+-- can learn, and so the stone and ore tiles stay spread: the walk between nodes
+-- is what gives the regen curve in ResourceService any teeth.
+--   F forest/wood   P pasture/wool   G grain
+--   H hills/stone   M mountains/ore  V village (spawn)
 local LAYOUT = {
-	"GWSGD",
-	"SGWDG",
-	"WDLGS",
-	"GSDWG",
-	"DGWSG",
+	"FPGHMFP",
+	"GMHFPGH",
+	"PFMGHMF",
+	"HGPVFPG",
+	"MHFPGHM",
+	"FPGMHFP",
+	"GMHFPGM",
 }
 
+-- Six materials, one per tile kind, because a tile you cannot identify from
+-- ground level is just coloured floor.
 local TILE_MATERIAL = {
-	L = Enum.Material.LeafyGrass, -- the water is carved into it separately
-	S = Enum.Material.Rock,
-	W = Enum.Material.Mud, -- forest floor, and distinct from the surround
-	G = Enum.Material.LeafyGrass,
-	D = Enum.Material.Sand,
+	F = Enum.Material.Mud, -- forest floor
+	P = Enum.Material.LeafyGrass, -- pasture
+	G = Enum.Material.Ground, -- tilled earth
+	H = Enum.Material.Rock,
+	M = Enum.Material.Basalt, -- darker than the stone hills, on purpose
+	V = Enum.Material.Cobblestone, -- the village
 }
 
--- Everything off the board. Deliberately NOT LeafyGrass: when the surround
--- matched the grass tiles, the board stopped reading as a board and became
--- landscape with lines drawn on it. Dull earth makes the tiles pop.
-local SURROUND_MATERIAL = Enum.Material.Ground
+-- Which resource a tile grows, and therefore which node goes on it. The village
+-- grows nothing; it is where you spawn and where the starter wall is.
+local TILE_RESOURCE = {
+	F = "Wood",
+	P = "Wool",
+	G = "Grain",
+	H = "Stone",
+	M = "Ore",
+}
 
--- Outside the board, so the horizon is not a flat edge.
-local SURROUND_RISES = 10
-
-local SPAWN_POS = Vector3.new(0, 0.5, 205)
-local WALL_SITE_POS = Vector3.new(0, 0.5, 188)
-
-local rng = Random.new(20260902)
+local rng = Random.new(20260903)
 
 -- ---------------------------------------------------------------- tile helpers
--- Tile (row, col) with 1-based indices; row 1 is the -Z edge.
 local function tileKind(row: number, col: number): string
 	return LAYOUT[row]:sub(col, col)
 end
@@ -79,9 +79,8 @@ local function tileCentre(row: number, col: number): Vector2
 	return Vector2.new((col - (GRID + 1) / 2) * TILE, (row - (GRID + 1) / 2) * TILE)
 end
 
--- Corners are the lattice points between tiles. Corner (i, j) with 1-based
--- indices runs 1..GRID+1; the interior ones (2..GRID) are where four tiles meet,
--- which is where a castle can go.
+-- Corners are the lattice points between tiles; the interior ones are where four
+-- tiles meet, which is where a castle can go.
 local function cornerPoint(i: number, j: number): Vector2
 	return Vector2.new((j - 1 - GRID / 2) * TILE, (i - 1 - GRID / 2) * TILE)
 end
@@ -93,35 +92,22 @@ for _, name in { "MedievalLand_Scenery", "MedievalLand_Board", "ResourceNodes", 
 		existing:Destroy()
 	end
 end
-local oldTool = StarterPack:FindFirstChild("Pickaxe")
-if oldTool then
-	oldTool:Destroy()
+for _, toolName in { "Pickaxe", "Axe", "Hoe", "Shears" } do
+	local old = StarterPack:FindFirstChild(toolName)
+	if old then
+		old:Destroy()
+	end
 end
 Terrain:Clear()
 
 -- ---------------------------------------------------------------- terrain
--- Base slab for everything outside the board.
+-- Flat. A board is flat; landscape relief would fight the grid and bury nodes.
 Terrain:FillBlock(
 	CFrame.new(0, -SOIL_THICK / 2, 0),
 	Vector3.new(MAP_SIZE, SOIL_THICK, MAP_SIZE),
-	SURROUND_MATERIAL
+	Enum.Material.Ground
 )
 
--- Rises only OUTSIDE the board. The board itself stays dead flat, which is what
--- makes it read as a board rather than as landscape.
-for i = 1, SURROUND_RISES do
-	local angle = (i / SURROUND_RISES) * math.pi * 2 + rng:NextNumber(-0.3, 0.3)
-	local dist = rng:NextNumber(BOARD / 2 + 60, 230)
-	local radius = rng:NextNumber(40, 70)
-	local rise = rng:NextNumber(5, 12)
-	Terrain:FillBall(
-		Vector3.new(math.cos(angle) * dist, -radius + rise, math.sin(angle) * dist),
-		radius,
-		SURROUND_MATERIAL
-	)
-end
-
--- Paint each tile. Squared-off fills are exactly what we want here.
 for row = 1, GRID do
 	for col = 1, GRID do
 		local centre = tileCentre(row, col)
@@ -133,57 +119,9 @@ for row = 1, GRID do
 	end
 end
 
--- Water on the centre tile.
---
--- Terrain:FillBall(..., Enum.Material.Water) is a SILENT NO-OP on current
--- Roblox. Since the Shorelines change, water is not a material in the solid
--- voxel grid at all - it is its own LiquidOccupancy channel - and the Fill*
--- family cannot write it. Nothing errors; you just get no water.
-local LAKE_CENTRE = Vector3.new(0, -LAKE_SINK, 0)
-local VOXEL = 4
-
-local lakeRegion = Region3.new(
-	Vector3.new(-LAKE_RADIUS - 12, -LAKE_SINK - 14, -LAKE_RADIUS - 12),
-	Vector3.new(LAKE_RADIUS + 12, 8, LAKE_RADIUS + 12)
-):ExpandToGrid(VOXEL)
-
-local channels = Terrain:ReadVoxelChannels(
-	lakeRegion,
-	VOXEL,
-	{ "SolidMaterial", "SolidOccupancy", "LiquidOccupancy" }
-)
-local solidMaterial = channels.SolidMaterial
-local solidOccupancy = channels.SolidOccupancy
-local liquidOccupancy = channels.LiquidOccupancy
-
-local regionSize = lakeRegion.Size
-local regionCorner = lakeRegion.CFrame.Position - regionSize / 2
-local countX, countY, countZ = regionSize.X // VOXEL, regionSize.Y // VOXEL, regionSize.Z // VOXEL
-
-for xi = 1, countX do
-	for yi = 1, countY do
-		for zi = 1, countZ do
-			local centre = regionCorner
-				+ Vector3.new((xi - 0.5) * VOXEL, (yi - 0.5) * VOXEL, (zi - 0.5) * VOXEL)
-			if (centre - LAKE_CENTRE).Magnitude <= LAKE_RADIUS then
-				solidMaterial[xi][yi][zi] = Enum.Material.Air
-				solidOccupancy[xi][yi][zi] = 0
-				liquidOccupancy[xi][yi][zi] = if centre.Y < 0 then 1 else 0
-			end
-		end
-	end
-end
-
-Terrain:WriteVoxelChannels(lakeRegion, VOXEL, {
-	SolidMaterial = solidMaterial,
-	SolidOccupancy = solidOccupancy,
-	LiquidOccupancy = liquidOccupancy,
-})
-
 -- ---------------------------------------------------------------- ground probe
--- Nothing below may assume the ground is at y = 0. Terrain smoothing lifts the
--- flat parts of the map, and the surrounding rises push it further. Placing at a
--- hardcoded height once buried a whole resource node inside a hill.
+-- Nothing below may assume the ground is at y = 0; terrain smoothing lifts it.
+-- Placing at a hardcoded height once buried a whole resource node inside a hill.
 local groundParams = RaycastParams.new()
 groundParams.FilterType = Enum.RaycastFilterType.Include
 groundParams.FilterDescendantsInstances = { Terrain }
@@ -194,8 +132,6 @@ local function groundHeight(x: number, z: number): number
 end
 
 -- ---------------------------------------------------------------- board edges
--- Thin kerbs along the tile boundaries. Without these the terrain colours blur
--- into each other and it stops reading as a board.
 local board = Instance.new("Folder")
 board.Name = "MedievalLand_Board"
 board.Parent = Workspace
@@ -221,244 +157,235 @@ for line = 1, GRID + 1 do
 	kerb(("KerbX%d"):format(line), Vector3.new(0, y, offset), Vector3.new(BOARD, 0.35, 1.1))
 end
 
--- ---------------------------------------------------------------- scenery
-local scenery = Instance.new("Folder")
-scenery.Name = "MedievalLand_Scenery"
-scenery.Parent = Workspace
-
-local FROND_GREENS = {
-	Color3.fromRGB(72, 130, 56),
-	Color3.fromRGB(94, 148, 62),
-	Color3.fromRGB(58, 112, 50),
-	Color3.fromRGB(110, 158, 70),
-}
-
-local function makePalm(origin: Vector3)
-	local palm = Instance.new("Model")
-	palm.Name = "PalmTree"
-
-	local height = rng:NextNumber(17, 27)
-	local segments = 7
-	local segHeight = height / segments
-	local baseRadius = rng:NextNumber(0.75, 1.0)
-	local lean = rng:NextNumber(0.045, 0.115) -- radians added per segment; the curve
-	local facing = rng:NextNumber(0, math.pi * 2)
-
-	local cursor = CFrame.new(origin) * CFrame.Angles(0, facing, 0)
-	local trunkColor = Color3.fromRGB(
-		rng:NextInteger(126, 152),
-		rng:NextInteger(104, 124),
-		rng:NextInteger(78, 94)
-	)
-
-	local firstSegment: Part? = nil
-	for i = 1, segments do
-		cursor = cursor * CFrame.Angles(lean, 0, 0)
-
-		local radius = baseRadius * (1 - 0.42 * ((i - 1) / segments))
-		local segment = Instance.new("Part")
-		segment.Name = "Trunk" .. i
-		segment.Shape = Enum.PartType.Cylinder
-		-- Cylinder parts run along their X axis, so the part is rolled 90 degrees
-		-- to stand the length up along the cursor's Y.
-		segment.Size = Vector3.new(segHeight + 0.4, radius * 2, radius * 2)
-		segment.CFrame = cursor * CFrame.new(0, segHeight / 2, 0) * CFrame.Angles(0, 0, math.rad(90))
-		segment.Anchored = true
-		segment.Material = Enum.Material.Wood
-		segment.Color = trunkColor
-		segment.Parent = palm
-
-		firstSegment = firstSegment or segment
-		cursor = cursor * CFrame.new(0, segHeight, 0)
-	end
-
-	local crown = cursor
-	local frondCount = rng:NextInteger(7, 9)
-	local frondColor = FROND_GREENS[rng:NextInteger(1, #FROND_GREENS)]
-
-	for f = 1, frondCount do
-		local around = (f / frondCount) * math.pi * 2 + rng:NextNumber(-0.16, 0.16)
-		local outward = CFrame.new(crown.Position) * CFrame.Angles(0, around, 0)
-
-		-- Fronds are two segments: one lifting away from the crown, one drooping
-		-- off the end of it. One straight blade looks like a spike, not a leaf.
-		local rise = math.rad(rng:NextNumber(10, 30))
-		local innerLength = rng:NextNumber(5.0, 6.8)
-		local innerFrame = outward * CFrame.Angles(rise, 0, 0)
-
-		local inner = Instance.new("Part")
-		inner.Name = "Frond"
-		inner.Size = Vector3.new(2.1, 0.22, innerLength)
-		inner.CFrame = innerFrame * CFrame.new(0, 0, -innerLength / 2)
-		inner.Anchored = true
-		inner.Material = Enum.Material.Grass
-		inner.Color = frondColor
-		inner.Parent = palm
-
-		local droop = math.rad(rng:NextNumber(38, 62))
-		local outerLength = rng:NextNumber(5.0, 7.5)
-		local outerFrame = innerFrame * CFrame.new(0, 0, -innerLength) * CFrame.Angles(-droop, 0, 0)
-
-		local outer = Instance.new("Part")
-		outer.Name = "FrondTip"
-		outer.Size = Vector3.new(1.4, 0.2, outerLength)
-		outer.CFrame = outerFrame * CFrame.new(0, 0, -outerLength / 2)
-		outer.Anchored = true
-		outer.Material = Enum.Material.Grass
-		outer.Color = frondColor:Lerp(Color3.fromRGB(150, 178, 92), 0.35)
-		outer.Parent = palm
-	end
-
-	for c = 1, rng:NextInteger(2, 4) do
-		local coconut = Instance.new("Part")
-		coconut.Name = "Coconut"
-		coconut.Shape = Enum.PartType.Ball
-		local size = rng:NextNumber(0.9, 1.2)
-		coconut.Size = Vector3.new(size, size, size)
-		coconut.CFrame = crown
-			* CFrame.Angles(0, rng:NextNumber(0, math.pi * 2), 0)
-			* CFrame.new(0, rng:NextNumber(-1.4, -0.4), -rng:NextNumber(0.7, 1.3))
-		coconut.Anchored = true
-		coconut.Material = Enum.Material.Wood
-		coconut.Color = Color3.fromRGB(74, 52, 34)
-		coconut.Parent = palm
-	end
-
-	palm.PrimaryPart = firstSegment
-	palm.Parent = scenery
-end
-
-local function makeShrub(x: number, z: number)
-	local shrub = Instance.new("Model")
-	shrub.Name = "Shrub"
-	local main: Part? = nil
-	local ground = groundHeight(x, z)
-	for lobe = 1, rng:NextInteger(2, 4) do
-		local size = rng:NextNumber(2.2, 4.0)
-		local blob = Instance.new("Part")
-		blob.Shape = Enum.PartType.Ball
-		blob.Size = Vector3.new(size, size * 0.78, size)
-		blob.Position = Vector3.new(x, ground + size * 0.24, z)
-			+ Vector3.new(rng:NextNumber(-1.6, 1.6), 0, rng:NextNumber(-1.6, 1.6))
-		blob.Anchored = true
-		blob.Material = Enum.Material.LeafyGrass
-		blob.Color = FROND_GREENS[rng:NextInteger(1, #FROND_GREENS)]
-		blob.Parent = shrub
-		main = main or blob
-	end
-	shrub.PrimaryPart = main
-	shrub.Parent = scenery
-end
-
-local function makeBoulder(x: number, z: number)
-	local size = rng:NextNumber(2.0, 4.6)
-	local boulder = Instance.new("Part")
-	boulder.Name = "Boulder"
-	boulder.Size = Vector3.new(size, size * rng:NextNumber(0.5, 0.8), size * rng:NextNumber(0.7, 1.2))
-	boulder.CFrame = CFrame.new(x, groundHeight(x, z) + size * 0.2, z)
-		* CFrame.Angles(rng:NextNumber(-0.3, 0.3), rng:NextNumber(0, 6.28), rng:NextNumber(-0.3, 0.3))
-	boulder.Anchored = true
-	boulder.Material = Enum.Material.Rock
-	local grey = rng:NextInteger(112, 142)
-	boulder.Color = Color3.fromRGB(grey + 6, grey + 3, grey)
-	boulder.Parent = scenery
-end
-
--- Scenery is dressed per tile kind, which is what makes a tile readable from
--- ground level rather than only from above.
-local INSET = TILE / 2 - 9 -- keep scenery off the kerbs
-
-for row = 1, GRID do
-	for col = 1, GRID do
-		local kind = tileKind(row, col)
-		local centre = tileCentre(row, col)
-
-		local function scatter(count: number, place: (number, number) -> ())
-			for _ = 1, count do
-				place(
-					centre.X + rng:NextNumber(-INSET, INSET),
-					centre.Y + rng:NextNumber(-INSET, INSET)
-				)
-			end
-		end
-
-		if kind == "W" then
-			scatter(rng:NextInteger(5, 7), function(x, z)
-				makePalm(Vector3.new(x, groundHeight(x, z) - 0.6, z))
-			end)
-			scatter(2, makeShrub)
-		elseif kind == "G" then
-			scatter(rng:NextInteger(3, 5), makeShrub)
-		elseif kind == "S" then
-			scatter(rng:NextInteger(3, 5), makeBoulder)
-		elseif kind == "D" then
-			scatter(rng:NextInteger(1, 2), makeBoulder)
-		elseif kind == "L" then
-			scatter(3, function(x, z)
-				-- palms on the lake shore only, not in the water
-				if Vector2.new(x, z).Magnitude > LAKE_RADIUS + 4 then
-					makePalm(Vector3.new(x, groundHeight(x, z) - 0.6, z))
-				end
-			end)
-		end
-	end
-end
-
--- ---------------------------------------------------------------- spawn
-local spawnPad = Instance.new("SpawnLocation")
-spawnPad.Name = "SpawnLocation"
-spawnPad.Size = Vector3.new(12, 1, 12)
-spawnPad.Position = Vector3.new(SPAWN_POS.X, groundHeight(SPAWN_POS.X, SPAWN_POS.Z) + 0.5, SPAWN_POS.Z)
-spawnPad.Anchored = true
-spawnPad.Material = Enum.Material.Sandstone
-spawnPad.Color = Color3.fromRGB(196, 174, 138)
--- Spawn protection. It was 0 while nothing could hurt you; from Tier 4 there is
--- combat, and a forcefield-free spawn pad is a place to be farmed on respawn.
-spawnPad.Duration = 8
-spawnPad.Parent = Workspace
-
--- ---------------------------------------------------------------- resource nodes
--- Geometry only. Every number that changes at runtime - how much stone is left,
--- how fast it comes back - lives in ResourceService.
+-- ---------------------------------------------------------------- nodes
+-- Geometry only. Capacity, regen and which tool works which node all live in
+-- ResourceService; the builder just tags what a thing IS.
+--
+-- Two attributes carry that contract:
+--   Resource  on the model  - what it yields
+--   Wears     on a part     - it vanishes as the node is worked down
+-- Parts without Wears are the permanent frame: trunks, legs, bare earth. That is
+-- what stops a spent node looking like an empty patch of ground.
 local nodes = Instance.new("Folder")
 nodes.Name = "ResourceNodes"
 nodes.Parent = Workspace
 
-local function makeOutcrop(name: string, origin: Vector3)
-	local outcrop = Instance.new("Model")
-	outcrop.Name = name
+local function wearing(part: BasePart): BasePart
+	part:SetAttribute("Wears", true)
+	return part
+end
 
-	-- origin.Y is the core centre, which the caller sets to ground + 2.4.
-	local groundY = origin.Y - 2.4
+local function newPart(name: string, size: Vector3, cframe: CFrame, parent: Instance): Part
+	local part = Instance.new("Part")
+	part.Name = name
+	part.Size = size
+	part.CFrame = cframe
+	part.Anchored = true
+	part.TopSurface = Enum.SurfaceType.Smooth
+	part.BottomSurface = Enum.SurfaceType.Smooth
+	part.Parent = parent
+	return part
+end
 
-	local function stone(partName: string, size: Vector3, cframe: CFrame, parent: Instance): Part
-		local part = Instance.new("Part")
-		part.Name = partName
-		part.Size = size
-		part.CFrame = cframe
-		part.Anchored = true
-		-- Rock only. Slate's texture is noticeably purple, which the warm colour
-		-- correction on this place pushes all the way to mauve.
+-- --- forest ------------------------------------------------------
+local LEAF_GREENS = {
+	Color3.fromRGB(64, 116, 52),
+	Color3.fromRGB(82, 134, 60),
+	Color3.fromRGB(54, 100, 46),
+}
+
+local function makeForest(name: string, origin: Vector3): Model
+	local model = Instance.new("Model")
+	model.Name = name
+	model:SetAttribute("Resource", "Wood")
+
+	local trunkPrimary: Part? = nil
+	for t = 1, 5 do
+		local angle = (t / 5) * math.pi * 2 + rng:NextNumber(-0.4, 0.4)
+		local dist = if t == 1 then 0 else rng:NextNumber(9, 22)
+		local x = origin.X + math.cos(angle) * dist
+		local z = origin.Z + math.sin(angle) * dist
+		local ground = groundHeight(x, z)
+		local height = rng:NextNumber(9, 14)
+		local radius = rng:NextNumber(0.7, 1.0)
+
+		-- Trunks stay. A chopped-out forest should read as stumps and bare
+		-- trunks, not as nothing at all.
+		local trunk = newPart(
+			("Trunk%d"):format(t),
+			Vector3.new(height, radius * 2, radius * 2),
+			CFrame.new(x, ground + height / 2, z) * CFrame.Angles(0, 0, math.rad(90)),
+			model
+		)
+		trunk.Shape = Enum.PartType.Cylinder
+		trunk.Material = Enum.Material.Wood
+		trunk.Color = Color3.fromRGB(96, 68, 44)
+		trunkPrimary = trunkPrimary or trunk
+
+		local leafColor = LEAF_GREENS[rng:NextInteger(1, #LEAF_GREENS)]
+		for c = 1, 3 do
+			local size = rng:NextNumber(5.0, 7.5) - c * 0.7
+			local canopy = wearing(newPart(
+				("Canopy%d_%d"):format(t, c),
+				Vector3.new(size, size * 0.8, size),
+				CFrame.new(
+					x + rng:NextNumber(-0.8, 0.8),
+					ground + height * 0.72 + c * 1.7,
+					z + rng:NextNumber(-0.8, 0.8)
+				),
+				model
+			))
+			canopy.Shape = Enum.PartType.Ball
+			canopy.Material = Enum.Material.LeafyGrass
+			canopy.Color = leafColor
+		end
+	end
+
+	model.PrimaryPart = trunkPrimary
+	model.Parent = nodes
+	return model
+end
+
+-- --- pasture -----------------------------------------------------
+local function makePasture(name: string, origin: Vector3): Model
+	local model = Instance.new("Model")
+	model.Name = name
+	model:SetAttribute("Resource", "Wool")
+
+	local primary: Part? = nil
+	for s = 1, 4 do
+		local angle = rng:NextNumber(0, math.pi * 2)
+		local dist = if s == 1 then 0 else rng:NextNumber(7, 20)
+		local x = origin.X + math.cos(angle) * dist
+		local z = origin.Z + math.sin(angle) * dist
+		local ground = groundHeight(x, z)
+		local facing = rng:NextNumber(0, math.pi * 2)
+		local base = CFrame.new(x, ground + 1.5, z) * CFrame.Angles(0, facing, 0)
+
+		-- The sheep itself does not wear away, only its fleece. A shorn flock
+		-- should still be a flock standing there looking indignant.
+		local body = newPart(("Body%d"):format(s), Vector3.new(2.4, 1.7, 1.6), base, model)
+		body.Shape = Enum.PartType.Ball
+		body.Material = Enum.Material.Fabric
+		body.Color = Color3.fromRGB(226, 216, 200)
+		primary = primary or body
+
+		local head = newPart(("Head%d"):format(s), Vector3.new(0.9, 0.9, 0.9), base * CFrame.new(0, 0.25, -1.2), model)
+		head.Shape = Enum.PartType.Ball
+		head.Material = Enum.Material.SmoothPlastic
+		head.Color = Color3.fromRGB(58, 54, 52)
+
+		for leg = 1, 4 do
+			local lx = if leg % 2 == 0 then 0.7 else -0.7
+			local lz = if leg <= 2 then 0.6 else -0.6
+			local shin = newPart(
+				("Leg%d_%d"):format(s, leg),
+				Vector3.new(0.26, 1.5, 0.26),
+				base * CFrame.new(lx, -1.2, lz),
+				model
+			)
+			shin.Material = Enum.Material.SmoothPlastic
+			shin.Color = Color3.fromRGB(58, 54, 52)
+		end
+
+		for f = 1, 4 do
+			local size = rng:NextNumber(1.1, 1.6)
+			local tuft = wearing(newPart(
+				("Fleece%d_%d"):format(s, f),
+				Vector3.new(size, size * 0.85, size),
+				base * CFrame.new(rng:NextNumber(-0.8, 0.8), rng:NextNumber(0.6, 1.0), rng:NextNumber(-0.7, 0.7)),
+				model
+			))
+			tuft.Shape = Enum.PartType.Ball
+			tuft.Material = Enum.Material.Fabric
+			tuft.Color = Color3.fromRGB(246, 242, 234)
+		end
+	end
+
+	model.PrimaryPart = primary
+	model.Parent = nodes
+	return model
+end
+
+-- --- field -------------------------------------------------------
+local function makeField(name: string, origin: Vector3): Model
+	local model = Instance.new("Model")
+	local ground = groundHeight(origin.X, origin.Z)
+	model.Name = name
+	model:SetAttribute("Resource", "Grain")
+
+	-- The plot stays; the crop is what you harvest. A cut field is bare earth,
+	-- which is exactly what it should look like.
+	local plot = newPart(
+		"Plot",
+		Vector3.new(32, 0.5, 32),
+		CFrame.new(origin.X, ground + 0.25, origin.Z),
+		model
+	)
+	plot.Material = Enum.Material.Ground
+	plot.Color = Color3.fromRGB(112, 88, 62)
+	model.PrimaryPart = plot
+
+	local rows = 5
+	for r = 1, rows do
+		for c = 1, rows do
+			local x = origin.X + (c - (rows + 1) / 2) * 6.0
+			local z = origin.Z + (r - (rows + 1) / 2) * 6.0
+			local height = rng:NextNumber(2.6, 3.4)
+			local stalk = wearing(newPart(
+				("Wheat%d_%d"):format(r, c),
+				Vector3.new(4.2, height, 4.2),
+				CFrame.new(x, ground + 0.5 + height / 2, z)
+					* CFrame.Angles(0, rng:NextNumber(0, 6.28), 0),
+				model
+			))
+			stalk.Material = Enum.Material.Grass
+			stalk.Color = Color3.fromRGB(216, 182, 88)
+		end
+	end
+
+	model.Parent = nodes
+	return model
+end
+
+-- --- quarry and mine ---------------------------------------------
+local function makeOutcrop(name: string, origin: Vector3, resource: string): Model
+	local model = Instance.new("Model")
+	model.Name = name
+	model:SetAttribute("Resource", resource)
+
+	local isOre = resource == "Ore"
+	local groundY = groundHeight(origin.X, origin.Z)
+	local coreCentre = groundY + 2.4
+
+	local function stone(partName: string, size: Vector3, cframe: CFrame, wears: boolean): Part
+		local part = newPart(partName, size, cframe, model)
 		part.Material = Enum.Material.Rock
 		-- One grey, jittered equally on all three channels so it stays neutral
-		-- rather than drifting into a tint.
-		local grey = rng:NextInteger(102, 134)
+		-- rather than drifting into a tint. Ore is darker, and its wearing
+		-- chunks carry the rusty colour so a rich seam reads at a glance.
+		local grey = if isOre then rng:NextInteger(74, 96) else rng:NextInteger(102, 134)
 		part.Color = Color3.fromRGB(grey + 5, grey + 3, grey)
-		part.TopSurface = Enum.SurfaceType.Smooth
-		part.BottomSurface = Enum.SurfaceType.Smooth
-		part.Parent = parent
+		if wears then
+			wearing(part)
+			if isOre then
+				part.Material = Enum.Material.Metal
+				part.Color = Color3.fromRGB(rng:NextInteger(132, 168), rng:NextInteger(92, 116), rng:NextInteger(56, 74))
+			end
+		end
 		return part
 	end
 
 	-- No dominant centre block: one big box with smaller boxes tucked against it
-	-- just reads as a box. A cluster of similar blocks whose TOPS sit at
-	-- different heights is what gives a rock its broken silhouette.
+	-- reads as a box. A cluster whose TOPS sit at different heights is what gives
+	-- a rock its broken silhouette.
 	local core = stone(
 		"Core",
 		Vector3.new(3.4, 4.6, 3.0),
-		CFrame.new(origin) * CFrame.Angles(math.rad(5), math.rad(22), math.rad(-7)),
-		outcrop
+		CFrame.new(origin.X, coreCentre, origin.Z) * CFrame.Angles(math.rad(5), math.rad(22), math.rad(-7)),
+		false
 	)
+	model.PrimaryPart = core
 
 	for i = 1, 8 do
 		local width = rng:NextNumber(2.2, 3.6)
@@ -473,12 +400,8 @@ local function makeOutcrop(name: string, origin: Vector3)
 				origin.X + math.cos(angle) * dist,
 				baseY + height / 2,
 				origin.Z + math.sin(angle) * dist
-			) * CFrame.Angles(
-				rng:NextNumber(-0.22, 0.22),
-				rng:NextNumber(0, 6.28),
-				rng:NextNumber(-0.26, 0.26)
-			),
-			outcrop
+			) * CFrame.Angles(rng:NextNumber(-0.22, 0.22), rng:NextNumber(0, 6.28), rng:NextNumber(-0.26, 0.26)),
+			true
 		)
 	end
 
@@ -489,18 +412,16 @@ local function makeOutcrop(name: string, origin: Vector3)
 			Vector3.new(rng:NextNumber(1.3, 2.0), height, rng:NextNumber(1.3, 2.0)),
 			CFrame.new(
 				origin.X + rng:NextNumber(-1.6, 1.6),
-				origin.Y + 1.6 + height / 2,
+				coreCentre + 1.6 + height / 2,
 				origin.Z + rng:NextNumber(-1.6, 1.6)
-			) * CFrame.Angles(
-				rng:NextNumber(-0.28, 0.28),
-				rng:NextNumber(0, 6.28),
-				rng:NextNumber(-0.28, 0.28)
-			),
-			outcrop
+			) * CFrame.Angles(rng:NextNumber(-0.28, 0.28), rng:NextNumber(0, 6.28), rng:NextNumber(-0.28, 0.28)),
+			true
 		)
 	end
 
-	for i = 1, 7 do
+	-- Rubble stays: it is what makes the outcrop sit in the ground rather than
+	-- on it, and it should survive the seam being worked out.
+	for i = 1, 6 do
 		local angle = rng:NextNumber(0, math.pi * 2)
 		local dist = rng:NextNumber(3.2, 6.0)
 		local size = rng:NextNumber(0.7, 1.9)
@@ -509,33 +430,55 @@ local function makeOutcrop(name: string, origin: Vector3)
 			Vector3.new(size, size * rng:NextNumber(0.5, 0.9), size * rng:NextNumber(0.7, 1.2)),
 			CFrame.new(origin.X + math.cos(angle) * dist, groundY + 0.25, origin.Z + math.sin(angle) * dist)
 				* CFrame.Angles(rng:NextNumber(-0.4, 0.4), rng:NextNumber(0, 6.28), rng:NextNumber(-0.4, 0.4)),
-			outcrop
+			false
 		)
 	end
 
-	outcrop.PrimaryPart = core
-	outcrop.Parent = nodes
-	return outcrop
+	model.Parent = nodes
+	return model
 end
 
--- One outcrop per stone tile, at the tile's centre. A stone tile IS the node.
+-- One node per resource tile, at the tile's centre. A tile IS its node.
 local nodeCount = 0
 for row = 1, GRID do
 	for col = 1, GRID do
-		if tileKind(row, col) == "S" then
+		local kind = tileKind(row, col)
+		local resource = TILE_RESOURCE[kind]
+		if resource then
 			nodeCount += 1
 			local centre = tileCentre(row, col)
-			makeOutcrop(
-				("Rock_%02d"):format(nodeCount),
-				Vector3.new(centre.X, groundHeight(centre.X, centre.Y) + 2.4, centre.Y)
-			)
+			local origin = Vector3.new(centre.X, 0, centre.Y)
+			local name = ("%s_%02d"):format(resource, nodeCount)
+
+			if resource == "Wood" then
+				makeForest(name, origin)
+			elseif resource == "Wool" then
+				makePasture(name, origin)
+			elseif resource == "Grain" then
+				makeField(name, origin)
+			else
+				makeOutcrop(name, origin, resource)
+			end
 		end
 	end
 end
 
+-- ---------------------------------------------------------------- village
+local villageGround = groundHeight(0, 0)
+
+local spawnPad = Instance.new("SpawnLocation")
+spawnPad.Name = "SpawnLocation"
+spawnPad.Size = Vector3.new(14, 1, 14)
+spawnPad.Position = Vector3.new(0, villageGround + 0.5, 0)
+spawnPad.Anchored = true
+spawnPad.Material = Enum.Material.Sandstone
+spawnPad.Color = Color3.fromRGB(196, 174, 138)
+-- Spawn protection. It was 0 while nothing could hurt you; from Tier 4 there is
+-- combat, and a forcefield-free spawn pad is a place to be farmed on respawn.
+spawnPad.Duration = 8
+spawnPad.Parent = Workspace
+
 -- ---------------------------------------------------------------- build sites
--- Geometry and prompts live here; costs, layouts and progress live in
--- ResourceService. The Kind attribute tells the service which layout to use.
 local buildSites = Instance.new("Folder")
 buildSites.Name = "BuildSites"
 buildSites.Parent = Workspace
@@ -574,21 +517,17 @@ local function makeSite(name: string, kind: string, position: Vector3, footprint
 	return site
 end
 
--- The starter wall, kept from Tier 1 so its verified behaviour survives.
-makeSite(
-	"WallSite",
-	"Wall",
-	Vector3.new(WALL_SITE_POS.X, groundHeight(WALL_SITE_POS.X, WALL_SITE_POS.Z) + 0.5, WALL_SITE_POS.Z),
-	Vector3.new(34, 1, 3.4)
-)
+-- The starter wall, on the village tile. Left unowned by ResourceService on
+-- purpose: it is the shared sink the loop is learned on.
+makeSite("WallSite", "Wall", Vector3.new(0, villageGround + 0.5, 26), Vector3.new(34, 1, 3.4))
 
--- A castle plot on every interior tile corner - the Catan settlement spots.
+-- A castle plot on every interior tile corner, minus the ring around the
+-- village so spawn does not open onto somebody's keep.
 local plotCount = 0
 for i = 2, GRID do
 	for j = 2, GRID do
 		local point = cornerPoint(i, j)
-		-- Skip anything that would sit in the lake.
-		if point.Magnitude > LAKE_RADIUS + 8 then
+		if point.Magnitude > TILE * 0.9 then
 			plotCount += 1
 			makeSite(
 				("CastlePlot_%02d"):format(plotCount),
@@ -600,44 +539,41 @@ for i = 2, GRID do
 	end
 end
 
--- ---------------------------------------------------------------- pickaxe
--- Built here rather than by hand in Studio so the tool is reproducible from
--- source like everything else. ResourceService drives it; it carries no scripts.
-local function buildPickaxe(): Tool
+-- ---------------------------------------------------------------- tools
+-- Four tools, one shaft. Only the head differs, so the haft, grip, hold pose and
+-- off-hand attachment are written once.
+--
+-- The shaft runs along the Handle's local Z with the head at -Z. The Handle is a
+-- plain unrotated invisible block and the visible shaft is welded over it,
+-- because Tool.Grip is expressed in the Handle's own frame: rotating the Handle
+-- to lay a cylinder along Z would twist every Grip value with it.
+local WOOD = Color3.fromRGB(122, 84, 50)
+local IRON = Color3.fromRGB(96, 100, 107)
+local IRON_DARK = Color3.fromRGB(72, 76, 83)
+
+local function buildTool(
+	name: string,
+	tooltip: string,
+	shaftLength: number,
+	head: (headAt: CFrame, add: (string, Vector3, CFrame, Color3) -> Part) -> ()
+): Tool
 	local tool = Instance.new("Tool")
-	tool.Name = "Pickaxe"
+	tool.Name = name
 	tool.RequiresHandle = true
 	tool.CanBeDropped = false
-	tool.ToolTip = "Swing at a rock to mine stone"
+	tool.ToolTip = tooltip
 
-	-- Held upright, like a torch, rather than sticking straight out in front.
-	--
-	-- Tool.Grip is the INVERSE of where the Handle sits in the hand's frame, so
-	-- the readable way to write it is to describe the pose you want and invert.
-	-- The hand's frame has +Y up and -Z forward, and the Handle's shaft runs
-	-- along its own local Z with the head at -Z. Rotating +90 degrees about X
-	-- carries the handle's -Z onto the hand's +Y, which stands the head up.
-	--
-	-- The grip point wanted is 1.35 along the shaft from centre, near the butt.
-	-- After that rotation it sits 1.35 BELOW the handle's centre, so the centre
-	-- has to be lifted by the same amount to bring the grip back to the hand.
-	local RIGHT_HAND_AT = 1.35
-	local heldPose = CFrame.new(0, RIGHT_HAND_AT, 0) * CFrame.Angles(math.rad(90), 0, 0)
-	tool.Grip = heldPose:Inverse()
+	-- Held upright, like a torch. Tool.Grip is the INVERSE of where the Handle
+	-- sits in the hand, so the readable way to write it is to describe the pose
+	-- and invert. The hand's frame is +Y up and -Z forward; rotating +90 about X
+	-- carries the handle's -Z onto the hand's +Y, standing the head up. The lift
+	-- puts the grip point back in the palm after the rotation drops it.
+	local holdAt = shaftLength * 0.35
+	tool.Grip = (CFrame.new(0, holdAt, 0) * CFrame.Angles(math.rad(90), 0, 0)):Inverse()
 
-	local WOOD = Color3.fromRGB(122, 84, 50)
-	local IRON = Color3.fromRGB(96, 100, 107)
-	local IRON_DARK = Color3.fromRGB(72, 76, 83)
-
-	-- The shaft runs along the handle's local Z, with the head at -Z.
-	--
-	-- The Handle is a plain unrotated block and is invisible; the wooden shaft
-	-- you actually see is a cylinder welded over it. Tool.Grip is expressed in
-	-- the Handle's own frame, so rotating the Handle to lay a cylinder along Z
-	-- would twist every Grip value with it.
 	local handle = Instance.new("Part")
 	handle.Name = "Handle"
-	handle.Size = Vector3.new(0.30, 0.30, 3.9)
+	handle.Size = Vector3.new(0.30, 0.30, shaftLength)
 	handle.CFrame = CFrame.new()
 	handle.Transparency = 1
 	handle.Anchored = false
@@ -645,9 +581,8 @@ local function buildPickaxe(): Tool
 	handle.Massless = true
 	handle.Parent = tool
 
-	local handleFrame = CFrame.new()
 	local function attach(part: BasePart, localCFrame: CFrame)
-		part.CFrame = handleFrame * localCFrame
+		part.CFrame = localCFrame
 		part.Anchored = false
 		part.CanCollide = false
 		part.Massless = true
@@ -663,105 +598,122 @@ local function buildPickaxe(): Tool
 		part.Parent = tool
 	end
 
-	local function metal(name: string, size: Vector3, localCFrame: CFrame, color: Color3)
+	local function add(partName: string, size: Vector3, localCFrame: CFrame, color: Color3): Part
 		local part = Instance.new("Part")
-		part.Name = name
+		part.Name = partName
 		part.Size = size
 		part.Material = Enum.Material.Metal
 		part.Color = color
 		part.TopSurface = Enum.SurfaceType.Smooth
 		part.BottomSurface = Enum.SurfaceType.Smooth
 		attach(part, localCFrame)
+		return part
 	end
 
+	-- Cylinder parts run along their X axis, so a 90 degree yaw lays the shaft
+	-- down the handle's Z.
 	local shaft = Instance.new("Part")
 	shaft.Name = "Shaft"
 	shaft.Shape = Enum.PartType.Cylinder
-	shaft.Size = Vector3.new(3.9, 0.33, 0.33)
+	shaft.Size = Vector3.new(shaftLength, 0.33, 0.33)
 	shaft.Material = Enum.Material.Wood
 	shaft.Color = WOOD
 	attach(shaft, CFrame.Angles(0, math.rad(90), 0))
 
-	-- Both arms of the head sweep BACK toward the user in a curve and taper to a
-	-- point. Each arm is five short segments, each rotated a little further round.
-	local HEAD_AT = CFrame.new(0, 0, -1.72)
-	local ARM_SEGMENTS = 5
-	local SEG_LENGTH = 0.42
-	local SEG_CURVE = math.rad(13)
-
-	for _, side in { 1, -1 } do
-		local cursor = HEAD_AT * CFrame.Angles(0, 0, if side == 1 then 0 else math.pi)
-		cursor = cursor * CFrame.new(0, 0.16, 0)
-
-		for seg = 1, ARM_SEGMENTS do
-			cursor = cursor * CFrame.Angles(SEG_CURVE, 0, 0)
-
-			local taper = 1 - (seg - 1) / ARM_SEGMENTS
-			local thickness = 0.10 + 0.20 * taper
-			local depth = 0.20 + 0.26 * taper
-
-			metal(
-				("Head%s%d"):format(if side == 1 then "Up" else "Down", seg),
-				Vector3.new(thickness, SEG_LENGTH + 0.06, depth),
-				cursor * CFrame.new(0, SEG_LENGTH / 2, 0),
-				IRON
-			)
-
-			cursor = cursor * CFrame.new(0, SEG_LENGTH, 0)
-		end
-
-		metal(
-			("Tip%s"):format(if side == 1 then "Up" else "Down"),
-			Vector3.new(0.09, 0.28, 0.11),
-			cursor * CFrame.new(0, 0.12, 0),
-			IRON_DARK
-		)
-	end
-
-	metal("Eye", Vector3.new(0.52, 0.62, 0.62), HEAD_AT, IRON_DARK)
-	metal("Wedge", Vector3.new(0.30, 0.18, 0.42), HEAD_AT * CFrame.new(0, 0.42, 0), IRON)
-
-	local ferrule = Instance.new("Part")
-	ferrule.Name = "Ferrule"
-	ferrule.Shape = Enum.PartType.Cylinder
-	ferrule.Size = Vector3.new(0.34, 0.42, 0.42)
-	ferrule.Material = Enum.Material.Metal
-	ferrule.Color = IRON_DARK
-	attach(ferrule, CFrame.new(0, 0, -1.38) * CFrame.Angles(0, math.rad(90), 0))
-
 	local grip = Instance.new("Part")
 	grip.Name = "GripWrap"
 	grip.Shape = Enum.PartType.Cylinder
-	grip.Size = Vector3.new(1.1, 0.42, 0.42)
+	grip.Size = Vector3.new(math.min(1.1, shaftLength * 0.3), 0.42, 0.42)
 	grip.Material = Enum.Material.Fabric
 	grip.Color = Color3.fromRGB(64, 48, 36)
-	attach(grip, CFrame.new(0, 0, 1.28) * CFrame.Angles(0, math.rad(90), 0))
+	attach(grip, CFrame.new(0, 0, holdAt) * CFrame.Angles(0, math.rad(90), 0))
 
-	local butt = Instance.new("Part")
-	butt.Name = "Butt"
-	butt.Shape = Enum.PartType.Cylinder
-	butt.Size = Vector3.new(0.22, 0.40, 0.40)
-	butt.Material = Enum.Material.Wood
-	butt.Color = Color3.fromRGB(96, 66, 40)
-	attach(butt, CFrame.new(0, 0, 1.98) * CFrame.Angles(0, math.rad(90), 0))
+	head(CFrame.new(0, 0, -shaftLength / 2 + 0.23), add)
 
-	-- Where the off hand goes: further up the shaft than the right hand, the way
-	-- you would actually hold a long tool. ResourceService points an IKControl at
-	-- this, which is what makes the swing two-handed.
+	-- Where the off hand goes: further up the shaft than the gripping hand, the
+	-- way you would actually hold a long tool. ResourceService points an
+	-- IKControl at this during a swing, which is what makes it two-handed.
 	local leftGrip = Instance.new("Attachment")
 	leftGrip.Name = "LeftGrip"
-	leftGrip.CFrame = CFrame.new(0, 0, 0.8)
+	leftGrip.CFrame = CFrame.new(0, 0, holdAt - 0.55)
 	leftGrip.Parent = handle
 
+	tool.Parent = StarterPack
 	return tool
 end
 
-local pickaxe = buildPickaxe()
-pickaxe.Parent = StarterPack
+-- Pickaxe: both arms of the head sweep BACK toward the user in a curve and taper
+-- to a point. Each arm is five short segments, each rotated a little further.
+buildTool("Pickaxe", "Stone and ore", 3.9, function(headAt, add)
+	local SEGMENTS, SEG_LENGTH, SEG_CURVE = 5, 0.42, math.rad(13)
+	for _, side in { 1, -1 } do
+		local cursor = headAt * CFrame.Angles(0, 0, if side == 1 then 0 else math.pi) * CFrame.new(0, 0.16, 0)
+		for seg = 1, SEGMENTS do
+			cursor = cursor * CFrame.Angles(SEG_CURVE, 0, 0)
+			local taper = 1 - (seg - 1) / SEGMENTS
+			add(
+				("Head%s%d"):format(if side == 1 then "Up" else "Down", seg),
+				Vector3.new(0.10 + 0.20 * taper, SEG_LENGTH + 0.06, 0.20 + 0.26 * taper),
+				cursor * CFrame.new(0, SEG_LENGTH / 2, 0),
+				IRON
+			)
+			cursor = cursor * CFrame.new(0, SEG_LENGTH, 0)
+		end
+		add(("Tip%s"):format(if side == 1 then "Up" else "Down"), Vector3.new(0.09, 0.28, 0.11), cursor * CFrame.new(0, 0.12, 0), IRON_DARK)
+	end
+	add("Eye", Vector3.new(0.52, 0.62, 0.62), headAt, IRON_DARK)
+end)
+
+-- Axe: a bit flaring out to one side, widening toward the edge.
+buildTool("Axe", "Chop trees for wood", 3.6, function(headAt, add)
+	add("Eye", Vector3.new(0.50, 0.70, 0.50), headAt, IRON_DARK)
+	add("BitInner", Vector3.new(0.30, 0.85, 0.80), headAt * CFrame.new(0, 0.62, 0), IRON)
+	add("BitOuter", Vector3.new(0.24, 0.80, 1.35), headAt * CFrame.new(0, 1.20, 0), IRON)
+	add("Edge", Vector3.new(0.10, 0.46, 1.55), headAt * CFrame.new(0, 1.66, 0), Color3.fromRGB(186, 190, 196))
+	add("Poll", Vector3.new(0.34, 0.55, 0.50), headAt * CFrame.new(0, -0.52, 0), IRON_DARK)
+end)
+
+-- Hoe: a flat plate set across the haft, angled the way a hoe actually sits.
+buildTool("Hoe", "Harvest grain", 4.1, function(headAt, add)
+	add("Neck", Vector3.new(0.26, 0.70, 0.26), headAt * CFrame.new(0, 0.30, 0), IRON_DARK)
+	add(
+		"Blade",
+		Vector3.new(1.70, 0.18, 1.05),
+		headAt * CFrame.new(0, 0.72, -0.42) * CFrame.Angles(math.rad(-28), 0, 0),
+		IRON
+	)
+	add(
+		"BladeEdge",
+		Vector3.new(1.70, 0.10, 0.30),
+		headAt * CFrame.new(0, 0.62, -0.92) * CFrame.Angles(math.rad(-28), 0, 0),
+		Color3.fromRGB(186, 190, 196)
+	)
+end)
+
+-- Shears: two blades crossing at a pivot. Short, because they are held not swung
+-- from the shoulder - though the swing animation does not know that yet.
+buildTool("Shears", "Shear sheep for wool", 2.2, function(headAt, add)
+	add("Pivot", Vector3.new(0.34, 0.34, 0.34), headAt, IRON_DARK)
+	for _, side in { 1, -1 } do
+		local lean = math.rad(9) * side
+		add(
+			("Blade%s"):format(if side == 1 then "A" else "B"),
+			Vector3.new(0.12, 1.45, 0.34),
+			headAt * CFrame.Angles(0, 0, lean) * CFrame.new(0.10 * side, 0.80, 0),
+			Color3.fromRGB(190, 194, 200)
+		)
+		add(
+			("Bow%s"):format(if side == 1 then "A" else "B"),
+			Vector3.new(0.12, 0.75, 0.28),
+			headAt * CFrame.Angles(0, 0, -lean) * CFrame.new(0.16 * side, -0.55, 0),
+			IRON
+		)
+	end
+end)
 
 -- ---------------------------------------------------------------- lighting
 -- Lighting.Technology is not scriptable from a normal script and the MCP cannot
--- write it either. If the place still looks flat, set it by hand in
+-- write it either. If the place looks flat, set it by hand in
 -- Properties -> Lighting -> Technology -> Future.
 pcall(function()
 	Lighting.Technology = Enum.Technology.Future
@@ -810,7 +762,7 @@ bloom.Size = 20
 bloom.Threshold = 1.6
 bloom.Parent = Lighting
 
-print(("[Medieval Land] Board built: %dx%d tiles, %d stone nodes, %d castle plots."):format(
+print(("[Medieval Land] Board: %dx%d tiles, %d nodes, %d castle plots, 4 tools."):format(
 	GRID, GRID, nodeCount, plotCount
 ))
 

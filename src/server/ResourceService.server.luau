@@ -41,7 +41,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 -- version-controlled instead of appearing at runtime.
 local notifyRemote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("Notify")
 
-local STONE_PER_SWING = 1
+local YIELD_PER_SWING = 1
 local MINE_RANGE = 15 -- studs, character root to node
 local FACING_DOT = 0.25 -- must be roughly looking at the node, not just near it
 
@@ -58,18 +58,99 @@ local SWING_TIME = 1.0 -- also the cooldown: one swing per second
 -- above the player's head.
 local IMPACT_AT = 0.70
 
--- Node regeneration. See regenRate for the shape and why it has a floor.
--- Mining is one stone a second, which is above NODE_REGEN_PEAK on purpose: a
--- node can always be drained faster than it heals. Draining it is just a bad
--- trade.
-local NODE_CAPACITY = 24
-local NODE_REGEN_PEAK = 0.55 -- stone/second at half full
-local NODE_REGEN_FLOOR = 0.06 -- stone/second at empty or full
 local REGEN_TICK = 0.25 -- seconds between accumulation steps
 
--- Roughly 40 seconds of mining a single node buys one block, which is slow
--- enough that running between the outcrops is worth doing.
-local BUILD_COST = 10
+-- ---------------------------------------------------------------- resources
+-- The five Catan goods. Each one is a kind of node, the tool that harvests it,
+-- and its own regen curve - see regenRate for the shape and why it has a floor.
+--
+-- The numbers are deliberately not uniform, because five resources that all
+-- behave identically are one resource with five names:
+--   Grain  plentiful and quick, the bulk good
+--   Wood   plentiful, slightly slower
+--   Stone  the Tier 1 baseline, unchanged
+--   Wool   middling, and capped low so a flock runs out fast
+--   Ore    scarce and slow to come back, so it is worth travelling for
+--
+-- Harvesting is one unit a second, which is above every peak on purpose: any
+-- node can be drained faster than it heals. Draining it is just a bad trade.
+export type ResourceConfig = {
+	tool: string,
+	capacity: number,
+	peak: number, -- units/second at half full
+	floor: number, -- units/second at empty or full
+	tint: Color3, -- readout bar when the node is regenerating fast
+	debris: { Color3 }, -- what flies off when you hit it
+}
+
+local RESOURCES: { [string]: ResourceConfig } = {
+	Grain = {
+		tool = "Hoe",
+		capacity = 20,
+		peak = 0.70,
+		floor = 0.08,
+		tint = Color3.fromRGB(226, 194, 92),
+		debris = { Color3.fromRGB(222, 190, 96), Color3.fromRGB(198, 164, 78) },
+	},
+	Wood = {
+		tool = "Axe",
+		capacity = 20,
+		peak = 0.60,
+		floor = 0.07,
+		tint = Color3.fromRGB(146, 200, 118),
+		debris = { Color3.fromRGB(126, 92, 58), Color3.fromRGB(104, 74, 46) },
+	},
+	Stone = {
+		tool = "Pickaxe",
+		capacity = 24,
+		peak = 0.55,
+		floor = 0.06,
+		tint = Color3.fromRGB(126, 208, 122),
+		debris = { Color3.fromRGB(126, 118, 108), Color3.fromRGB(104, 98, 90) },
+	},
+	Wool = {
+		tool = "Shears",
+		capacity = 14,
+		peak = 0.45,
+		floor = 0.05,
+		tint = Color3.fromRGB(232, 228, 220),
+		debris = { Color3.fromRGB(244, 242, 236), Color3.fromRGB(220, 216, 208) },
+	},
+	Ore = {
+		tool = "Pickaxe", -- the pickaxe does double duty, as it should
+		capacity = 14,
+		peak = 0.32,
+		floor = 0.04,
+		tint = Color3.fromRGB(196, 148, 96),
+		debris = { Color3.fromRGB(148, 106, 66), Color3.fromRGB(92, 84, 78) },
+	},
+}
+
+-- Fixed order, because leaderstats renders columns in creation order and it
+-- should not shuffle between joins.
+local RESOURCE_ORDER = { "Wood", "Grain", "Wool", "Stone", "Ore" }
+
+-- What one block costs. A bundle rather than a number, so building actually
+-- consumes the economy instead of one column of it.
+--
+-- Grain, Wool and Ore have NO sink yet. They are gathered and they stack up.
+-- That is the next design decision, and it most likely hangs off the
+-- specialists in the design doc rather than off more masonry.
+local BUILD_COST: { [string]: number } = {
+	Wood = 4,
+	Stone = 4,
+}
+
+local function describeCost(): string
+	local bits = {}
+	for _, name in RESOURCE_ORDER do
+		local amount = BUILD_COST[name]
+		if amount then
+			table.insert(bits, ("%d %s"):format(amount, name))
+		end
+	end
+	return table.concat(bits, " + ")
+end
 
 -- Two site layouts, chosen by the Kind attribute the world builder sets on each
 -- site model. Both are 24 blocks, so a castle and a wall cost the same.
@@ -105,6 +186,8 @@ local rng = Random.new()
 type Node = {
 	model: Model,
 	part: BasePart, -- what range and facing are measured against
+	resource: string,
+	config: ResourceConfig,
 	amount: number,
 	-- Blocks that vanish as the node is worked down, lowest first, so it wears
 	-- from the top like something actually being broken up.
@@ -140,10 +223,14 @@ local function setupPlayer(player: Player)
 	local leaderstats = Instance.new("Folder")
 	leaderstats.Name = "leaderstats"
 
-	local stone = Instance.new("IntValue")
-	stone.Name = "Stone"
-	stone.Value = 0
-	stone.Parent = leaderstats
+	-- One column per resource, in RESOURCE_ORDER so the player list does not
+	-- shuffle its columns between joins.
+	for _, name in RESOURCE_ORDER do
+		local counter = Instance.new("IntValue")
+		counter.Name = name
+		counter.Value = 0
+		counter.Parent = leaderstats
+	end
 
 	leaderstats.Parent = player
 end
@@ -170,13 +257,37 @@ local function notifyPlayer(player: Player, text: string, throttleSeconds: numbe
 	notifyRemote:FireClient(player, text)
 end
 
-local function stoneValue(player: Player): IntValue?
+local function counterFor(player: Player, resource: string): IntValue?
 	local leaderstats = player:FindFirstChild("leaderstats")
-	local stone = leaderstats and leaderstats:FindFirstChild("Stone")
-	if stone and stone:IsA("IntValue") then
-		return stone
+	local counter = leaderstats and leaderstats:FindFirstChild(resource)
+	if counter and counter:IsA("IntValue") then
+		return counter
 	end
 	return nil
+end
+
+-- Can this player pay a bundle? Returns false and the first thing they are short
+-- of, so the refusal can say which resource is missing rather than just "no".
+local function canAfford(player: Player, cost: { [string]: number }): (boolean, string?)
+	for _, name in RESOURCE_ORDER do
+		local needed = cost[name]
+		if needed then
+			local counter = counterFor(player, name)
+			if not counter or counter.Value < needed then
+				return false, name
+			end
+		end
+	end
+	return true, nil
+end
+
+local function spend(player: Player, cost: { [string]: number })
+	for name, amount in cost do
+		local counter = counterFor(player, name)
+		if counter then
+			counter.Value -= amount
+		end
+	end
 end
 
 -- ---------------------------------------------------------------- node readout
@@ -187,6 +298,10 @@ local function buildReadout(node: Model, anchor: BasePart): (Frame, TextLabel)
 	billboard.Size = UDim2.fromOffset(104, 30)
 	billboard.StudsOffsetWorldSpace = Vector3.new(0, anchor.Size.Y / 2 + 3.4, 0)
 	billboard.AlwaysOnTop = false
+	-- Without this every readout on the board draws at once and the view from
+	-- any height is a wall of overlapping labels. You only need to read a node
+	-- you could actually walk to.
+	billboard.MaxDistance = 110
 	billboard.Parent = anchor
 
 	local backing = Instance.new("Frame")
@@ -249,13 +364,16 @@ end
 -- The consequence is the whole point of the tier: at half full a node pays back
 -- roughly nine times faster than at empty, so working one down to about half and
 -- walking to the next beats standing on one until it dies.
-local function regenRate(fraction: number): number
+-- The shape is shared by every resource; only the two endpoints differ, so each
+-- one gets its own pace without getting its own maths.
+local function regenRate(config: ResourceConfig, fraction: number): number
 	local clamped = math.clamp(fraction, 0, 1)
-	return NODE_REGEN_FLOOR + (NODE_REGEN_PEAK - NODE_REGEN_FLOOR) * 4 * clamped * (1 - clamped)
+	return config.floor + (config.peak - config.floor) * 4 * clamped * (1 - clamped)
 end
 
 local function refreshNode(node: Node)
-	local fraction = node.amount / NODE_CAPACITY
+	local config = node.config
+	local fraction = node.amount / config.capacity
 
 	-- The blocks are sorted lowest first, so showing the first N of them means
 	-- the high ones disappear as the node is worked down.
@@ -267,7 +385,7 @@ local function refreshNode(node: Node)
 		part.CanQuery = shown
 	end
 
-	node.label.Text = ("%d / %d"):format(node.amount, NODE_CAPACITY)
+	node.label.Text = ("%s  %d / %d"):format(node.resource, node.amount, config.capacity)
 	node.fill.Size = UDim2.fromScale(math.max(fraction, 0), 1)
 
 	-- The bar is tinted by how fast the node is currently healing, not by how
@@ -278,13 +396,13 @@ local function refreshNode(node: Node)
 	if node.amount <= 0 then
 		node.fill.BackgroundColor3 = Color3.fromRGB(150, 96, 84)
 	else
-		local vigour = (regenRate(fraction) - NODE_REGEN_FLOOR) / (NODE_REGEN_PEAK - NODE_REGEN_FLOOR)
-		node.fill.BackgroundColor3 = Color3.fromRGB(150, 146, 136)
-			:Lerp(Color3.fromRGB(126, 208, 122), vigour)
+		local rate = regenRate(config, fraction)
+		local vigour = (rate - config.floor) / (config.peak - config.floor)
+		node.fill.BackgroundColor3 = Color3.fromRGB(150, 146, 136):Lerp(config.tint, vigour)
 	end
 
 	node.model:SetAttribute("Amount", node.amount)
-	node.model:SetAttribute("RegenRate", regenRate(fraction))
+	node.model:SetAttribute("RegenRate", regenRate(config, fraction))
 end
 
 local function registerNode(model: Instance)
@@ -297,10 +415,31 @@ local function registerNode(model: Instance)
 		return
 	end
 
+	-- The world builder tags each node with what it yields; the service owns
+	-- what that means. An untagged node is Stone, which is what every node was
+	-- before there were five of them.
+	local resource = model:GetAttribute("Resource")
+	if typeof(resource) ~= "string" or not RESOURCES[resource] then
+		resource = "Stone"
+	end
+	local config = RESOURCES[resource]
+
+	-- Anything the builder marked as wearable disappears as the node is worked
+	-- down: canopies off a tree, stalks off a field, fleece off a sheep. Parts
+	-- without the tag are the permanent frame - trunks, legs, bare earth - so a
+	-- spent node still looks like the thing it is.
 	local erodible: { BasePart } = {}
-	for _, child in model:GetChildren() do
-		if child:IsA("BasePart") and child ~= core then
+	for _, child in model:GetDescendants() do
+		if child:IsA("BasePart") and child ~= core and child:GetAttribute("Wears") == true then
 			table.insert(erodible, child)
+		end
+	end
+	-- Fall back to the old behaviour for nodes that tag nothing.
+	if #erodible == 0 then
+		for _, child in model:GetChildren() do
+			if child:IsA("BasePart") and child ~= core then
+				table.insert(erodible, child)
+			end
 		end
 	end
 	table.sort(erodible, function(a, b)
@@ -312,7 +451,9 @@ local function registerNode(model: Instance)
 	local node: Node = {
 		model = model,
 		part = core,
-		amount = NODE_CAPACITY,
+		resource = resource,
+		config = config,
+		amount = config.capacity,
 		erodible = erodible,
 		progress = 0,
 		fill = fill,
@@ -339,9 +480,14 @@ local function isAimedAt(root: BasePart, position: Vector3, range: number): (boo
 	return root.CFrame.LookVector:Dot(flat.Unit) >= FACING_DOT, distance
 end
 
--- Nearest aimed-at node. Depleted nodes are still returned: you should be able
--- to hit a spent rock and see that it gives nothing.
-local function findNode(character: Model): Node?
+-- Nearest aimed-at node THIS TOOL CAN WORK. Swinging an axe at a rock should
+-- find nothing rather than find the rock and refuse it - otherwise standing
+-- between a tree and a boulder with the wrong tool would silently target the
+-- boulder and look broken.
+--
+-- Depleted nodes are still returned: you should be able to hit a spent field and
+-- see that it gives nothing.
+local function findNode(character: Model, toolName: string): Node?
 	local root = character:FindFirstChild("HumanoidRootPart")
 	if not root or not root:IsA("BasePart") then
 		return nil
@@ -351,13 +497,35 @@ local function findNode(character: Model): Node?
 	local bestDistance = math.huge
 
 	for _, node in nodes do
+		if node.config.tool == toolName then
+			local aimed, distance = isAimedAt(root, node.part.Position, MINE_RANGE)
+			if aimed and distance < bestDistance then
+				best = node
+				bestDistance = distance
+			end
+		end
+	end
+
+	return best
+end
+
+-- Anything harvestable in front of you, whatever the tool. Used only to tell a
+-- player they brought the wrong one.
+local function findAnyNode(character: Model): Node?
+	local root = character:FindFirstChild("HumanoidRootPart")
+	if not root or not root:IsA("BasePart") then
+		return nil
+	end
+
+	local best: Node? = nil
+	local bestDistance = math.huge
+	for _, node in nodes do
 		local aimed, distance = isAimedAt(root, node.part.Position, MINE_RANGE)
 		if aimed and distance < bestDistance then
 			best = node
 			bestDistance = distance
 		end
 	end
-
 	return best
 end
 
@@ -391,13 +559,10 @@ local function findVictim(attacker: Player, character: Model): (Player?, Humanoi
 	return bestPlayer, bestHumanoid
 end
 
-local CHIP_COLORS = {
-	Color3.fromRGB(126, 118, 108),
-	Color3.fromRGB(104, 98, 90),
-	Color3.fromRGB(146, 138, 126),
-}
-
-local function spawnChips(origin: Vector3, away: Vector3, count: number)
+-- Debris takes the colour of whatever was hit, so chopping throws splinters and
+-- shearing throws fleece rather than everything throwing grey rock.
+local function spawnChips(origin: Vector3, away: Vector3, count: number, palette: { Color3 }?)
+	local colours = palette or { Color3.fromRGB(126, 118, 108), Color3.fromRGB(104, 98, 90) }
 	for i = 1, count do
 		local size = rng:NextNumber(0.25, 0.6)
 		local chip = Instance.new("Part")
@@ -405,7 +570,7 @@ local function spawnChips(origin: Vector3, away: Vector3, count: number)
 		chip.Size = Vector3.new(size, size * rng:NextNumber(0.6, 1.0), size * rng:NextNumber(0.7, 1.1))
 		chip.CFrame = CFrame.new(origin) * CFrame.Angles(rng:NextNumber(0, 6.28), rng:NextNumber(0, 6.28), 0)
 		chip.Material = Enum.Material.Rock
-		chip.Color = CHIP_COLORS[rng:NextInteger(1, #CHIP_COLORS)]
+		chip.Color = colours[rng:NextInteger(1, #colours)]
 		chip.CanCollide = false
 		chip.CanTouch = false
 		chip.Parent = Workspace
@@ -431,17 +596,18 @@ task.spawn(function()
 	while true do
 		task.wait(REGEN_TICK)
 		for _, node in nodes do
-			if node.amount < NODE_CAPACITY then
-				node.progress += regenRate(node.amount / NODE_CAPACITY) * REGEN_TICK
+			local capacity = node.config.capacity
+			if node.amount < capacity then
+				node.progress += regenRate(node.config, node.amount / capacity) * REGEN_TICK
 
 				local gained = false
-				while node.progress >= 1 and node.amount < NODE_CAPACITY do
+				while node.progress >= 1 and node.amount < capacity do
 					node.progress -= 1
 					node.amount += 1
 					gained = true
 				end
 
-				if node.amount >= NODE_CAPACITY then
+				if node.amount >= capacity then
 					node.progress = 0
 				end
 				if gained then
@@ -596,7 +762,7 @@ local function registerSite(model: Instance)
 			-- Re-enabled deliberately: a raid knocking a block off a finished
 			-- castle has to make it buildable again.
 			prompt.Enabled = true
-			prompt.ActionText = ("Build (%d Stone)"):format(BUILD_COST)
+			prompt.ActionText = ("Build (%s)"):format(describeCost())
 		end
 	end
 	site.refresh()
@@ -613,16 +779,16 @@ local function registerSite(model: Instance)
 			return
 		end
 
-		local stone = stoneValue(player)
-		if not stone or stone.Value < BUILD_COST then
-			-- Straight to the one player who cannot afford it. This used to
-			-- write the prompt's ActionText, which every player at the wall
-			-- shares - see notifyPlayer.
-			notifyPlayer(player, ("Need %d Stone"):format(BUILD_COST))
+		local affordable, missing = canAfford(player, BUILD_COST)
+		if not affordable then
+			-- Straight to the one player who cannot afford it, and it names the
+			-- resource they are short of. This used to write the prompt's
+			-- ActionText, which every player at the wall shares - see notifyPlayer.
+			notifyPlayer(player, ("Need %d %s"):format(BUILD_COST[missing :: string], tostring(missing)))
 			return
 		end
 
-		stone.Value -= BUILD_COST
+		spend(player, BUILD_COST)
 		placeBlock(site, site.built)
 		site.built += 1
 
@@ -793,7 +959,7 @@ local function loadSwingTrack(character: Model): (AnimationTrack?, number)
 	return track, speed
 end
 
-local function attemptSwing(player: Player)
+local function attemptSwing(player: Player, toolName: string)
 	local playerState = state[player]
 	if not playerState then
 		return
@@ -866,7 +1032,8 @@ local function attemptSwing(player: Player)
 		if raidTarget then
 			local ownerName = tostring(raidTarget.model:GetAttribute("OwnerName") or "someone")
 			if tearOffBlock(raidTarget) then
-				local stone = stoneValue(player)
+				-- Masonry comes off as stone, whatever it was built from.
+				local stone = counterFor(player, "Stone")
 				if stone then
 					stone.Value += PLUNDER_PER_BLOCK
 				end
@@ -886,9 +1053,16 @@ local function attemptSwing(player: Player)
 			return
 		end
 
-		-- 3. a rock
-		local node = findNode(liveCharacter)
+		-- 3. something to harvest, if this tool can harvest it
+		local node = findNode(liveCharacter, toolName)
 		if not node then
+			-- Aimed at something harvestable but holding the wrong thing. Worth
+			-- saying, because a swing that connects and pays nothing otherwise
+			-- looks like a bug.
+			local wrong = findAnyNode(liveCharacter)
+			if wrong then
+				notifyPlayer(player, ("%s needs a %s"):format(wrong.resource, wrong.config.tool), 3)
+			end
 			return
 		end
 
@@ -902,38 +1076,47 @@ local function attemptSwing(player: Player)
 
 		if node.amount <= 0 then
 			-- Spent. The swing still connects, it just does not pay. Throttled:
-			-- you can swing at a dead rock once a second and do not need telling
+			-- you can swing at a dead node once a second and do not need telling
 			-- once a second.
-			spawnChips(impactPoint, away, 2)
-			notifyPlayer(player, "This rock is spent", 4)
+			spawnChips(impactPoint, away, 2, node.config.debris)
+			notifyPlayer(player, ("This %s is spent"):format(node.resource:lower()), 4)
 			return
 		end
 
-		node.amount -= STONE_PER_SWING
+		node.amount -= YIELD_PER_SWING
 		refreshNode(node)
 
-		local stone = stoneValue(player)
-		if stone then
-			stone.Value += STONE_PER_SWING
+		local counter = counterFor(player, node.resource)
+		if counter then
+			counter.Value += YIELD_PER_SWING
 		end
 
-		spawnChips(impactPoint, away, 7)
+		spawnChips(impactPoint, away, 7, node.config.debris)
 	end)
 end
 
 -- ---------------------------------------------------------------- tools
 local bound: { [Tool]: boolean } = {}
 
+-- Every tool named by a resource is a real tool. Derived from RESOURCES rather
+-- than listed again, so adding a sixth good cannot leave its tool inert.
+local HARVEST_TOOLS: { [string]: boolean } = {}
+for _, config in RESOURCES do
+	HARVEST_TOOLS[config.tool] = true
+end
+
 local function bindTool(player: Player, tool: Tool)
-	if tool.Name ~= "Pickaxe" or bound[tool] then
+	if not HARVEST_TOOLS[tool.Name] or bound[tool] then
 		return
 	end
 	bound[tool] = true
 
 	-- Tool.Activated fires on the server too - the engine replicates the
-	-- activation - so this needs no RemoteEvent. That changes at Tier 3.
+	-- activation - so harvesting needs no RemoteEvent. The tool that fired is
+	-- what decides which nodes this swing can work.
+	local toolName = tool.Name
 	tool.Activated:Connect(function()
-		attemptSwing(player)
+		attemptSwing(player, toolName)
 	end)
 
 	tool.Destroying:Connect(function()
@@ -973,12 +1156,12 @@ local function onCharacterAdded(player: Player, character: Model)
 	-- Equipping parents the Tool to the character, unequipping moves it back to
 	-- the Backpack, so the off hand follows those two events.
 	character.ChildAdded:Connect(function(child)
-		if child:IsA("Tool") and child.Name == "Pickaxe" then
+		if child:IsA("Tool") and HARVEST_TOOLS[child.Name] then
 			setOffHandTarget(player, child)
 		end
 	end)
 	character.ChildRemoved:Connect(function(child)
-		if child:IsA("Tool") and child.Name == "Pickaxe" then
+		if child:IsA("Tool") and HARVEST_TOOLS[child.Name] then
 			setOffHandTarget(player, nil)
 		end
 	end)
@@ -989,8 +1172,10 @@ local function onCharacterAdded(player: Player, character: Model)
 		watchForTools(player, backpack) -- holstered
 	end
 
-	-- Straight into the player's hands. The whole loop is "swing at rock", so
-	-- making them press 1 first is a step with nothing behind it.
+	-- Start with the pickaxe in hand. With four tools the player now has a real
+	-- choice of which to hold, but landing with empty hands and a full hotbar is
+	-- a worse first second than landing holding the one they started the game
+	-- with.
 	local humanoid = character:FindFirstChildOfClass("Humanoid")
 	local pickaxe = backpack and backpack:FindFirstChild("Pickaxe")
 	if humanoid and pickaxe and pickaxe:IsA("Tool") then

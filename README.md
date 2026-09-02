@@ -3,9 +3,12 @@
 Roblox game, built in tiers. See the tier order in
 `~/.claude/projects/C--Users-winter-projects-medieval-land/memory/tier-build-order.md`.
 
-**Current tier: T4** — built, not yet signed off. Five rock nodes on a Catan-style
-board that deplete and refill on a curve; walls and castles to spend stone on;
-owned castles you can raid; and combat with health, death and respawn.
+**Where this is:** a Catan board filling the whole map, five resources with a
+tool each, owned castles you can raid, and combat with health, death and respawn.
+
+**T5 has not been started.** T5 is the hidden reputation number that shifts on
+theft — the thing T4's raiding exists to feed. The multi-resource economy is
+design-doc content, not a tier, and it was built ahead of T5 by choice.
 
 **T3 and the combat half of T4 have never been run with two players.** Everything
 solo-testable is verified and the numbers are below; everything that needs a
@@ -16,7 +19,7 @@ second person is not. Treat those parts as written, not working.
 | Path | What |
 |---|---|
 | `src/server/ResourceService.server.luau` | The `ResourceService` Script in `ServerScriptService`. Rojo syncs it. |
-| `scripts/build-world.luau` | Builds the board: terrain, lake, scenery, nodes, build sites, pickaxe, lighting. Rojo syncs it to `ServerStorage.BuildWorld`; rebuild from the command bar with the clone snippet below (a plain `require` returns a cached, stale module). Re-runnable — it tears down what it built last time. |
+| `scripts/build-world.luau` | Builds the board: terrain, tiles, all five node kinds, build sites, the four tools, lighting. Rojo syncs it to `ServerStorage.BuildWorld`; rebuild from the command bar with the clone snippet below (a plain `require` returns a cached, stale module). Re-runnable — it tears down what it built last time. |
 | `src/client/Notifications.client.luau` | Per-player notices, driven by the `Notify` RemoteEvent. |
 | `default.project.json` | Rojo's map from this repo into the DataModel. |
 | `rokit.toml` | Pins the toolchain (Rojo 7.7.0) so it is reproducible. |
@@ -67,29 +70,61 @@ one-shot, triggered by hand from `ServerStorage.BuildWorld`.
 
 ## The board
 
-A 5×5 grid of 72-stud square tiles, centred on the origin, laid out like a Catan
-board. The layout is fixed rather than shuffled, in `LAYOUT`:
+A 7×7 grid of 72-stud square tiles. 7 × 72 = 504 against a 512 map, so the board
+*is* the world — there is no surrounding countryside and no lake. It is dead
+flat, because relief would fight the grid and bury nodes.
+
+The layout is fixed rather than shuffled, so the map is a place you can learn:
 
 ```
-G W S G D      L lake     S stone
-S G W D G      W wood     G grass
-W D L G S      D desert
-G S D W G
-D G W S G
+F P G H M F P      F forest / Wood      H hills / Stone
+G M H F P G H      P pasture / Wool     M mountains / Ore
+P F M G H M F      G fields / Grain     V village (spawn)
+H G P V F P G
+M H F P G H M
+F P G M H F P
+G M H F P G M
 ```
 
-Each tile kind gets its own terrain material and its own scenery, which is what
-makes a tile readable from ground level rather than only from above. The
-surround is deliberately a *different* material from the grass tiles — when they
-matched, the board stopped reading as a board and became landscape with lines
-drawn on it.
+Six terrain materials, one per tile kind, because a tile you cannot identify from
+ground level is just coloured floor. **One node per resource tile, at its centre
+— a tile *is* its node.** 48 nodes: 10 Wood, 10 Wool, 10 Grain, 9 Stone, 9 Ore.
 
-**One stone outcrop per stone tile**, at the tile's centre — a stone tile *is*
-the node. Five tiles, five nodes, roughly 160 studs apart. That spacing is not
-decoration: the walk between nodes is what gives the regen curve teeth.
+The village at the centre has the spawn pad and the starter wall, and grows
+nothing.
 
-**A castle plot on every interior tile corner** — the Catan settlement spots, 16
-of them, where four tiles meet.
+**A castle plot on every interior tile corner** — the Catan settlement spots —
+minus the ring around the village, so spawn does not open onto somebody's keep.
+32 of them.
+
+## Resources
+
+Five goods, one tool each. The numbers are deliberately *not* uniform, because
+five resources that behave identically are one resource with five names.
+
+| Resource | Tool | Capacity | Peak regen | Character |
+|---|---|---|---|---|
+| Grain | Hoe | 20 | 0.70/s | plentiful and quick, the bulk good |
+| Wood | Axe | 20 | 0.60/s | plentiful, slightly slower |
+| Stone | Pickaxe | 24 | 0.55/s | the T1 baseline, unchanged |
+| Wool | Shears | 14 | 0.45/s | middling, capped low so a flock runs out fast |
+| Ore | Pickaxe | 14 | 0.32/s | scarce and slow, worth travelling for |
+
+The pickaxe does double duty on Stone and Ore, as it should.
+
+**The wrong tool finds nothing at all**, rather than finding the node and
+refusing it. Otherwise standing between a tree and a boulder with an axe would
+silently target the boulder and look broken. Swinging at a node your tool cannot
+work says which tool it needs.
+
+Two attributes carry the contract between the world builder and the service:
+
+- `Resource` on the node model — what it yields
+- `Wears` on a part — it vanishes as the node is worked down
+
+Parts *without* `Wears` are the permanent frame: trunks, sheep, bare earth. That
+is what stops a spent node looking like an empty patch of ground — a chopped
+forest is stumps and bare trunks, a shorn flock is still a flock.
 
 ## The loop
 
@@ -100,6 +135,14 @@ site to spend 10 Stone on a block. Two site kinds, both 24 blocks:
 |---|---|
 | `Wall` | 8 sections wide, 3 courses high. The Tier 1 starter sink, kept. |
 | `Castle` | A square ring stacked into a hollow tower, 8 blocks per course, 3 courses. |
+
+A block costs **4 Wood + 4 Stone** — a bundle rather than a number, so building
+consumes the economy instead of one column of it. A refusal names the resource
+you are short of.
+
+**Grain, Wool and Ore have no sink yet.** They are gathered and they stack up.
+That is the next design decision, and it most likely hangs off the specialists in
+the design doc rather than off more masonry.
 
 The world builder tags each site with a `Kind` attribute; `ResourceService` owns
 what that tag means. Adding a third shape is a new branch in `layoutOf` and
@@ -197,8 +240,9 @@ studs **and** roughly in front of you.
 **`Terrain:FillBall(..., Enum.Material.Water)` is a silent no-op.** Since the
 Shorelines change, water is not a material in the solid voxel grid — it is its
 own `LiquidOccupancy` channel — and the whole `Fill*` family cannot write it.
-Nothing errors; you just get a dry hole. The lake is written with
-`ReadVoxelChannels`/`WriteVoxelChannels` instead.
+Nothing errors; you just get a dry hole. When this map had a lake it was
+written with `ReadVoxelChannels`/`WriteVoxelChannels` instead. There is no water
+on the board now, but the trap is worth keeping written down.
 
 **The ground is not at y = 0, and placing scenery as if it were will bury it.**
 Terrain smoothing lifts the flat parts of the map to about y = 2, and the grass
