@@ -7,7 +7,8 @@ Roblox game, built in tiers. See the tier order in
 says so itself: if anything here conflicts with an older note, the doc wins.
 
 **Where this is:** a Catan board filling the whole map, five resources with a tool
-each, and bases with a walled perimeter, a gate and a raidable stockpile.
+each, bases with a walled perimeter, a gate and a raidable stockpile, and the
+Conquest match clock with its shrinking zone.
 
 **Reputation is no longer next.** The doc moves it under "Negotiation & reputation
 — stretch goal, needs specialists first" and corrects it to within-match only.
@@ -26,7 +27,8 @@ second person is not. Treat those parts as written, not working.
 
 | Path | What |
 |---|---|
-| `src/server/ResourceService.server.luau` | The `ResourceService` Script in `ServerScriptService`. Rojo syncs it. |
+| `src/server/ResourceService.server.luau` | Nodes, tools, bases, raiding, reputation. Rojo syncs it. |
+| `src/server/MatchService.server.luau` | The Conquest clock and the shrinking zone. |
 | `scripts/build-world.luau` | Builds the board: terrain, tiles, all five node kinds, build sites, the four tools, lighting. Rojo syncs it to `ServerStorage.BuildWorld`; rebuild from the command bar with the clone snippet below (a plain `require` returns a cached, stale module). Re-runnable — it tears down what it built last time. |
 | `src/client/Notifications.client.luau` | Per-player notices, driven by the `Notify` RemoteEvent. |
 | `default.project.json` | Rojo's map from this repo into the DataModel. |
@@ -254,6 +256,36 @@ A swing takes 1 second. Stone is granted at the **0.70s** mark — the measured
 contact frame of the animation, not the click — and only if a node is within 15
 studs **and** roughly in front of you.
 
+## The match
+
+`MatchService` owns the clock and the boundary. It owns nothing else — not bases,
+not nodes, not elimination — and it talks to `ResourceService` the way that file
+already talks to itself: through attributes on instances, not a shared module.
+
+| Attribute on `Workspace` | Meaning |
+|---|---|
+| `MatchState` | `Lobby` → `Running` → `Ended` |
+| `MatchClock` | seconds left in the current phase |
+| `ZoneHalf` | half-extent of the playable square, in studs |
+
+The board is a 7×7 grid centred on the origin and dead flat, so **the boundary is
+one number, not a shape**. It holds at the full 252 for the first 20% of the
+match, closes linearly to 60 by 90%, then holds. A boundary that starts closing
+on the first second gives nobody time to establish; one still closing at the
+whistle never forces contact.
+
+Outside it you take 4 damage a second — a push, not an execution — and **nodes
+outside it stop yielding**, which is the scarcity half of what the doc wants
+convergence to do. Four translucent slabs mark the edge, because a boundary you
+only discover by taking damage is a bug disguised as a mechanic.
+
+**Set `Workspace.MatchLength` before starting** to shorten a match. Without it the
+default is the doc's 45 minutes, and nobody — including a playtest — wants to sit
+through three quarters of an hour to find out whether the timer fires.
+
+Still missing from Conquest: teams, elimination, and folding an eliminated player
+into a surviving team. The clock is the only way a match can currently end.
+
 ## Things that bit, so they don't bite twice
 
 **`Terrain:FillBall(..., Enum.Material.Water)` is a silent no-op.** Since the
@@ -338,6 +370,21 @@ be placed on the shaft by eye.
 prompt sits on the base foundation, and the gate is 12 studs out from it, so a
 16 stud reach left the owner unable to repair while standing at their own gate —
 exactly where a defender is. It is 26 now, sized to the compound.
+
+**`rojo serve` running during a playtest kills the session.** The plugin cannot
+make HTTP requests from a play datamodel — the console shows *"Http requests can
+only be executed by game server"* — and the playtest dies a few seconds in. Stop
+the Rojo server before playtesting, restart it after. This is also why Studio-side
+edits drift: **entering Play disconnects the plugin every single time**, so
+anything typed in Studio afterwards is invisible to Rojo until you reconnect.
+
+**A duplicated Script doubles its effects while looking fine.** Two copies of
+`MatchService` in `ServerScriptService` ran two loops, so zone damage landed at
+twice the intended rate — but the tick count looked correct, because both copies
+wrote the *same* `MatchClock` value and the change signal only fires when a value
+actually changes. Measure the effect, not the heartbeat. Note also that
+`Destroy` on a running Script does not stop a loop it already spawned; that needs
+a play restart.
 
 **`require` caches per ModuleScript instance.** Rojo updating
 `ServerStorage.BuildWorld` does *not* invalidate that cache, so a plain

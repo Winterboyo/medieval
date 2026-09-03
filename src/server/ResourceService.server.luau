@@ -168,6 +168,13 @@ local GATE_DAMAGE = 25 -- one purchase of wall per swing, so a wall is as slow t
 local EXPOSED_FRACTION = 0.20
 local LOOT_PER_SWING = 4
 
+-- Tier 5: reputation, minimal. DESIGN.md's negotiation/reputation system is a
+-- stretch goal that needs specialists first - this is just the number it
+-- would eventually gate, added now so theft has *a* consequence and the
+-- number itself can be checked before anything reads it. No UI, no mercenary
+-- gating: see reputationOf/adjustReputation.
+local REPUTATION_THEFT_PENALTY = -10
+
 local rng = Random.new()
 
 type Node = {
@@ -195,6 +202,7 @@ type State = {
 }
 
 local state: { [Player]: State } = {}
+local reputation: { [Player]: number } = {}
 local nodes: { Node } = {}
 local nodeByPart: { [BasePart]: Node } = {}
 
@@ -275,6 +283,19 @@ local function spend(player: Player, cost: { [string]: number })
 			counter.Value -= amount
 		end
 	end
+end
+
+-- ---------------------------------------------------------------- reputation
+local function reputationOf(player: Player): number
+	return reputation[player] or 0
+end
+
+local function adjustReputation(player: Player, delta: number, reason: string)
+	local updated = reputationOf(player) + delta
+	reputation[player] = updated
+	player:SetAttribute("Reputation", updated)
+	print(("[Reputation] %s %s%d (%s) -> %d"):format(
+		player.Name, if delta >= 0 then "+" else "", delta, reason, updated))
 end
 
 -- ---------------------------------------------------------------- node readout
@@ -467,6 +488,35 @@ local function isAimedAt(root: BasePart, position: Vector3, range: number): (boo
 	return root.CFrame.LookVector:Dot(flat.Unit) >= FACING_DOT, distance
 end
 
+-- MatchService publishes the playable boundary. Absent before a match starts,
+-- which reads as no boundary rather than a boundary of zero - a service that has
+-- not spoken yet must not shut the whole map down.
+local function zoneHalf(): number
+	local value = Workspace:GetAttribute("ZoneHalf")
+	return if typeof(value) == "number" then value else math.huge
+end
+
+-- The zone is a square centred on the origin, so "outside" is the larger of the
+-- two axis distances rather than a radius.
+local function inZone(position: Vector3): boolean
+	return math.max(math.abs(position.X), math.abs(position.Z)) <= zoneHalf()
+end
+
+-- A node is a cluster - five trees, a flock, a 32 stud field - so aiming at the
+-- model's anchor makes the far side of a tile unhittable. Aim at whichever piece
+-- of it is actually nearest.
+local function closestPoint(node: Node, from: Vector3): Vector3
+	local bestPart = node.part
+	local bestDistance = (node.part.Position - from).Magnitude
+	for _, part in node.erodible do
+		local distance = (part.Position - from).Magnitude
+		if distance < bestDistance then
+			bestPart, bestDistance = part, distance
+		end
+	end
+	return bestPart.Position
+end
+
 -- Nearest aimed-at node THIS TOOL CAN WORK. Swinging an axe at a rock should
 -- find nothing rather than find the rock and refuse it - otherwise standing
 -- between a tree and a boulder with the wrong tool would silently target the
@@ -474,26 +524,30 @@ end
 --
 -- Depleted nodes are still returned: you should be able to hit a spent field and
 -- see that it gives nothing.
-local function findNode(character: Model, toolName: string): Node?
+local function findNode(character: Model, toolName: string): (Node?, Vector3?)
 	local root = character:FindFirstChild("HumanoidRootPart")
 	if not root or not root:IsA("BasePart") then
-		return nil
+		return nil, nil
 	end
 
 	local best: Node? = nil
+	local bestPoint: Vector3? = nil
 	local bestDistance = math.huge
 
 	for _, node in nodes do
-		if node.config.tool == toolName then
-			local aimed, distance = isAimedAt(root, node.part.Position, MINE_RANGE)
+		-- Outside the closing boundary a node yields nothing. That is the
+		-- scarcity half of what the doc wants convergence to do: the map does not
+		-- just get smaller, the economy inside it gets tighter.
+		if node.config.tool == toolName and inZone(node.part.Position) then
+			local point = closestPoint(node, root.Position)
+			local aimed, distance = isAimedAt(root, point, MINE_RANGE)
 			if aimed and distance < bestDistance then
-				best = node
-				bestDistance = distance
+				best, bestPoint, bestDistance = node, point, distance
 			end
 		end
 	end
 
-	return best
+	return best, bestPoint
 end
 
 -- Anything harvestable in front of you, whatever the tool. Used only to tell a
@@ -507,7 +561,8 @@ local function findAnyNode(character: Model): Node?
 	local best: Node? = nil
 	local bestDistance = math.huge
 	for _, node in nodes do
-		local aimed, distance = isAimedAt(root, node.part.Position, MINE_RANGE)
+		local point = closestPoint(node, root.Position)
+		local aimed, distance = isAimedAt(root, point, MINE_RANGE)
 		if aimed and distance < bestDistance then
 			best = node
 			bestDistance = distance
@@ -1128,6 +1183,12 @@ local function attemptSwing(player: Player, toolName: string)
 				mine.Value += taken
 			end
 
+			-- Tier 5: the one thing the number does so far. Per swing that
+			-- actually takes something, not per raid - each is its own theft
+			-- event, and stretching one raid over several swings should cost
+			-- more than a single grab.
+			adjustReputation(player, REPUTATION_THEFT_PENALTY, ("looted %s from %s"):format(pick, ownerName))
+
 			notifyPlayer(player, ("Looted %d %s from %s"):format(taken, pick, ownerName))
 			lootTarget.model:SetAttribute("LootLeft", lootRemaining(lootTarget))
 
@@ -1139,25 +1200,32 @@ local function attemptSwing(player: Player, toolName: string)
 		end
 
 		-- 4. something to harvest, if this tool can harvest it
-		local node = findNode(liveCharacter, toolName)
-		if not node then
+		local node, hitPoint = findNode(liveCharacter, toolName)
+		if not node or not hitPoint then
 			-- Aimed at something harvestable but holding the wrong thing. Worth
 			-- saying, because a swing that connects and pays nothing otherwise
 			-- looks like a bug.
 			local wrong = findAnyNode(liveCharacter)
 			if wrong then
-				notifyPlayer(player, ("%s needs a %s"):format(wrong.resource, wrong.config.tool), 3)
+				-- Two different failures that look identical from the outside, so
+				-- they get different words: wrong tool, or right tool on ground
+				-- the zone has already abandoned.
+				if not inZone(wrong.part.Position) then
+					notifyPlayer(player, "Outside the zone - nothing here yields", 3)
+				else
+					notifyPlayer(player, ("%s needs a %s"):format(wrong.resource, wrong.config.tool), 3)
+				end
 			end
 			return
 		end
 
-		local away = (root.Position - node.part.Position)
+		local away = (root.Position - hitPoint)
 		away = Vector3.new(away.X, 0, away.Z)
 		away = if away.Magnitude > 0.01 then away.Unit else Vector3.new(0, 0, 1)
 
-		local impactPoint = node.part.Position
-			+ away * (node.part.Size.Magnitude * 0.25)
-			+ Vector3.new(0, rng:NextNumber(-0.5, 1.2), 0)
+		-- Chips fly from whichever tree/sheep/stalk/rock was actually hit, not
+		-- always the tile's anchor.
+		local impactPoint = hitPoint + away * 1.2 + Vector3.new(0, rng:NextNumber(-0.5, 1.2), 0)
 
 		if node.amount <= 0 then
 			-- Spent. The swing still connects, it just does not pay. Throttled:
@@ -1271,6 +1339,8 @@ end
 local function onPlayerAdded(player: Player)
 	setupPlayer(player)
 	state[player] = { track = nil, swingSpeed = 1, nextSwing = 0, nextNotice = 0, offHandIK = nil }
+	reputation[player] = 0
+	player:SetAttribute("Reputation", 0)
 
 	player.CharacterAdded:Connect(function(character)
 		onCharacterAdded(player, character)
@@ -1296,6 +1366,7 @@ siteFolder.ChildAdded:Connect(registerBase)
 Players.PlayerAdded:Connect(onPlayerAdded)
 Players.PlayerRemoving:Connect(function(player)
 	state[player] = nil
+	reputation[player] = nil
 end)
 
 -- In Studio playtests the script can start after you are already in, so catch
