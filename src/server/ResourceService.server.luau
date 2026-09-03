@@ -620,8 +620,21 @@ local function isAimedAt(root: BasePart, position: Vector3, range: number): (boo
 		return false, distance
 	end
 	local flat = Vector3.new(delta.X, 0, delta.Z)
-	if flat.Magnitude <= 0.01 then
-		return false, distance
+	-- Standing on, or hard against, the target.
+	--
+	-- Since aim points are clamped to a part's SURFACE, a wide flat thing puts
+	-- its nearest point directly under your feet: the stockpile pallet is 22 x
+	-- 18, so a raider standing on it has essentially no horizontal offset to
+	-- the surface at all. The old guard then bailed out and the pallet could
+	-- not be looted from on top of it - measured as 60 swings moving nothing.
+	--
+	-- The facing test exists to stop you hitting things BEHIND you at range.
+	-- At arm's length there is no behind, so count it as aimed rather than
+	-- refusing. This is the other half of the surface-aiming change that fixed
+	-- the keep: clamping to the surface helps big TALL targets and hurts big
+	-- FLAT ones, and both need handling.
+	if flat.Magnitude <= 2 then
+		return true, distance
 	end
 	return root.CFrame.LookVector:Dot(flat.Unit) >= FACING_DOT, distance
 end
@@ -1296,6 +1309,17 @@ local function registerBase(model: Instance)
 		model:SetAttribute("StageName", if next then next.name else "Complete")
 		model:SetAttribute("Wall", math.floor(base.wall))
 		model:SetAttribute("Breached", base.breached)
+		-- What the breach exposed, published the moment it is taken rather than
+		-- on the first successful loot swing. It used to be written only inside
+		-- the loot branch, so between breaching a wall and landing a swing on
+		-- the pile the attribute read nil - indistinguishable from "nothing
+		-- left" to anything watching from outside. Computed inline because
+		-- lootRemaining is declared further down the file than this closure.
+		local exposed = 0
+		for _, amount in base.loot do
+			exposed += amount
+		end
+		model:SetAttribute("LootLeft", exposed)
 		model:SetAttribute("KeepHealth", math.floor(base.keepHealth))
 		model:SetAttribute("Fallen", base.keepHealth <= 0)
 		-- The keep darkens and finally slumps as it is broken up, so its state

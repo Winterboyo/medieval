@@ -26,12 +26,16 @@ specialists: the rebellious flag, the spy variant, merchants, and the whole
 negotiation loop. Reputation exists only as a number theft moves; nothing reads
 it yet.
 
-**T3 and the combat half of T4 have never been run with two players.** Everything
-solo-testable is verified and the numbers are below; everything that needs a
-second person is not. Treat those parts as written, not working. Specialist
-theft is on that list, and so is the fourth gate's blocking case — a keep that
-refuses damage because the owner still holds a specialist. Neither can be
-reached at all from one client.
+**The two-player backlog is cleared.** It stood open from T3 onwards and is now
+verified end to end: 15 checks, 0 failures. Per-player notice isolation, PvP
+damage, knockdown and revive at your own keep, gate battering against a real
+owner, the 20% loot snapshot actually changing hands, specialist theft including
+the denial branch, the fourth gate refusing to let a keep be touched while its
+owner still holds anyone, and the full chain of keep → `Eliminated` → folded into
+the raider's squad → match Ended.
+
+See **[Verifying with two players](#verifying-with-two-players)** for how to
+re-run it.
 
 ## Layout
 
@@ -593,7 +597,71 @@ Roblox dependencies, so its whole distribution is verifiable from the command
 line with no engine at all. That is a good reason to keep pure logic in its own
 module.
 
+## Verifying with two players
+
+A pile of behaviour is unreachable from one client. The loot snapshot reads the
+*owner's* counters, so solo there is no owner to read; theft needs someone to
+steal from; the fourth gate needs a roster that is not yours; notice isolation is
+about what a *second* window renders.
+
+It is also not drivable from outside. Studio's **Start Server and Players** runs
+the server and each client as separate processes, and the Studio plugin only
+registers in the editor — so external tooling can see the place but not the
+running test. `src/server/TwoPlayerCheck.server.luau` therefore runs *inside* the
+server, drives both characters itself, and prints its own report.
+
+1. In the editor, set `Workspace.TwoPlayerCheck = true`. It is opt-in because it
+   hands out resources, so it must never fire during ordinary play.
+2. **Test** tab → Players: 2 → **Start**.
+3. One player builds a plot to "Village complete", the other builds as far as the
+   Blacksmith. Which is which does not matter — the harness reads the roles from
+   who actually built, not from join order.
+4. Copy the block it prints between `COPY FROM HERE` and `TO HERE`.
+
+The one thing it cannot check itself is notice isolation, because that is about
+what each client renders. It fires a distinct line at each player; confirm each
+window shows only its own.
+
+### What writing it taught, mostly the hard way
+
+Three of its early "failures" were the harness being wrong, not the game:
+
+- **Roles came from join order.** `GetPlayers()[1]` is not something the tester
+  picks, sees, or can predict, so swapping who built what left the harness
+  waiting forever instead of failing with a message. Roles are read from the
+  world now.
+- **Roblox regenerates health.** Every character gets a `Health` script worth
+  about 1%/sec, which ate 2 HP of a 40 HP measurement and reported 38. The swing
+  was always right. The harness removes the script before measuring.
+- **Labour outran the raid.** Both villages trickle a resource per cottage every
+  12 seconds, so over a minute of looting the victim ended up 20 *up* while being
+  robbed. Assert on the pot, which only moves one way, not on the victim's total.
+
+And one that was neither — a hardcoded swing count. Roughly one swing in seven
+does not land, so a keep needing exactly 8 hits got 7 out of 10 and stopped at 25
+HP. **Loop to the outcome, not to a count**, and keep a cap so a genuine refusal
+still fails instead of hanging.
+
 ## Things that bit, so they don't bite twice
+
+**Surface-aiming fixes tall targets and breaks flat ones.** Clamping the aim
+point to a part's surface (`nearestPointOn`) was needed because range is measured
+in 3D to whatever point you hand `isAimedAt`, and a 30-stud keep's centre sits 15
+studs up — unhittable from its own wall. But the same clamp puts a *wide flat*
+part's nearest point directly under your feet: the stockpile pallet is 22 × 18,
+so a raider standing on it had a horizontal offset of ~0 and the facing test
+bailed at `flat.Magnitude <= 0.01`. A breached stockpile could not be looted from
+on top of it — 60 swings moved nothing. The facing test exists to stop you
+hitting things *behind* you at range; at arm's length there is no behind, so a
+near-zero horizontal offset now counts as aimed. Both extremes need handling.
+
+**State that is only published on success reads as absent.** `LootLeft` was
+written inside the loot branch, so between breaching a wall and landing the first
+swing on the pile the attribute was `nil` — indistinguishable from "nothing left"
+to anything watching from outside. It is published at the breach now, from
+`refresh`. A value that means "how much is there" must be written when the amount
+*becomes* known, not when someone first takes some.
+
 
 **A big part becomes unhittable as it grows, because range is measured to its
 CENTRE.** `isAimedAt` takes a point and checks 3D distance against
