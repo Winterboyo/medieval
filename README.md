@@ -6,9 +6,10 @@ Roblox game, built in tiers. See the tier order in
 **`DESIGN.md` is the authority on scope.** It is v2, post-Conquest-pivot, and it
 says so itself: if anything here conflicts with an older note, the doc wins.
 
-**Where this is:** a Catan board filling the whole map, five resources with a tool
-each, walled villages that fall in a three-stage siege, knockdown instead of
-respawn, and the Conquest match clock with its shrinking zone.
+**Where this is:** a Catan board filling the whole map, five raw resources and
+three refined ones, villages built from an empty field in ten purchases, a
+three-stage siege, knockdown instead of respawn, and the Conquest match clock
+with its shrinking zone.
 
 **Reputation is no longer next.** The doc moves it under "Negotiation & reputation
 — stretch goal, needs specialists first" and corrects it to within-match only.
@@ -80,14 +81,14 @@ one-shot, triggered by hand from `ServerStorage.BuildWorld`.
 
 ## The board
 
-A 7×7 grid of **160-stud** square tiles. 7 × 160 = 1120 against a 1152 map, so the
+A 7×7 grid of **200-stud** square tiles. 7 × 200 = 1400 against a 1440 map, so the
 board *is* the world — there is no surrounding countryside and no lake. It is
 dead flat, because relief would fight the grid and bury nodes.
 
-The tiles were 72 and are now 160, which is more than four times the area. At 72
-a tile held one rock and a claimable site was barely wider than its own gate; at
-160 a tile is somewhere you cross, a node is a stand of several, and a site is a
-village you can walk around inside.
+The tiles have grown twice: 72 → 160 → 200. The last step is not really about the
+tiles, it is about what sits on their corners. Villages are built room by room
+and you walk *inside* the buildings, so a plot is 148 studs across; on a 160 tile
+neighbouring plots very nearly touched.
 
 The layout is fixed rather than shuffled, so the map is a place you can learn:
 
@@ -137,6 +138,22 @@ left to return to.
 **A village plot on every interior tile corner** — the Catan settlement spots —
 minus the ring around the totem, so nobody spawns straight into somebody's keep.
 16 of them.
+
+## Refined goods and the workshops
+
+Three goods you cannot gather. Each workshop consumes a different pair, so no two
+compete for the same pile — and between them they are the sink Grain, Wool and
+Ore never had. Every raw resource now feeds something.
+
+| Workshop | Recipe |
+|---|---|
+| Carpenter | 5 Wood + 2 Stone → 1 **Timber** |
+| Blacksmith | 4 Ore + 2 Wood → 1 **Ingot** |
+| Alchemist | 4 Grain + 3 Wool → 1 **Tonic** |
+
+Stages 8–10 need them, so a village cannot be finished without a working
+economy behind it. They are looted like anything else: the 20% breach snapshot
+covers all eight goods, not just the raw five.
 
 ## Resources
 
@@ -194,35 +211,78 @@ nobody else can build there, but anybody can raid it.
 
 ## Bases and raiding
 
-A claimable site is a **village**, not a walled yard. The mechanics are unchanged
-and deliberately so — a perimeter wall on **one HP value**, **one gate**, one
-**stockpile**, one **keep** — but the thing they are attached to is now 92 studs
-across and somewhere you can walk around inside. 16 of them on a checkerboard of
-the interior tile corners, roughly the player count Conquest is written for.
+**A plot starts as an empty field.** Bare ground, a claim stone, two streets, a
+well and an empty stockpile pallet. Everything else is bought, one stage at a
+time, in a fixed order — **ten purchases from empty field to fortified village.**
 
-Inside the wall: the keep, the stockpile, a **blacksmith** with a forge chimney
-and an anvil, a round **alchemist's tower**, two **farmers' houses** with tilled
-strips, six **village homes**, a well where the two streets cross, and four
-corner towers. Everything past the wall, gate, stockpile and keep is dressing —
-the doc asks for the village laid out with distinct buildings *now*, visually,
-and explicitly says not to wire per-building raid logic until specialists exist.
+| # | Stage | Cost |
+|---|---|---|
+| 1–4 | Four **cottages**, all alike | 10–16 Wood + 5–10 Grain |
+| 5 | **Carpenter** | 20 Wood + 10 Stone |
+| 6 | **Blacksmith** | 20 Stone + 10 Ore |
+| 7 | **Alchemist** | 18 Stone + 14 Wool + 8 Ore |
+| 8 | **Keep** | 30 Stone + 6 Timber + 6 Ingot |
+| 9 | **Palisade** — gate, footing, half the wall | 25 Wood + 8 Timber |
+| 10 | **Rampart** — corner towers, full wall | 35 Stone + 8 Ingot + 4 Tonic |
 
-**Not blocky** is a constraint the shapes carry, and three things do that work:
-pitched roofs instead of flat lids, exposed timber framing on the daub walls, and
-one round tower among the square houses so the skyline is not a row of identical
-boxes. Roofs are built from two wedges meeting at a ridge — a `WedgePart` is tall
-at its +Z face and tapers to nothing at −Z, which was measured in Studio rather
-than assumed.
+The order is the point. You cannot wall off an empty field and you cannot raise a
+keep before there is anyone to build it, so the early game is soft and open and a
+village only becomes a fortress once its owner has actually done the work. The
+last three stages need **refined** goods, which means the workshops are load
+bearing rather than ornaments you put up after the walls are done.
 
-**The wall has a permanent footing.** An unclaimed village would otherwise have no
-wall at all, since the wall is the thing a player builds. The footing is knee
-high and it is scenery, not cover: no HP, stops nobody, and a breached village
-*should* be open ground. Raised blocks cover it.
+Once the ladder is finished the prompt turns into **repair**, 25 HP for 4 Wood +
+4 Stone. A breach has to be repairable or a village falls exactly once, forever.
+
+**How a stage appears.** `build-world` builds every stage of every village up
+front into `ServerStorage.VillageBlueprints.<site>.Stage<n>`, positioned in world
+space. Buying one is a **reparent** — the service never has to know how a house
+is made, only how to move a folder, and there is no duplicated geometry code
+between the builder and the runtime.
+
+### The buildings
+
+Sized off the **character**, not the map. A Roblox humanoid is about 5 studs tall
+and 2 wide, so cottages get 9-stud walls, workshops 11, and both get a 7-stud
+doorway and a **hollow interior** — floor, four walls, a gap in the front with a
+lintel over it. They are rooms you walk into, not solid blocks with a door
+painted on.
+
+Four cottages are deliberately identical: a village should read as ordinary
+dwellings with a few special buildings among them, not as four landmarks. The
+three workshops are unmistakable — a forge chimney with a lit crown, stacked logs
+and a saw bench, a round turret and spire over a square room, because a hollow
+cylinder would need a ring of parts and still be a worse room.
+
+Roofs are two wedges meeting at a ridge. A `WedgePart` is tall at its +Z face and
+tapers to nothing at −Z, measured in Studio rather than assumed. They also carry a
+**ridge beam**: the two halves meet on an exact plane and a ray cast straight up
+from inside slips between them — measured, 5 of 25 interior points saw open sky,
+all on the x = 0 line. With the beam, 25 of 25 are covered.
+
+### The stockpile is a heap
+
+Not a shed with a number on it — a pallet with the owner's goods piled on it, and
+the pile's **size and composition track what they are holding**. Logs, wool
+bales, grain sacks, stone, ore, and a lit tonic on top. You can look at a village
+from outside and tell whether it is worth raiding.
+
+It is capped at 44 pieces and scaled **proportionally**, not first-come. Filling
+in order meant a player holding a lot of wood got a heap of nothing but wood and
+the other seven goods never appeared, which defeats the entire point of the pile.
+
+Redraws are driven off a dirty flag rather than the counter change itself, so a
+burst of swings collapses into one rebuild.
 
 **The ring of blocks is not twenty-odd little walls.** It is a readout: how many
 blocks stand is drawn from the single wall value. Each purchase of 4 Wood + 4
 Stone buys 25 HP and raises one block; damage lowers the value and drops blocks
-to match. A full wall is **27 blocks, 675 HP** — 28 ring slots minus the gate.
+to match. A full wall is **600 HP** drawn across 27 blocks.
+
+The wall's strength is a **fixed pool**, no longer "however many blocks the ring
+happens to have, times 25". Decoupling the two lets the ring be drawn at whatever
+density suits a 148-stud village without quietly turning a siege into a forty
+swing grind.
 
 **The gate is the only place the wall can be hurt.** That is the point of there
 being one — a raid is a commitment to one approach rather than chipping at
@@ -471,6 +531,21 @@ be placed on the shaft by eye.
 prompt sits on the base foundation, and the gate is 12 studs out from it, so a
 16 stud reach left the owner unable to repair while standing at their own gate —
 exactly where a defender is. It is 26 now, sized to the compound.
+
+**A `ProximityPrompt` well above head height will not activate, whatever its
+`MaxActivationDistance` says.** A craft prompt on a signboard ~5 studs over the
+character refused to fire at 9 studs with a 16 stud reach, line of sight off and
+`Enabled` true. The same prompt lowered 5 studs fired at 7, and moving it to a
+bench fired too. Plain 3D distance is not the gate. **Put interaction prompts at
+roughly the height of the person using them.**
+
+**MCP `Source` writes do not reach a playtest; `multi_edit` does.** Patching a
+script by assigning `.Source` from `execute_luau` updates what the Edit datamodel
+reports — a checksum of `.Source` matched disk exactly — but the *next play
+session still ran the old code*, 64213 chars against Edit's 65431. Re-applying the
+same change through `multi_edit` did reach it. So a `.Source` checksum is **not**
+proof that a playtest will run that code. Verify inside the running session, or
+edit through `multi_edit` (or Rojo) in the first place.
 
 **A test harness that drops the character on top of scenery will frame a bug in
 the wrong place.** Sweeping a build prompt outward to find its range gave

@@ -32,6 +32,7 @@
 -- the contact frame was measured rather than guessed.
 
 local Players = game:GetService("Players")
+local ServerStorage = game:GetService("ServerStorage")
 local Workspace = game:GetService("Workspace")
 local Debris = game:GetService("Debris")
 local TweenService = game:GetService("TweenService")
@@ -130,21 +131,33 @@ local RESOURCES: { [string]: ResourceConfig } = {
 -- should not shuffle between joins.
 local RESOURCE_ORDER = { "Wood", "Grain", "Wool", "Stone", "Ore" }
 
--- What one block costs. A bundle rather than a number, so building actually
--- consumes the economy instead of one column of it.
---
--- Grain, Wool and Ore have NO sink yet. They are gathered and they stack up.
--- That is the next design decision, and it most likely hangs off the
--- specialists in the design doc rather than off more masonry.
-local BUILD_COST: { [string]: number } = {
-	Wood = 4,
-	Stone = 4,
+-- Refined goods. You cannot gather these: they come out of the three workshops,
+-- and the last three stages of a village need them. That is what makes the
+-- workshops worth building instead of ornaments you put up once the walls are
+-- done - the keep and the wall are gated behind having a working economy.
+local CRAFTED_ORDER = { "Timber", "Ingot", "Tonic" }
+
+local ALL_GOODS: { string } = {}
+for _, name in RESOURCE_ORDER do
+	table.insert(ALL_GOODS, name)
+end
+for _, name in CRAFTED_ORDER do
+	table.insert(ALL_GOODS, name)
+end
+
+-- One recipe per workshop, each consuming a different pair, so no two workshops
+-- compete for the same pile. This is also the sink Grain, Wool and Ore never
+-- had: every raw resource now feeds something.
+local RECIPES: { [string]: { makes: string, cost: { [string]: number } } } = {
+	Carpenter = { makes = "Timber", cost = { Wood = 5, Stone = 2 } },
+	Blacksmith = { makes = "Ingot", cost = { Ore = 4, Wood = 2 } },
+	Alchemist = { makes = "Tonic", cost = { Grain = 4, Wool = 3 } },
 }
 
-local function describeCost(): string
+local function describeCost(cost: { [string]: number }): string
 	local bits = {}
-	for _, name in RESOURCE_ORDER do
-		local amount = BUILD_COST[name]
+	for _, name in ALL_GOODS do
+		local amount = cost[name]
 		if amount then
 			table.insert(bits, ("%d %s"):format(amount, name))
 		end
@@ -152,10 +165,50 @@ local function describeCost(): string
 	return table.concat(bits, " + ")
 end
 
+-- What one wall repair costs once the village is finished.
+local BUILD_COST: { [string]: number } = {
+	Wood = 4,
+	Stone = 4,
+}
+
+-- The village is built in TEN purchases, in a fixed order: ordinary dwellings
+-- first, then the workshops that refine what those dwellings gather, then the
+-- keep, then the wall around all of it. A plot starts as bare ground.
+--
+-- The order is the point. You cannot wall off an empty field, and you cannot
+-- raise a keep before you have anyone to build it - so early game is soft and
+-- open, and a village only becomes a fortress once its owner has actually done
+-- the work. Costs climb, and the last three need refined goods.
+type Upgrade = { name: string, cost: { [string]: number } }
+
+local UPGRADES: { Upgrade } = {
+	{ name = "Cottage", cost = { Wood = 10, Grain = 5 } },
+	{ name = "Second cottage", cost = { Wood = 12, Grain = 6 } },
+	{ name = "Third cottage", cost = { Wood = 14, Grain = 8 } },
+	{ name = "Fourth cottage", cost = { Wood = 16, Grain = 10 } },
+	{ name = "Carpenter", cost = { Wood = 20, Stone = 10 } },
+	{ name = "Blacksmith", cost = { Stone = 20, Ore = 10 } },
+	{ name = "Alchemist", cost = { Stone = 18, Wool = 14, Ore = 8 } },
+	{ name = "Keep", cost = { Stone = 30, Timber = 6, Ingot = 6 } },
+	{ name = "Palisade", cost = { Wood = 25, Timber = 8 } },
+	{ name = "Rampart", cost = { Stone = 35, Ingot = 8, Tonic = 4 } },
+}
+
+local KEEP_STAGE = 8
+local PALISADE_STAGE = 9
+local RAMPART_STAGE = 10
+
 -- The wall is ONE hitpoint value. The ring of blocks is how much of it is
 -- standing, drawn from that value - not twenty-odd separate little walls.
-local WALL_BLOCK_SIZE = Vector3.new(4.6, 4.5, 2.6)
-local WALL_HP_PER_SECTION = 25 -- what one purchase buys, and one block draws
+local WALL_BLOCK_SIZE = Vector3.new(20.4, 11, 3.6)
+local WALL_HP_PER_SECTION = 25 -- what one repair buys
+
+-- The wall's strength is a FIXED pool, no longer "however many blocks the ring
+-- happens to have times 25". Decoupling the two means the ring can be drawn at
+-- whatever density looks right for a 148 stud village without quietly turning a
+-- siege into a forty swing grind.
+local WALL_MAX_HP = 600
+local PALISADE_FRACTION = 0.5 -- what the ninth stage raises; the tenth finishes it
 
 -- Raiding. The same swing that harvests also fights, batters a gate and loots.
 local SWING_DAMAGE = 20 -- five swings to put someone down from full health
@@ -214,6 +267,7 @@ type State = {
 
 local state: { [Player]: State } = {}
 local reputation: { [Player]: number } = {}
+local stockpileDirty: { [Player]: boolean } = {}
 local nodes: { Node } = {}
 local nodeByPart: { [BasePart]: Node } = {}
 
@@ -229,12 +283,19 @@ local function setupPlayer(player: Player)
 	local leaderstats = Instance.new("Folder")
 	leaderstats.Name = "leaderstats"
 
-	-- One column per resource, in RESOURCE_ORDER so the player list does not
-	-- shuffle its columns between joins.
-	for _, name in RESOURCE_ORDER do
+	-- One column per good, in a fixed order so the player list does not shuffle
+	-- its columns between joins.
+	for _, name in ALL_GOODS do
 		local counter = Instance.new("IntValue")
 		counter.Name = name
 		counter.Value = 0
+		-- The stockpile heap is a readout of what its owner holds, so every
+		-- change to a counter makes it stale. Flag it rather than redrawing
+		-- here: a swing a second per player would otherwise rebuild forty parts
+		-- each time, and the flag collapses a burst into one redraw.
+		counter.Changed:Connect(function()
+			stockpileDirty[player] = true
+		end)
 		counter.Parent = leaderstats
 	end
 
@@ -275,7 +336,7 @@ end
 -- Can this player pay a bundle? Returns false and the first thing they are short
 -- of, so the refusal can say which resource is missing rather than just "no".
 local function canAfford(player: Player, cost: { [string]: number }): (boolean, string?)
-	for _, name in RESOURCE_ORDER do
+	for _, name in ALL_GOODS do
 		local needed = cost[name]
 		if needed then
 			local counter = counterFor(player, name)
@@ -682,15 +743,22 @@ end)
 type Base = {
 	model: Model,
 	foundation: BasePart,
-	gate: BasePart,
+	-- Gate and keep do NOT exist on a fresh plot. They arrive with stages 9 and
+	-- 8, so everything that touches them has to cope with nil rather than assume
+	-- a finished village.
+	gate: BasePart?,
 	stockpile: BasePart,
+	goods: Instance,
+	heap: Attachment,
+	blueprint: Instance?,
+	stage: number,
 	prompt: ProximityPrompt,
 	sections: Instance,
 	slots: { Attachment },
 	wall: number, -- the single HP value
 	wallMax: number,
 	breached: boolean,
-	keep: BasePart,
+	keep: BasePart?,
 	keepHealth: number,
 	-- Snapshot of what can be taken, taken at the moment of the breach. Without
 	-- the snapshot, "20% of what they hold" recomputed per swing converges on
@@ -752,20 +820,210 @@ local function redrawWall(base: Base)
 	end
 end
 
+-- ---------------------------------------------------------------- blueprints
+-- build-world builds every stage of every village up front into ServerStorage
+-- and leaves it there. Buying a stage is a reparent: the parts are already
+-- positioned in world space, so nothing here needs to know what a house looks
+-- like or where it goes.
+local blueprintRoot = ServerStorage:FindFirstChild("VillageBlueprints")
+
+local function blueprintFor(name: string): Instance?
+	return blueprintRoot and blueprintRoot:FindFirstChild(name)
+end
+
+-- ---------------------------------------------------------------- the heap
+-- The stockpile is not a shed with a number on it. It is a pile of actual goods
+-- whose size and composition track what the owner is holding, so you can look
+-- at somebody's village from outside and tell whether it is worth raiding.
+local GOODS_LOOK: { [string]: { color: Color3, material: Enum.Material, size: Vector3, per: number } } = {
+	Wood = { color = Color3.fromRGB(112, 80, 50), material = Enum.Material.Wood, size = Vector3.new(4.4, 1.6, 1.6), per = 3 },
+	Grain = { color = Color3.fromRGB(198, 168, 92), material = Enum.Material.Fabric, size = Vector3.new(2.4, 2.4, 2.0), per = 3 },
+	Wool = { color = Color3.fromRGB(238, 232, 220), material = Enum.Material.Fabric, size = Vector3.new(3.0, 2.0, 2.0), per = 2 },
+	Stone = { color = Color3.fromRGB(126, 122, 116), material = Enum.Material.Rock, size = Vector3.new(2.6, 2.0, 2.2), per = 3 },
+	Ore = { color = Color3.fromRGB(150, 104, 66), material = Enum.Material.Metal, size = Vector3.new(2.2, 1.8, 2.0), per = 2 },
+	Timber = { color = Color3.fromRGB(168, 132, 84), material = Enum.Material.WoodPlanks, size = Vector3.new(5.0, 1.2, 2.4), per = 1 },
+	Ingot = { color = Color3.fromRGB(178, 182, 190), material = Enum.Material.Metal, size = Vector3.new(2.4, 1.0, 1.4), per = 1 },
+	Tonic = { color = Color3.fromRGB(126, 220, 148), material = Enum.Material.Neon, size = Vector3.new(1.2, 1.8, 1.2), per = 1 },
+}
+
+-- Capped, because a rich player should read as "very full" and not as a tower of
+-- crates you can see from the next tile.
+local HEAP_MAX_PIECES = 44
+local HEAP_PER_LAYER = 11
+
+local function redrawStockpile(base: Base)
+	base.goods:ClearAllChildren()
+	local ownerId = baseOwner(base)
+	local owner = ownerId and Players:GetPlayerByUserId(ownerId)
+	if not owner then
+		return
+	end
+
+	-- How many pieces each good WANTS, before the cap.
+	local want: { [string]: number } = {}
+	local total = 0
+	for _, name in ALL_GOODS do
+		local look = GOODS_LOOK[name]
+		local counter = counterFor(owner, name)
+		local pieces = if look and counter then math.floor(counter.Value / look.per) else 0
+		want[name] = pieces
+		total += pieces
+	end
+
+	-- Scale to the cap PROPORTIONALLY rather than filling first-come. Filling in
+	-- order meant a player holding a lot of wood got a heap of nothing but wood
+	-- and the other seven goods never appeared, which defeats the point: the
+	-- pile is supposed to tell you what is in there, not just that it is full.
+	if total > HEAP_MAX_PIECES then
+		local scale = HEAP_MAX_PIECES / total
+		local scaled = 0
+		for _, name in ALL_GOODS do
+			if want[name] > 0 then
+				want[name] = math.max(1, math.floor(want[name] * scale))
+				scaled += want[name]
+			end
+		end
+		-- The per-good floor of 1 can push the total back over; trim the
+		-- overshoot off whichever pile is biggest.
+		while scaled > HEAP_MAX_PIECES do
+			local biggest, most = nil, 0
+			for _, name in ALL_GOODS do
+				if want[name] > most then
+					biggest, most = name, want[name]
+				end
+			end
+			if not biggest or most <= 1 then
+				break
+			end
+			want[biggest] -= 1
+			scaled -= 1
+		end
+	end
+
+	local origin = base.heap.WorldCFrame
+	local placed = 0
+	for _, name in ALL_GOODS do
+		local look = GOODS_LOOK[name]
+		if look then
+			for _ = 1, want[name] do
+				if placed >= HEAP_MAX_PIECES then
+					break
+				end
+				local layer = math.floor(placed / HEAP_PER_LAYER)
+				local slot = placed % HEAP_PER_LAYER
+				-- Each layer is turned half a slot off the one below, so the
+				-- pile interlocks instead of stacking into neat columns.
+				local angle = (slot / HEAP_PER_LAYER) * math.pi * 2 + layer * 0.42
+				local radius = math.max(1.1, 7.6 - layer * 1.9)
+				local piece = Instance.new("Part")
+				piece.Name = name .. "Pile"
+				piece.Size = look.size
+				piece.CFrame = origin
+					* CFrame.new(
+						math.cos(angle) * radius,
+						look.size.Y / 2 + layer * look.size.Y * 0.9,
+						math.sin(angle) * radius)
+					* CFrame.Angles(0, angle, 0)
+				piece.Anchored = true
+				piece.CanCollide = false -- goods you can walk through beat goods you get stuck on
+				piece.Material = look.material
+				piece.Color = look.color
+				piece.TopSurface = Enum.SurfaceType.Smooth
+				piece.BottomSurface = Enum.SurfaceType.Smooth
+				piece.Parent = base.goods
+				placed += 1
+			end
+		end
+	end
+end
+
+-- ---------------------------------------------------------------- workshops
+-- One recipe each, wired when the workshop is actually installed rather than up
+-- front, because until it is bought the prompt is sitting in ServerStorage.
+local craftBound: { [ProximityPrompt]: boolean } = {}
+
+local function bindCraftPrompts(base: Base)
+	for _, thing in base.model:GetDescendants() do
+		if thing:IsA("ProximityPrompt") and thing.Name == "CraftPrompt" and not craftBound[thing] then
+			local recipeName = thing:GetAttribute("Recipe")
+			local recipe = if typeof(recipeName) == "string" then RECIPES[recipeName] else nil
+			if recipe then
+				craftBound[thing] = true
+				thing.ActionText = ("%s to 1 %s"):format(describeCost(recipe.cost), recipe.makes)
+				thing.Triggered:Connect(function(player: Player)
+					local owner = baseOwner(base)
+					if owner and owner ~= player.UserId then
+						notifyPlayer(player, "Someone else's workshop")
+						return
+					end
+					local affordable, missing = canAfford(player, recipe.cost)
+					if not affordable then
+						notifyPlayer(player, ("Need %d %s"):format(
+							recipe.cost[missing :: string], tostring(missing)))
+						return
+					end
+					spend(player, recipe.cost)
+					local made = counterFor(player, recipe.makes)
+					if made then
+						made.Value += 1
+					end
+					notifyPlayer(player, ("Crafted 1 %s"):format(recipe.makes), 1)
+				end)
+			end
+		end
+	end
+end
+
+-- ---------------------------------------------------------------- stages
+-- Buying a stage moves its parts out of the blueprint and into the world. The
+-- three stages that mean something mechanically say so here; the rest are
+-- buildings, and a building is just geometry until specialists exist.
+local function installStage(base: Base, index: number)
+	local plan = base.blueprint
+	local folder = plan and plan:FindFirstChild(("Stage%02d"):format(index))
+	if folder then
+		for _, piece in folder:GetChildren() do
+			piece.Parent = base.model
+		end
+		folder:Destroy()
+	end
+	base.stage = index
+
+	if index == KEEP_STAGE then
+		local keep = base.model:FindFirstChild("Keep")
+		base.keep = if keep and keep:IsA("BasePart") then keep else nil
+	elseif index == PALISADE_STAGE then
+		local gate = base.model:FindFirstChild("Gate")
+		base.gate = if gate and gate:IsA("BasePart") then gate else nil
+		base.wall = math.floor(base.wallMax * PALISADE_FRACTION)
+		base.breached = false
+		redrawWall(base)
+	elseif index == RAMPART_STAGE then
+		base.wall = base.wallMax
+		base.breached = false
+		redrawWall(base)
+	end
+
+	bindCraftPrompts(base)
+end
+
 local function registerBase(model: Instance)
 	if not model:IsA("Model") or model:GetAttribute("Kind") ~= "Base" then
 		return
 	end
 
 	local foundation = model.PrimaryPart or model:FindFirstChild("Foundation")
-	local gate = model:FindFirstChild("Gate")
 	local stockpile = model:FindFirstChild("Stockpile")
-	local keep = model:FindFirstChild("Keep")
+	local goods = model:FindFirstChild("Goods")
 	local sections = model:FindFirstChild("Sections")
 	local prompt = foundation and foundation:FindFirstChildOfClass("ProximityPrompt")
-	if not (foundation and foundation:IsA("BasePart") and gate and gate:IsA("BasePart")
-		and stockpile and stockpile:IsA("BasePart") and keep and keep:IsA("BasePart")
-		and sections and prompt) then
+	local heap = stockpile and stockpile:IsA("BasePart") and stockpile:FindFirstChild("HeapOrigin")
+	-- Only what an EMPTY plot has is required. The gate and the keep are bought,
+	-- so demanding them here would leave every fresh plot unregistered.
+	if not (foundation and foundation:IsA("BasePart")
+		and stockpile and stockpile:IsA("BasePart")
+		and goods and sections and prompt
+		and heap and heap:IsA("Attachment")) then
 		return
 	end
 
@@ -782,15 +1040,19 @@ local function registerBase(model: Instance)
 	local base: Base = {
 		model = model,
 		foundation = foundation,
-		gate = gate,
+		gate = nil,
 		stockpile = stockpile,
+		goods = goods,
+		heap = heap,
+		blueprint = blueprintFor(model.Name),
+		stage = 0,
 		prompt = prompt,
 		sections = sections,
 		slots = slots,
 		wall = 0,
-		wallMax = #slots * WALL_HP_PER_SECTION,
+		wallMax = WALL_MAX_HP,
 		breached = true, -- an unbuilt base has nothing keeping anyone out
-		keep = keep,
+		keep = nil,
 		keepHealth = KEEP_HP,
 		loot = {},
 		refresh = function() end,
@@ -798,19 +1060,29 @@ local function registerBase(model: Instance)
 
 	base.refresh = function()
 		local ownerName = model:GetAttribute("OwnerName")
-		local who = if typeof(ownerName) == "string" then ownerName .. "'s base" else "Unclaimed base"
-		base.prompt.ObjectText = ("%s  wall %d/%d"):format(who, math.floor(base.wall), base.wallMax)
+		local who = if typeof(ownerName) == "string" then ownerName .. "'s village" else "Empty plot"
+		local next = UPGRADES[base.stage + 1]
 
-		if base.wall >= base.wallMax then
-			base.prompt.ActionText = "Wall complete"
-			base.prompt.Enabled = false
-		else
-			-- Re-enabled deliberately: a breach has to make the wall repairable.
+		if next then
+			base.prompt.ObjectText = ("%s  (%d/%d built)"):format(who, base.stage, #UPGRADES)
+			base.prompt.ActionText = ("%s - %s"):format(next.name, describeCost(next.cost))
 			base.prompt.Enabled = true
-			base.prompt.ActionText = ("%s (%s)"):format(
-				if base.wall > 0 then "Repair" else "Build wall", describeCost())
+		elseif base.wall < base.wallMax then
+			-- The ladder is finished, so the prompt turns into repair. A breach
+			-- has to be repairable or a village falls exactly once, forever.
+			base.prompt.ObjectText = ("%s  wall %d/%d"):format(
+				who, math.floor(base.wall), base.wallMax)
+			base.prompt.ActionText = ("Repair - %s"):format(describeCost(BUILD_COST))
+			base.prompt.Enabled = true
+		else
+			base.prompt.ObjectText = ("%s  wall %d/%d"):format(
+				who, math.floor(base.wall), base.wallMax)
+			base.prompt.ActionText = "Village complete"
+			base.prompt.Enabled = false
 		end
 
+		model:SetAttribute("Stage", base.stage)
+		model:SetAttribute("StageName", if next then next.name else "Complete")
 		model:SetAttribute("Wall", math.floor(base.wall))
 		model:SetAttribute("Breached", base.breached)
 		model:SetAttribute("KeepHealth", math.floor(base.keepHealth))
@@ -818,49 +1090,61 @@ local function registerBase(model: Instance)
 		-- The keep darkens and finally slumps as it is broken up, so its state
 		-- reads from outside without a health bar - the same trick as the gate.
 		local keepLeft = base.keepHealth / KEEP_HP
-		base.keep.Color = Color3.fromRGB(58, 50, 46):Lerp(Color3.fromRGB(128, 118, 108), keepLeft)
-		base.keep.Transparency = if base.keepHealth <= 0 then 0.55 else 0
+		if base.keep then
+			base.keep.Color = Color3.fromRGB(58, 50, 46):Lerp(Color3.fromRGB(128, 118, 108), keepLeft)
+			base.keep.Transparency = if base.keepHealth <= 0 then 0.55 else 0
+		end
 		-- The gate darkens as the wall fails, so an attacker can read how close
 		-- a base is to falling without a health bar.
 		local fraction = if base.wallMax > 0 then base.wall / base.wallMax else 0
-		base.gate.Color = Color3.fromRGB(58, 40, 26):Lerp(Color3.fromRGB(104, 72, 44), fraction)
+		if base.gate then
+			base.gate.Color = Color3.fromRGB(58, 40, 26):Lerp(Color3.fromRGB(104, 72, 44), fraction)
+		end
 	end
 	base.refresh()
 
 	base.prompt.Triggered:Connect(function(player: Player)
-		if base.wall >= base.wallMax then
-			return
-		end
-
 		local owner = baseOwner(base)
 		if owner and owner ~= player.UserId then
-			notifyPlayer(player, ("%s's base - raid it, do not build it"):format(
+			notifyPlayer(player, ("%s's village - raid it, do not build it"):format(
 				tostring(model:GetAttribute("OwnerName") or "Someone")))
 			return
 		end
 
-		local affordable, missing = canAfford(player, BUILD_COST)
+		local next = UPGRADES[base.stage + 1]
+		local cost = if next then next.cost else BUILD_COST
+		if not next and base.wall >= base.wallMax then
+			return
+		end
+
+		local affordable, missing = canAfford(player, cost)
 		if not affordable then
 			-- Straight to the one player who cannot afford it, naming what they
 			-- are short of. This used to write the prompt's ActionText, which
 			-- every player at the base shares - see notifyPlayer.
-			notifyPlayer(player, ("Need %d %s"):format(BUILD_COST[missing :: string], tostring(missing)))
+			notifyPlayer(player, ("Need %d %s"):format(cost[missing :: string], tostring(missing)))
 			return
 		end
+		spend(player, cost)
 
-		spend(player, BUILD_COST)
-		base.wall = math.min(base.wallMax, base.wall + WALL_HP_PER_SECTION)
-		if base.wall > 0 then
-			base.breached = false
-		end
-
-		-- Raising the first stretch of wall claims the plot.
+		-- The first purchase claims the plot, whatever it was.
 		if not owner then
 			model:SetAttribute("Owner", player.UserId)
 			model:SetAttribute("OwnerName", player.Name)
+			redrawStockpile(base)
 		end
 
-		redrawWall(base)
+		if next then
+			installStage(base, base.stage + 1)
+			notifyPlayer(player, ("Built: %s (%d/%d)"):format(next.name, base.stage, #UPGRADES))
+		else
+			base.wall = math.min(base.wallMax, base.wall + WALL_HP_PER_SECTION)
+			if base.wall > 0 then
+				base.breached = false
+			end
+			redrawWall(base)
+		end
+
 		base.refresh()
 	end)
 
@@ -875,7 +1159,7 @@ local function openStockpile(base: Base)
 	if not owner then
 		return
 	end
-	for _, name in RESOURCE_ORDER do
+	for _, name in ALL_GOODS do
 		local held = counterFor(owner, name)
 		base.loot[name] = if held then math.floor(held.Value * EXPOSED_FRACTION) else 0
 	end
@@ -901,7 +1185,7 @@ local function findGateTarget(raider: Player, character: Model): Base?
 	local bestDistance = math.huge
 	for _, base in bases do
 		local owner = baseOwner(base)
-		if owner and owner ~= raider.UserId and base.wall > 0 then
+		if owner and owner ~= raider.UserId and base.wall > 0 and base.gate then
 			local aimed, distance = isAimedAt(root, base.gate.Position, MINE_RANGE)
 			if aimed and distance < bestDistance then
 				best = base
@@ -928,6 +1212,7 @@ local function findKeepTarget(raider: Player, character: Model): Base?
 			and base.breached
 			and lootRemaining(base) <= 0
 			and base.keepHealth > 0
+			and base.keep -- no keep bought yet means nothing to raze
 		then
 			local aimed, distance = isAimedAt(root, base.keep.Position, MINE_RANGE)
 			if aimed and distance < bestDistance then
@@ -1207,7 +1492,7 @@ local function attemptSwing(player: Player, toolName: string)
 			-- Take from whichever resource has the most left, so a raid empties
 			-- the pot evenly rather than draining one column first.
 			local pick, most = nil, 0
-			for _, name in RESOURCE_ORDER do
+			for _, name in ALL_GOODS do
 				local left = lootTarget.loot[name] or 0
 				if left > most then
 					pick, most = name, left
@@ -1329,6 +1614,25 @@ local function attemptSwing(player: Player, toolName: string)
 		spawnChips(impactPoint, away, 7, node.config.debris)
 	end)
 end
+
+-- One redraw pass for every stockpile whose owner has gained or spent anything
+-- since the last tick. Collapsing a burst of counter changes into a single
+-- rebuild is the whole reason the flag exists.
+task.spawn(function()
+	while true do
+		task.wait(0.4)
+		for player in stockpileDirty do
+			stockpileDirty[player] = nil
+			if player.Parent then
+				for _, base in bases do
+					if baseOwner(base) == player.UserId then
+						redrawStockpile(base)
+					end
+				end
+			end
+		end
+	end
+end)
 
 -- ---------------------------------------------------------------- knockdown
 -- Roblox respawns a dead character at a SpawnLocation by default. Conquest does
