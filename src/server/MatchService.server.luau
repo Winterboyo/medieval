@@ -8,19 +8,31 @@
 -- stockpile step-downs, and it forces surviving factions into contact so the
 -- match resolves inside the window instead of stalling in mutual turtling.
 --
--- This file owns the clock and the boundary. It does NOT own bases, nodes or
--- elimination. It talks to ResourceService the way ResourceService already talks
--- to itself: through attributes published on instances, not a shared module.
+-- This file owns the clock, the boundary, and from Stage 3 the squads and the
+-- win condition. It still does NOT own bases or nodes, and it still talks to
+-- ResourceService through attributes published on instances rather than a shared
+-- module.
 --
 --   Workspace.MatchState   "Lobby" | "Running" | "Ended"
 --   Workspace.MatchClock   seconds left in the current phase
 --   Workspace.ZoneHalf     half-extent of the playable square, in studs
+--   Player.Eliminated      their keep fell; they are somebody's worker now
+--   Player.Squad           which squad they belong to
 --
 -- ResourceService reads ZoneHalf to stop nodes outside the boundary yielding.
+--
+-- Elimination needs NO change in ResourceService. It already publishes Fallen on
+-- a base the moment its keep is razed, and it already publishes Owner, so this
+-- file can watch that one attribute and resolve the rest. The cheapest seam is
+-- the one that already exists.
 
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local ServerScriptService = game:GetService("ServerScriptService")
+local Teams = game:GetService("Teams")
+
+local FoldWeighting = require(ServerScriptService:WaitForChild("FoldWeighting"))
 
 local notifyRemote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("Notify")
 
@@ -141,13 +153,13 @@ local function enter(nextState: string, seconds: number)
 end
 
 -- ---------------------------------------------------------------- the match
-local function beginMatch()
-	matchLength = Workspace:GetAttribute("MatchLength") or DEFAULT_MATCH_LENGTH
-	zoneHalf = ZONE_START_HALF
-	drawZone(zoneHalf)
-	setZoneVisible(true)
-	enter("Running", matchLength)
-	announce(("The match has begun - %d minutes"):format(math.floor(matchLength / 60)))
+-- A short test match announcing "0 minutes" is a small thing that reads as a
+-- bug, and the override exists precisely so matches can be short.
+local function describeLength(seconds: number): string
+	if seconds < 90 then
+		return ("%d seconds"):format(math.floor(seconds))
+	end
+	return ("%d minutes"):format(math.floor(seconds / 60))
 end
 
 local function endMatch(reason: string)
@@ -155,6 +167,252 @@ local function endMatch(reason: string)
 	setZoneVisible(false)
 	announce(reason)
 end
+
+-- ---------------------------------------------------------------- squads
+-- DESIGN.md wants "last player or team standing", and v1 takes the minimal
+-- reading of that: a squad is an ORIGINAL PLAYER plus whoever has been folded
+-- into them. There is no alliance system and nothing to agree to - you do not
+-- negotiate a team, you acquire one by taking somebody's keep.
+--
+-- Roblox's Teams service does the grouping, which puts squads in the player list
+-- for free. Same reasoning as leaderstats carrying the resource columns.
+type Squad = {
+	leader: Player,
+	members: { Player },
+	team: Team,
+	out: boolean,
+}
+
+local squads: { Squad } = {}
+local foldRng = Random.new()
+
+local SQUAD_COLOURS = {
+	"Bright red", "Bright blue", "Bright green", "Bright yellow",
+	"Bright violet", "Bright orange", "Cyan", "Magenta",
+	"Lime green", "Br. yellowish orange", "Teal", "Pink",
+}
+
+local function squadLedBy(player: Player): Squad?
+	for _, squad in squads do
+		if squad.leader == player then
+			return squad
+		end
+	end
+	return nil
+end
+
+local function livingSquads(): { Squad }
+	local alive: { Squad } = {}
+	for _, squad in squads do
+		if not squad.out then
+			alive[#alive + 1] = squad
+		end
+	end
+	return alive
+end
+
+local function newSquad(player: Player): Squad
+	local team = Instance.new("Team")
+	team.Name = player.Name
+	team.TeamColor = BrickColor.new(SQUAD_COLOURS[(#squads % #SQUAD_COLOURS) + 1])
+	team.AutoAssignable = false
+	team.Parent = Teams
+
+	local squad: Squad = { leader = player, members = { player }, team = team, out = false }
+	squads[#squads + 1] = squad
+
+	player.Team = team
+	player:SetAttribute("Eliminated", false)
+	player:SetAttribute("Squad", team.Name)
+	return squad
+end
+
+local function startSquads()
+	for _, squad in squads do
+		squad.team:Destroy()
+	end
+	table.clear(squads)
+	for _, player in Players:GetPlayers() do
+		newSquad(player)
+	end
+end
+
+-- How much a squad is actually holding, used only to break a tie at the whistle.
+-- Wall plus keep across every base its members own: the closest thing to "who
+-- was winning" that does not need a whole scoring system.
+local function strengthOf(squad: Squad): number
+	local sites = Workspace:FindFirstChild("BuildSites")
+	if not sites then
+		return 0
+	end
+	local total = 0
+	for _, base in sites:GetChildren() do
+		local owner = base:GetAttribute("Owner")
+		if typeof(owner) == "number" then
+			for _, member in squad.members do
+				if member.UserId == owner then
+					total += (base:GetAttribute("Wall") or 0) :: number
+					total += (base:GetAttribute("KeepHealth") or 0) :: number
+				end
+			end
+		end
+	end
+	return total
+end
+
+local function describeSquad(squad: Squad): string
+	if #squad.members <= 1 then
+		return squad.leader.Name
+	end
+	return ("%s and %d in their service"):format(squad.leader.Name, #squad.members - 1)
+end
+
+local function resolveWin()
+	if state ~= "Running" then
+		return
+	end
+	local alive = livingSquads()
+	if #alive > 1 then
+		return
+	end
+	if #alive == 1 then
+		endMatch(("%s holds the field. The match is over."):format(describeSquad(alive[1])))
+	else
+		endMatch("Nobody is left standing. The match is over.")
+	end
+end
+
+-- A squad falls when its LEADER's keep is razed, and the whole squad falls with
+-- it: the squad exists because the leader held a keep, so there is nothing left
+-- to belong to once it is gone. Everyone on it - leader and workers alike - is
+-- dealt back out to the survivors.
+local function eliminate(leader: Player)
+	local squad = squadLedBy(leader)
+	if not squad or squad.out then
+		return
+	end
+	squad.out = true
+
+	local displaced = table.clone(squad.members)
+	table.clear(squad.members)
+
+	-- Their keep is gone whether or not anyone is left to serve, so the flag
+	-- goes up before the fold rather than inside it. Otherwise the last squad
+	-- standing to fall reads as un-eliminated, which is exactly backwards.
+	for _, person in displaced do
+		person:SetAttribute("Eliminated", true)
+	end
+
+	local hosts = livingSquads()
+	if #hosts == 0 then
+		announce(("%s has fallen."):format(leader.Name))
+		resolveWin()
+		return
+	end
+
+	for _, person in displaced do
+		hosts = livingSquads()
+		if #hosts == 0 then
+			break
+		end
+		-- Sizes out, index back. The weighting itself lives in FoldWeighting so
+		-- it can be checked without a server full of players.
+		local sizes: { number } = {}
+		for index, host in hosts do
+			sizes[index] = #host.members
+		end
+		local pick = FoldWeighting.choose(sizes, foldRng:NextNumber())
+		local host = if pick then hosts[pick] else nil
+		if host then
+			host.members[#host.members + 1] = person
+			person.Team = host.team
+			person:SetAttribute("Squad", host.team.Name)
+			notifyRemote:FireClient(person, ("Your keep is gone. You serve %s now."):format(host.leader.Name))
+			notifyRemote:FireClient(host.leader, ("%s now works for you"):format(person.Name))
+		end
+	end
+
+	announce(("%s has fallen."):format(leader.Name))
+	resolveWin()
+end
+
+-- ResourceService sets Fallen the moment a keep reaches zero. That is the whole
+-- hook: no new remote, no new module, no change on the other side.
+local function watchForFallenKeeps()
+	local sites = Workspace:FindFirstChild("BuildSites")
+	if not sites then
+		return
+	end
+	for _, base in sites:GetChildren() do
+		base:GetAttributeChangedSignal("Fallen"):Connect(function()
+			if base:GetAttribute("Fallen") ~= true or state ~= "Running" then
+				return
+			end
+			local owner = base:GetAttribute("Owner")
+			if typeof(owner) ~= "number" then
+				return
+			end
+			local player = Players:GetPlayerByUserId(owner)
+			if player then
+				eliminate(player)
+			end
+		end)
+	end
+end
+
+-- At the whistle the largest surviving squad takes it, because the fold means
+-- size IS the record of how many keeps a squad has taken. Ties go to whoever is
+-- still holding the most wall and keep.
+local function endByTimer()
+	local alive = livingSquads()
+	if #alive == 0 then
+		endMatch("Time. Nobody is left standing.")
+		return
+	end
+	local best = alive[1]
+	for _, squad in alive do
+		if #squad.members > #best.members
+			or (#squad.members == #best.members and strengthOf(squad) > strengthOf(best))
+		then
+			best = squad
+		end
+	end
+	endMatch(("Time. %s holds the most ground."):format(describeSquad(best)))
+end
+
+local function beginMatch()
+	matchLength = Workspace:GetAttribute("MatchLength") or DEFAULT_MATCH_LENGTH
+	zoneHalf = ZONE_START_HALF
+	drawZone(zoneHalf)
+	setZoneVisible(true)
+	startSquads()
+	enter("Running", matchLength)
+	announce(("The match has begun - %s"):format(describeLength(matchLength)))
+end
+
+-- Someone arriving mid-match gets their own squad rather than being dropped into
+-- one. Joining should not silently hand an existing player a worker.
+Players.PlayerAdded:Connect(function(player)
+	if state == "Running" and not squadLedBy(player) then
+		newSquad(player)
+	end
+end)
+
+Players.PlayerRemoving:Connect(function(player)
+	for _, squad in squads do
+		local index = table.find(squad.members, player)
+		if index then
+			table.remove(squad.members, index)
+		end
+		-- A squad whose last member has quit is gone, whatever its keep says.
+		if not squad.out and #squad.members == 0 then
+			squad.out = true
+		end
+	end
+	resolveWin()
+end)
+
+watchForFallenKeeps()
 
 task.spawn(function()
 	zoneHalf = ZONE_START_HALF
@@ -178,9 +436,7 @@ task.spawn(function()
 
 		elseif state == "Running" then
 			if remaining <= 0 then
-				-- Stage 3 replaces this with last-team-standing. Until then the
-				-- clock is the only way a match can end.
-				endMatch("Time. The match is over.")
+				endByTimer()
 			else
 				local progress = 1 - (remaining / matchLength)
 				zoneHalf = zoneHalfAt(progress)

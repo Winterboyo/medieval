@@ -29,7 +29,8 @@ second person is not. Treat those parts as written, not working.
 | Path | What |
 |---|---|
 | `src/server/ResourceService.server.luau` | Nodes, tools, bases, raiding, reputation. Rojo syncs it. |
-| `src/server/MatchService.server.luau` | The Conquest clock and the shrinking zone. |
+| `src/server/MatchService.server.luau` | The Conquest clock, the zone, squads and the win condition. |
+| `src/server/FoldWeighting.luau` | Pure maths for dealing an eliminated player to a squad. |
 | `scripts/build-world.luau` | Builds the board: terrain, tiles, all five node kinds, build sites, the four tools, lighting. Rojo syncs it to `ServerStorage.BuildWorld`; rebuild from the command bar with the clone snippet below (a plain `require` returns a cached, stale module). Re-runnable — it tears down what it built last time. |
 | `src/client/Notifications.client.luau` | Per-player notices, driven by the `Notify` RemoteEvent. |
 | `default.project.json` | Rojo's map from this repo into the DataModel. |
@@ -444,8 +445,55 @@ only discover by taking damage is a bug disguised as a mechanic.
 default is the doc's 45 minutes, and nobody — including a playtest — wants to sit
 through three quarters of an hour to find out whether the timer fires.
 
-Still missing from Conquest: teams, elimination, and folding an eliminated player
-into a surviving team. The clock is the only way a match can currently end.
+### Squads, elimination and the win
+
+A **squad** is the minimal reading of the doc's "last player or team standing":
+an original player plus whoever has been folded into them. There is no alliance
+system and nothing to agree to — you do not negotiate a team, you acquire one by
+taking somebody's keep. Roblox's Teams service does the grouping, which puts
+squads in the player list for free, the same reasoning as leaderstats carrying
+the resource columns.
+
+**Elimination needed no change in `ResourceService`.** It already publishes
+`Fallen` on a base the moment its keep is razed, and it already publishes
+`Owner`, so `MatchService` watches that one attribute and resolves the rest. The
+cheapest seam is the one that already exists.
+
+A squad falls when its **leader's** keep is razed, and the whole squad falls with
+it — the squad exists because the leader held a keep, so there is nothing left to
+belong to. Everyone on it, leader and workers alike, is dealt back out to the
+survivors.
+
+**The fold is weighted toward the small.** `FoldWeighting` gives each surviving
+squad a weight of `1 / size`, so a lone survivor is twice as likely to receive a
+worker as a pair and four times as likely as a four:
+
+| Surviving squads | Share of the next worker |
+|---|---|
+| 1, 1, 1 | 33% / 33% / 33% |
+| 1, 2, 4 | 57% / 29% / 14% |
+| 1, 7 | 88% / 12% |
+
+Deliberately not uniform, and emphatically not weighted by strength. The reason
+the eliminated are folded in at all is that a player who is out should still
+matter to the match — but a uniform fold would pay the strongest player a free
+workforce for winning, and the match would snowball to whoever won first. The
+reward for taking a keep is the keep, not compounding labour.
+
+It lives in its own ModuleScript for one reason: it is the only part of the win
+condition that is pure arithmetic, and pure arithmetic can be checked against a
+table of made-up squad sizes without twelve players in a server. The roll is
+passed in rather than drawn inside, which makes `choose` deterministic and
+therefore assertable — walk the roll from 0 to 1 and you see the whole
+distribution.
+
+**The match ends** when one squad is left, or at the whistle. At the whistle the
+largest surviving squad takes it, because the fold means size *is* the record of
+how many keeps a squad has taken; ties go to whoever still holds the most wall
+and keep.
+
+Two attributes carry it: `Player.Eliminated` (your keep fell, you are somebody's
+worker now) and `Player.Squad`.
 
 ## Things that bit, so they don't bite twice
 
@@ -531,6 +579,13 @@ be placed on the shaft by eye.
 prompt sits on the base foundation, and the gate is 12 studs out from it, so a
 16 stud reach left the owner unable to repair while standing at their own gate —
 exactly where a defender is. It is 26 now, sized to the compound.
+
+**Client-side writes do not replicate — to anything.** Set `leaderstats` from a
+LocalScript and the server never sees it, so a build silently refuses for lack of
+resources. Set a `Workspace` attribute from a LocalScript and the server never
+sees that either, so a match "shortened" to 18 seconds ran for the default 45
+minutes. Both cost a debugging round. If a test needs server state, set it from
+the server.
 
 **A `ProximityPrompt` well above head height will not activate, whatever its
 `MaxActivationDistance` says.** A craft prompt on a signboard ~5 studs over the
