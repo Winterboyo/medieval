@@ -588,6 +588,20 @@ module.
 
 ## Things that bit, so they don't bite twice
 
+**A big part becomes unhittable as it grows, because range is measured to its
+CENTRE.** `isAimedAt` takes a point and checks 3D distance against
+`MINE_RANGE` (15). Passing a part's `.Position` is fine for a rock and fatal for
+a keep: at 30 studs tall its centre sits ~15 studs up, so standing against its
+own wall measures **19.9 studs** and no swing ever lands. Elimination was
+therefore impossible — and it passed every test in the stage-2 tier, because the
+keep was half the height then. Nothing errored; the keep simply never took
+damage.
+
+The fix is `nearestPointOn`, which clamps the aim point to the part's surface, and
+every base-part target now uses it. **Measure range to the surface, not the
+middle** — and treat "this worked when the object was smaller" as a reason to
+re-test, not a reason to assume.
+
 **`Terrain:FillBall(..., Enum.Material.Water)` is a silent no-op.** Since the
 Shorelines change, water is not a material in the solid voxel grid — it is its
 own `LiquidOccupancy` channel — and the whole `Fill*` family cannot write it.

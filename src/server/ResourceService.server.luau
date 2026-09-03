@@ -595,6 +595,24 @@ end
 
 -- In range AND roughly in front. The facing half is what makes a swing aimed
 -- rather than a proximity button, and every target type shares it.
+-- The nearest point on a part to somebody standing outside it, in world space.
+--
+-- This exists because range is measured in 3D to whatever point we hand
+-- isAimedAt, and handing it a big part's CENTRE makes that part unhittable as it
+-- grows. The keep is 30 studs tall, so its centre sits ~15 studs up; from its
+-- own wall the 3D distance to that centre is ~17 against a MINE_RANGE of 15, and
+-- the keep could not be damaged from anywhere at all. Elimination was therefore
+-- impossible - silently, because the same code passed when the keep was half the
+-- height. Aim at the surface, not the middle.
+local function nearestPointOn(part: BasePart, from: Vector3): Vector3
+	local inPart = part.CFrame:PointToObjectSpace(from)
+	local half = part.Size / 2
+	return part.CFrame:PointToWorldSpace(Vector3.new(
+		math.clamp(inPart.X, -half.X, half.X),
+		math.clamp(inPart.Y, -half.Y, half.Y),
+		math.clamp(inPart.Z, -half.Z, half.Z)))
+end
+
 local function isAimedAt(root: BasePart, position: Vector3, range: number): (boolean, number)
 	local delta = position - root.Position
 	local distance = delta.Magnitude
@@ -1364,7 +1382,7 @@ local function findGateTarget(raider: Player, character: Model): Base?
 	for _, base in bases do
 		local owner = baseOwner(base)
 		if owner and owner ~= raider.UserId and base.wall > 0 and base.gate then
-			local aimed, distance = isAimedAt(root, base.gate.Position, MINE_RANGE)
+			local aimed, distance = isAimedAt(root, nearestPointOn(base.gate, root.Position), MINE_RANGE)
 			if aimed and distance < bestDistance then
 				best = base
 				bestDistance = distance
@@ -1406,7 +1424,7 @@ local function findSpecialistTarget(raider: Player, character: Model): (Base?, s
 			-- plot and thousands of traversals a second once villages are built.
 			for role, host in base.workshops do
 				if rosterOf(owner)[role] then
-					local aimed, distance = isAimedAt(root, host.Position, MINE_RANGE)
+					local aimed, distance = isAimedAt(root, nearestPointOn(host, root.Position), MINE_RANGE)
 					if aimed and distance < bestDistance then
 						bestBase, bestRole, bestHost, bestDistance = base, role, host, distance
 					end
@@ -1437,7 +1455,7 @@ local function findKeepTarget(raider: Player, character: Model): Base?
 			and base.keep -- no keep bought yet means nothing to raze
 			and specialistsLeft(base) == 0
 		then
-			local aimed, distance = isAimedAt(root, base.keep.Position, MINE_RANGE)
+			local aimed, distance = isAimedAt(root, nearestPointOn(base.keep, root.Position), MINE_RANGE)
 			if aimed and distance < bestDistance then
 				best = base
 				bestDistance = distance
@@ -1458,7 +1476,7 @@ local function findStockpileTarget(raider: Player, character: Model): Base?
 	for _, base in bases do
 		local owner = baseOwner(base)
 		if owner and owner ~= raider.UserId and base.breached then
-			local aimed, distance = isAimedAt(root, base.stockpile.Position, MINE_RANGE)
+			local aimed, distance = isAimedAt(root, nearestPointOn(base.stockpile, root.Position), MINE_RANGE)
 			if aimed and distance < bestDistance then
 				best = base
 				bestDistance = distance
