@@ -23,20 +23,24 @@ local Terrain = Workspace.Terrain
 -- satisfy the wrapper would make every future diff unreadable.
 return function()
 
-local MAP_SIZE = 512
+local MAP_SIZE = 1152
 local SOIL_THICK = 30 -- terrain slab, top surface at y = 0
 
--- 7 x 72 = 504 against a 512 map, so the board IS the world with a hair of
+-- 7 x 160 = 1120 against a 1152 map, so the board IS the world with a hair of
 -- margin. There is no surrounding countryside any more and no lake.
+--
+-- The tiles were 72 and are now 160. A 72 stud tile held one rock and a village
+-- barely wider than its own gate; at 160 a tile is a place you cross, a node is
+-- a stand of several, and a village is a village.
 local GRID = 7
-local TILE = 72
+local TILE = 160
 local BOARD = GRID * TILE
 
 -- Row-major, row 1 at -Z. Fixed rather than shuffled so the map is a place you
 -- can learn, and so the stone and ore tiles stay spread: the walk between nodes
 -- is what gives the regen curve in ResourceService any teeth.
 --   F forest/wood   P pasture/wool   G grain
---   H hills/stone   M mountains/ore  V village (spawn)
+--   H hills/stone   M mountains/ore  V the totem plaza at the centre
 local LAYOUT = {
 	"FPGHMFP",
 	"GMHFPGH",
@@ -55,11 +59,11 @@ local TILE_MATERIAL = {
 	G = Enum.Material.Ground, -- tilled earth
 	H = Enum.Material.Rock,
 	M = Enum.Material.Basalt, -- darker than the stone hills, on purpose
-	V = Enum.Material.Cobblestone, -- the village
+	V = Enum.Material.Cobblestone, -- the totem plaza
 }
 
--- Which resource a tile grows, and therefore which node goes on it. The village
--- grows nothing; it is where you spawn and where the starter wall is.
+-- Which resource a tile grows, and therefore which node goes on it. The centre
+-- tile grows nothing; it is the totem plaza.
 local TILE_RESOURCE = {
 	F = "Wood",
 	P = "Wool",
@@ -86,10 +90,18 @@ local function cornerPoint(i: number, j: number): Vector2
 end
 
 -- ---------------------------------------------------------------- teardown
-for _, name in { "MedievalLand_Scenery", "MedievalLand_Board", "ResourceNodes", "BuildSites", "SpawnLocation", "Baseplate" } do
+for _, name in { "MedievalLand_Scenery", "MedievalLand_Board", "ResourceNodes", "BuildSites", "VillageSquare", "SpawnLocation", "Baseplate" } do
 	local existing = Workspace:FindFirstChild(name)
 	if existing then
 		existing:Destroy()
+	end
+end
+-- Older worlds put a bare SpawnLocation at the origin. Sweep any survivor by
+-- class as well as by name, or the engine keeps spawning people on a pad that
+-- is no longer part of the map.
+for _, thing in Workspace:GetDescendants() do
+	if thing:IsA("SpawnLocation") then
+		thing:Destroy()
 	end
 end
 for _, toolName in { "Pickaxe", "Axe", "Hoe", "Shears" } do
@@ -131,30 +143,66 @@ local function groundHeight(x: number, z: number): number
 	return if hit then hit.Position.Y else 0
 end
 
--- ---------------------------------------------------------------- board edges
+-- ---------------------------------------------------------------- tile seams
+-- The tiles used to be separated by sandstone kerbs, which made the board read
+-- as a diagram rather than a place. The grid still has to be legible - you
+-- should always know which tile you are standing on, because that is what tells
+-- you what grows here - but the seam between two tiles should look like ground
+-- meeting ground.
+--
+-- So each interior border is broken up with overlapping patches of BOTH
+-- neighbours' materials, thrown to alternating sides of the line. The two
+-- materials bite into each other and the boundary comes out ragged instead of
+-- ruled. Patches are square and randomly turned rather than round: a filled
+-- ball would have to be sunk so deep to avoid doming above the surface that it
+-- would barely tint the ground you actually walk on.
 local board = Instance.new("Folder")
 board.Name = "MedievalLand_Board"
 board.Parent = Workspace
 
-local function kerb(name: string, centre: Vector3, size: Vector3)
-	local part = Instance.new("Part")
-	part.Name = name
-	part.Size = size
-	part.Position = centre
-	part.Anchored = true
-	part.CanCollide = false -- you walk over tile lines, not into them
-	part.Material = Enum.Material.Sandstone
-	part.Color = Color3.fromRGB(206, 196, 172)
-	part.TopSurface = Enum.SurfaceType.Smooth
-	part.BottomSurface = Enum.SurfaceType.Smooth
-	part.Parent = board
+local SEAM_PATCHES = 8
+
+local function blendSeam(from: Vector2, to: Vector2, matA: Enum.Material, matB: Enum.Material)
+	local along = to - from
+	local length = along.Magnitude
+	local dir = along.Unit
+	local perp = Vector2.new(-dir.Y, dir.X)
+
+	for i = 1, SEAM_PATCHES do
+		local t = ((i - 0.5) / SEAM_PATCHES + rng:NextNumber(-0.05, 0.05)) * length
+		local side = if i % 2 == 0 then 1 else -1
+		local spill = rng:NextNumber(3, 13)
+		local at = from + dir * t + perp * (side * spill)
+		local size = rng:NextNumber(16, 34)
+		Terrain:FillBlock(
+			CFrame.new(at.X, -SOIL_THICK / 2, at.Y) * CFrame.Angles(0, rng:NextNumber(0, 6.28), 0),
+			Vector3.new(size, SOIL_THICK, size),
+			if side > 0 then matA else matB
+		)
+	end
 end
 
-for line = 1, GRID + 1 do
-	local offset = (line - 1 - GRID / 2) * TILE
-	local y = groundHeight(offset, 0) + 0.08
-	kerb(("KerbZ%d"):format(line), Vector3.new(offset, y, 0), Vector3.new(1.1, 0.35, BOARD))
-	kerb(("KerbX%d"):format(line), Vector3.new(0, y, offset), Vector3.new(BOARD, 0.35, 1.1))
+for row = 1, GRID do
+	for col = 1, GRID do
+		local here = TILE_MATERIAL[tileKind(row, col)]
+		local centre = tileCentre(row, col)
+		local half = TILE / 2
+		-- Only the +X and +Z borders, so every seam is walked exactly once.
+		if col < GRID then
+			blendSeam(
+				Vector2.new(centre.X + half, centre.Y - half),
+				Vector2.new(centre.X + half, centre.Y + half),
+				here, TILE_MATERIAL[tileKind(row, col + 1)]
+			)
+		end
+		if row < GRID then
+			blendSeam(
+				Vector2.new(centre.X - half, centre.Y + half),
+				Vector2.new(centre.X + half, centre.Y + half),
+				here, TILE_MATERIAL[tileKind(row + 1, col)]
+			)
+		end
+	end
 end
 
 -- ---------------------------------------------------------------- nodes
@@ -199,10 +247,12 @@ local function makeForest(name: string, origin: Vector3): Model
 	model.Name = name
 	model:SetAttribute("Resource", "Wood")
 
+	-- Eight trees spread over most of the tile. On a 160 stud tile the old five
+	-- at a 22 stud radius sat in the middle like a potted plant.
 	local trunkPrimary: Part? = nil
-	for t = 1, 5 do
-		local angle = (t / 5) * math.pi * 2 + rng:NextNumber(-0.4, 0.4)
-		local dist = if t == 1 then 0 else rng:NextNumber(9, 22)
+	for t = 1, 8 do
+		local angle = (t / 8) * math.pi * 2 + rng:NextNumber(-0.4, 0.4)
+		local dist = if t == 1 then 0 else rng:NextNumber(16, 56)
 		local x = origin.X + math.cos(angle) * dist
 		local z = origin.Z + math.sin(angle) * dist
 		local ground = groundHeight(x, z)
@@ -253,9 +303,9 @@ local function makePasture(name: string, origin: Vector3): Model
 	model:SetAttribute("Resource", "Wool")
 
 	local primary: Part? = nil
-	for s = 1, 4 do
+	for s = 1, 6 do
 		local angle = rng:NextNumber(0, math.pi * 2)
-		local dist = if s == 1 then 0 else rng:NextNumber(7, 20)
+		local dist = if s == 1 then 0 else rng:NextNumber(14, 50)
 		local x = origin.X + math.cos(angle) * dist
 		local z = origin.Z + math.sin(angle) * dist
 		local ground = groundHeight(x, z)
@@ -318,7 +368,7 @@ local function makeField(name: string, origin: Vector3): Model
 	-- which is exactly what it should look like.
 	local plot = newPart(
 		"Plot",
-		Vector3.new(32, 0.5, 32),
+		Vector3.new(62, 0.5, 62),
 		CFrame.new(origin.X, ground + 0.25, origin.Z),
 		model
 	)
@@ -326,15 +376,18 @@ local function makeField(name: string, origin: Vector3): Model
 	plot.Color = Color3.fromRGB(112, 88, 62)
 	model.PrimaryPart = plot
 
-	local rows = 5
+	-- Clumps deliberately WIDER than their spacing, so they overlap into a
+	-- continuous crop. Spaced apart they read as a tray of yellow cubes, which
+	-- is the one look this whole map is trying not to have.
+	local rows = 7
 	for r = 1, rows do
 		for c = 1, rows do
-			local x = origin.X + (c - (rows + 1) / 2) * 6.0
-			local z = origin.Z + (r - (rows + 1) / 2) * 6.0
+			local x = origin.X + (c - (rows + 1) / 2) * 8.2 + rng:NextNumber(-1.1, 1.1)
+			local z = origin.Z + (r - (rows + 1) / 2) * 8.2 + rng:NextNumber(-1.1, 1.1)
 			local height = rng:NextNumber(2.6, 3.4)
 			local stalk = wearing(newPart(
 				("Wheat%d_%d"):format(r, c),
-				Vector3.new(4.2, height, 4.2),
+				Vector3.new(10.4, height, 10.4),
 				CFrame.new(x, ground + 0.5 + height / 2, z)
 					* CFrame.Angles(0, rng:NextNumber(0, 6.28), 0),
 				model
@@ -349,14 +402,16 @@ local function makeField(name: string, origin: Vector3): Model
 end
 
 -- --- quarry and mine ---------------------------------------------
+-- A hill tile is a RANGE now, not a boulder: three outcrops spread across the
+-- tile rather than one lump at the centre. At 160 studs a single rock left the
+-- rest of the tile as empty floor, and made a stone tile something you stood on
+-- top of instead of somewhere you walked into.
 local function makeOutcrop(name: string, origin: Vector3, resource: string): Model
 	local model = Instance.new("Model")
 	model.Name = name
 	model:SetAttribute("Resource", resource)
 
 	local isOre = resource == "Ore"
-	local groundY = groundHeight(origin.X, origin.Z)
-	local coreCentre = groundY + 2.4
 
 	local function stone(partName: string, size: Vector3, cframe: CFrame, wears: boolean): Part
 		local part = newPart(partName, size, cframe, model)
@@ -376,62 +431,81 @@ local function makeOutcrop(name: string, origin: Vector3, resource: string): Mod
 		return part
 	end
 
-	-- No dominant centre block: one big box with smaller boxes tucked against it
-	-- reads as a box. A cluster whose TOPS sit at different heights is what gives
-	-- a rock its broken silhouette.
-	local core = stone(
-		"Core",
-		Vector3.new(3.4, 4.6, 3.0),
-		CFrame.new(origin.X, coreCentre, origin.Z) * CFrame.Angles(math.rad(5), math.rad(22), math.rad(-7)),
-		false
-	)
-	model.PrimaryPart = core
+	-- One outcrop of the range. Scale varies per outcrop so the three do not
+	-- read as the same rock stamped out three times.
+	local function outcrop(tag: string, at: Vector2, scale: number): Part
+		local groundY = groundHeight(at.X, at.Y)
+		local coreCentre = groundY + 2.4 * scale
 
-	for i = 1, 8 do
-		local width = rng:NextNumber(2.2, 3.6)
-		local height = rng:NextNumber(2.4, 5.2)
-		local angle = (i / 8) * math.pi * 2 + rng:NextNumber(-0.3, 0.3)
-		local dist = rng:NextNumber(1.7, 3.1)
-		local baseY = groundY + rng:NextNumber(0, 1.1)
-		stone(
-			"Block" .. i,
-			Vector3.new(width, height, width * rng:NextNumber(0.75, 1.2)),
-			CFrame.new(
-				origin.X + math.cos(angle) * dist,
-				baseY + height / 2,
-				origin.Z + math.sin(angle) * dist
-			) * CFrame.Angles(rng:NextNumber(-0.22, 0.22), rng:NextNumber(0, 6.28), rng:NextNumber(-0.26, 0.26)),
-			true
-		)
-	end
-
-	for i = 1, 2 do
-		local height = rng:NextNumber(3.0, 4.4)
-		stone(
-			"Shard" .. i,
-			Vector3.new(rng:NextNumber(1.3, 2.0), height, rng:NextNumber(1.3, 2.0)),
-			CFrame.new(
-				origin.X + rng:NextNumber(-1.6, 1.6),
-				coreCentre + 1.6 + height / 2,
-				origin.Z + rng:NextNumber(-1.6, 1.6)
-			) * CFrame.Angles(rng:NextNumber(-0.28, 0.28), rng:NextNumber(0, 6.28), rng:NextNumber(-0.28, 0.28)),
-			true
-		)
-	end
-
-	-- Rubble stays: it is what makes the outcrop sit in the ground rather than
-	-- on it, and it should survive the seam being worked out.
-	for i = 1, 6 do
-		local angle = rng:NextNumber(0, math.pi * 2)
-		local dist = rng:NextNumber(3.2, 6.0)
-		local size = rng:NextNumber(0.7, 1.9)
-		stone(
-			"Rubble" .. i,
-			Vector3.new(size, size * rng:NextNumber(0.5, 0.9), size * rng:NextNumber(0.7, 1.2)),
-			CFrame.new(origin.X + math.cos(angle) * dist, groundY + 0.25, origin.Z + math.sin(angle) * dist)
-				* CFrame.Angles(rng:NextNumber(-0.4, 0.4), rng:NextNumber(0, 6.28), rng:NextNumber(-0.4, 0.4)),
+		-- No dominant centre block: one big box with smaller boxes tucked
+		-- against it reads as a box. A cluster whose TOPS sit at different
+		-- heights is what gives a rock its broken silhouette.
+		local core = stone(
+			tag .. "Core",
+			Vector3.new(3.4, 4.6, 3.0) * scale,
+			CFrame.new(at.X, coreCentre, at.Y) * CFrame.Angles(math.rad(5), math.rad(22), math.rad(-7)),
 			false
 		)
+
+		for i = 1, 6 do
+			local width = rng:NextNumber(2.2, 3.6) * scale
+			local height = rng:NextNumber(2.4, 5.2) * scale
+			local angle = (i / 6) * math.pi * 2 + rng:NextNumber(-0.3, 0.3)
+			local dist = rng:NextNumber(1.7, 3.1) * scale
+			local baseY = groundY + rng:NextNumber(0, 1.1)
+			stone(
+				("%sBlock%d"):format(tag, i),
+				Vector3.new(width, height, width * rng:NextNumber(0.75, 1.2)),
+				CFrame.new(
+					at.X + math.cos(angle) * dist,
+					baseY + height / 2,
+					at.Y + math.sin(angle) * dist
+				) * CFrame.Angles(rng:NextNumber(-0.22, 0.22), rng:NextNumber(0, 6.28), rng:NextNumber(-0.26, 0.26)),
+				true
+			)
+		end
+
+		for i = 1, 2 do
+			local height = rng:NextNumber(3.0, 4.4) * scale
+			stone(
+				("%sShard%d"):format(tag, i),
+				Vector3.new(rng:NextNumber(1.3, 2.0) * scale, height, rng:NextNumber(1.3, 2.0) * scale),
+				CFrame.new(
+					at.X + rng:NextNumber(-1.6, 1.6),
+					coreCentre + 1.6 * scale + height / 2,
+					at.Y + rng:NextNumber(-1.6, 1.6)
+				) * CFrame.Angles(rng:NextNumber(-0.28, 0.28), rng:NextNumber(0, 6.28), rng:NextNumber(-0.28, 0.28)),
+				true
+			)
+		end
+
+		-- Rubble stays: it is what makes the outcrop sit IN the ground rather
+		-- than on it, and it should survive the seam being worked out.
+		for i = 1, 4 do
+			local angle = rng:NextNumber(0, math.pi * 2)
+			local dist = rng:NextNumber(3.2, 6.0) * scale
+			local size = rng:NextNumber(0.7, 1.9) * scale
+			stone(
+				("%sRubble%d"):format(tag, i),
+				Vector3.new(size, size * rng:NextNumber(0.5, 0.9), size * rng:NextNumber(0.7, 1.2)),
+				CFrame.new(at.X + math.cos(angle) * dist, groundY + 0.25, at.Y + math.sin(angle) * dist)
+					* CFrame.Angles(rng:NextNumber(-0.4, 0.4), rng:NextNumber(0, 6.28), rng:NextNumber(-0.4, 0.4)),
+				false
+			)
+		end
+
+		return core
+	end
+
+	-- Three outcrops on a wide triangle, jittered, so the range has no obvious
+	-- centre to stand in the middle of.
+	local spin = rng:NextNumber(0, math.pi * 2)
+	for i = 0, 2 do
+		local angle = spin + (i / 3) * math.pi * 2
+		local dist = rng:NextNumber(24, 42)
+		local at = Vector2.new(origin.X + math.cos(angle) * dist, origin.Z + math.sin(angle) * dist)
+		local core = outcrop(("Rock%d"):format(i + 1), at, rng:NextNumber(1.15, 1.75))
+		model.PrimaryPart = model.PrimaryPart or core
 	end
 
 	model.Parent = nodes
@@ -463,48 +537,256 @@ for row = 1, GRID do
 	end
 end
 
--- ---------------------------------------------------------------- village
-local villageGround = groundHeight(0, 0)
+-- ---------------------------------------------------------------- totem
+-- The centre used to be a bare sandstone spawn pad. It is now a totem: a
+-- landmark tall enough to navigate by from most of the board, standing on the
+-- one point the closing zone converges toward.
+--
+-- Spawning did not disappear with the pad, it moved OFF the centre - eight
+-- small pads ringing the plaza. The engine picks between them, which spreads
+-- arrivals out instead of stacking twelve players on one square, and it keeps
+-- the fallback ResourceService leans on when a knocked-down player has no keep
+-- left to return to.
+local square = Instance.new("Folder")
+square.Name = "VillageSquare"
+square.Parent = Workspace
 
-local spawnPad = Instance.new("SpawnLocation")
-spawnPad.Name = "SpawnLocation"
-spawnPad.Size = Vector3.new(14, 1, 14)
-spawnPad.Position = Vector3.new(0, villageGround + 0.5, 0)
-spawnPad.Anchored = true
-spawnPad.Material = Enum.Material.Sandstone
-spawnPad.Color = Color3.fromRGB(196, 174, 138)
--- Spawn protection. It was 0 while nothing could hurt you; from Tier 4 there is
--- combat, and a forcefield-free spawn pad is a place to be farmed on respawn.
-spawnPad.Duration = 8
-spawnPad.Parent = Workspace
+local plazaGround = groundHeight(0, 0)
+
+local function plazaPart(name: string, size: Vector3, cframe: CFrame,
+	material: Enum.Material, color: Color3): Part
+	local part = Instance.new("Part")
+	part.Name = name
+	part.Size = size
+	part.CFrame = cframe
+	part.Anchored = true
+	part.Material = material
+	part.Color = color
+	part.TopSurface = Enum.SurfaceType.Smooth
+	part.BottomSurface = Enum.SurfaceType.Smooth
+	part.Parent = square
+	return part
+end
+
+local function drum(name: string, radius: number, height: number, atY: number,
+	material: Enum.Material, color: Color3, yaw: number): Part
+	-- A Cylinder part runs along its own X, so the length goes in Size.X and the
+	-- part is stood upright by rolling 90 degrees about Z.
+	local part = plazaPart(name, Vector3.new(height, radius * 2, radius * 2),
+		CFrame.new(0, plazaGround + atY + height / 2, 0)
+			* CFrame.Angles(0, yaw, 0) * CFrame.Angles(0, 0, math.rad(90)),
+		material, color)
+	part.Shape = Enum.PartType.Cylinder
+	return part
+end
+
+plazaPart("TotemStep", Vector3.new(26, 1.2, 26),
+	CFrame.new(0, plazaGround + 0.6, 0) * CFrame.Angles(0, math.rad(45), 0),
+	Enum.Material.Cobblestone, Color3.fromRGB(150, 144, 132))
+
+drum("TotemPlinth", 4.2, 2.0, 1.2, Enum.Material.Slate, Color3.fromRGB(104, 100, 96), 0)
+
+-- The shaft: carved sections separated by proud collars, each section turned a
+-- little off the last so the stack reads as carved rather than extruded. Tall
+-- and NARROW is the whole point - at five studs across it was a barrel, and a
+-- landmark you are meant to navigate by has to be legible as a shape from a
+-- long way off, not just tall.
+local TOTEM_SECTIONS = {
+	{ radius = 2.7, height = 5.4, color = Color3.fromRGB(96, 66, 42) },
+	{ radius = 2.5, height = 4.8, color = Color3.fromRGB(78, 54, 36) },
+	{ radius = 2.6, height = 5.2, color = Color3.fromRGB(112, 78, 46) },
+	{ radius = 2.3, height = 4.6, color = Color3.fromRGB(88, 60, 40) },
+	{ radius = 2.1, height = 4.2, color = Color3.fromRGB(96, 66, 42) },
+}
+local bandY = 3.2
+for i, band in TOTEM_SECTIONS do
+	drum(("TotemBand%d"):format(i), band.radius, band.height, bandY,
+		Enum.Material.Wood, band.color, rng:NextNumber(0, 6.28))
+	bandY += band.height
+	if i < #TOTEM_SECTIONS then
+		drum(("TotemCollar%d"):format(i), band.radius + 0.9, 0.8, bandY,
+			Enum.Material.Wood, Color3.fromRGB(150, 122, 70), rng:NextNumber(0, 6.28))
+		bandY += 0.8
+	end
+end
+
+-- Crossbeam near the top, so the silhouette is not just a post.
+plazaPart("TotemArms", Vector3.new(13, 1.0, 1.4),
+	CFrame.new(0, plazaGround + bandY - 3.0, 0) * CFrame.Angles(0, math.rad(28), 0),
+	Enum.Material.Wood, Color3.fromRGB(78, 54, 36))
+for _, sx in { -1, 1 } do
+	plazaPart("TotemPennant", Vector3.new(0.3, 2.6, 1.8),
+		CFrame.new(sx * 5.6, plazaGround + bandY - 4.5, 0) * CFrame.Angles(0, math.rad(28), 0),
+		Enum.Material.Fabric, Color3.fromRGB(148, 62, 54))
+end
+
+drum("TotemCap", 3.0, 1.2, bandY, Enum.Material.Slate, Color3.fromRGB(84, 78, 76), 0)
+
+-- A lit crown. The totem has to be findable at dusk as well as at noon, and
+-- this is the one thing on the board allowed to glow.
+local beacon = plazaPart("TotemBeacon", Vector3.new(3.6, 3.6, 3.6),
+	CFrame.new(0, plazaGround + bandY + 3.4, 0) * CFrame.Angles(math.rad(45), 0, math.rad(45)),
+	Enum.Material.Neon, Color3.fromRGB(238, 196, 108))
+local glow = Instance.new("PointLight")
+glow.Brightness = 2.4
+glow.Range = 46
+glow.Color = Color3.fromRGB(255, 214, 140)
+glow.Parent = beacon
+
+-- Standing stones around the plaza, which give the square an edge without
+-- walling it in.
+for i = 1, 8 do
+	local angle = (i / 8) * math.pi * 2
+	local x, z = math.cos(angle) * 25, math.sin(angle) * 25
+	local height = rng:NextNumber(8.5, 12.0)
+	plazaPart(("StandingStone%d"):format(i), Vector3.new(2.8, height, 1.9),
+		CFrame.new(x, groundHeight(x, z) + height / 2, z)
+			* CFrame.Angles(rng:NextNumber(-0.05, 0.05), -angle, rng:NextNumber(-0.06, 0.06)),
+		Enum.Material.Rock, Color3.fromRGB(120, 116, 110))
+end
+
+-- The spawn ring. Small and flush with the ground: these are where you arrive,
+-- not something to look at.
+for i = 1, 8 do
+	local angle = (i / 8) * math.pi * 2 + math.pi / 8
+	local x, z = math.cos(angle) * 34, math.sin(angle) * 34
+	local pad = Instance.new("SpawnLocation")
+	pad.Name = ("SpawnPad%d"):format(i)
+	-- Flush and the same stone as the plaza. Raised pads read as slabs somebody
+	-- dropped on the grass; these are meant to be paving you arrive on and then
+	-- stop noticing.
+	pad.Size = Vector3.new(7, 0.5, 7)
+	pad.CFrame = CFrame.new(x, groundHeight(x, z) + 0.25, z) * CFrame.Angles(0, -angle, 0)
+	pad.Anchored = true
+	pad.Neutral = true
+	pad.Material = Enum.Material.Cobblestone
+	pad.Color = Color3.fromRGB(150, 144, 132)
+	pad.TopSurface = Enum.SurfaceType.Smooth
+	-- Spawn protection. It was 0 while nothing could hurt you; from Tier 4 there
+	-- is combat, and a forcefield-free pad is a place to be farmed on respawn.
+	pad.Duration = 8
+	pad.Parent = square
+end
 
 -- ---------------------------------------------------------------- bases
--- DESIGN.md v1 base: a perimeter wall on a SINGLE HP value, one gate as the only
--- chokepoint, and a stockpile holding the exposed slice of the owner's goods.
--- Everything else inside the ring is dressing - the doc asks for the village to
--- be laid out with distinct buildings now, visually, with only one of them
--- functionally the stockpile until specialists exist.
+-- A claimable site is a VILLAGE now, not a walled yard. The mechanics are
+-- unchanged and deliberately so - one wall on a single HP value, one gate as the
+-- only chokepoint, one stockpile, one keep - but the thing those mechanics are
+-- attached to is somewhere you can walk around inside.
 --
--- The ring is geometry: how much of it stands is drawn from the wall's one HP
--- value by ResourceService. There are no per-block hitpoints.
+-- Everything past the wall, gate, stockpile and keep is dressing. The doc asks
+-- for the village laid out with distinct buildings NOW, visually, and explicitly
+-- says not to wire per-building raid logic until specialists exist.
+--
+-- Not blocky is a constraint the shapes have to carry, so three things do that
+-- work: pitched roofs instead of flat lids, exposed timber framing on the walls,
+-- and one round tower among the square houses so the skyline is not a row of
+-- identical boxes.
 local buildSites = Instance.new("Folder")
 buildSites.Name = "BuildSites"
 buildSites.Parent = Workspace
 
-local BASE_FOOTPRINT = 30
-local WALL_HALF = 12 -- ring sits at +/- this
-local WALL_BLOCK = Vector3.new(4.6, 4.5, 2.6)
-local WALL_SPAN = 4.6 -- centre-to-centre along a side
+local BASE_FOOTPRINT = 92
+local WALL_HALF = 44 -- ring sits at +/- this
+local WALL_BLOCK = Vector3.new(13, 9, 3.4)
+local WALL_SPAN = 12.6 -- centre-to-centre along a side
 
--- Ring slots, walked as a perimeter so the visual wall fills in evenly rather
--- than growing one wall at a time. The gate takes the middle of the front side.
+local DAUB = Color3.fromRGB(214, 204, 182)
+local TIMBER = Color3.fromRGB(74, 52, 34)
+local THATCH = Color3.fromRGB(146, 118, 68)
+local TILED = Color3.fromRGB(112, 62, 48)
+
+local function sitePart(parent: Instance, name: string, size: Vector3, cframe: CFrame,
+	material: Enum.Material, color: Color3): Part
+	local part = Instance.new("Part")
+	part.Name = name
+	part.Size = size
+	part.CFrame = cframe
+	part.Anchored = true
+	part.Material = material
+	part.Color = color
+	part.TopSurface = Enum.SurfaceType.Smooth
+	part.BottomSurface = Enum.SurfaceType.Smooth
+	part.Parent = parent
+	return part
+end
+
+local function siteDrum(parent: Instance, name: string, radius: number, height: number,
+	at: CFrame, material: Enum.Material, color: Color3): Part
+	local part = sitePart(parent, name, Vector3.new(height, radius * 2, radius * 2),
+		at * CFrame.new(0, height / 2, 0) * CFrame.Angles(0, 0, math.rad(90)), material, color)
+	part.Shape = Enum.PartType.Cylinder
+	return part
+end
+
+-- A gable roof from two wedges meeting at a ridge. A WedgePart is tall at its
+-- +Z face and tapers to nothing at -Z - measured in Studio, not assumed - so
+-- each half is turned to aim its tall side at the ridge line.
+local function gable(parent: Instance, eaves: CFrame, width: number, depth: number,
+	height: number, color: Color3)
+	for _, side in { 1, -1 } do
+		local half = Instance.new("WedgePart")
+		half.Name = "RoofHalf"
+		half.Size = Vector3.new(depth, height, width / 2)
+		half.CFrame = eaves
+			* CFrame.new(-side * width / 4, height / 2, 0)
+			* CFrame.Angles(0, math.rad(90) * side, 0)
+		half.Anchored = true
+		half.Material = Enum.Material.Slate
+		half.Color = color
+		half.TopSurface = Enum.SurfaceType.Smooth
+		half.BottomSurface = Enum.SurfaceType.Smooth
+		half.Parent = parent
+	end
+end
+
+-- One cottage: daub walls, timber framing, a pitched roof, door facing +Z.
+local function cottage(parent: Instance, name: string, ground: CFrame, width: number,
+	depth: number, wallHeight: number, roofColor: Color3): Model
+	local model = Instance.new("Model")
+	model.Name = name
+
+	sitePart(model, "Walls", Vector3.new(width, wallHeight, depth),
+		ground * CFrame.new(0, wallHeight / 2, 0), Enum.Material.Sandstone, DAUB)
+
+	-- Framing. Corner posts and a mid rail, thin and standing proud of the wall.
+	-- This is most of the difference between a cottage and a box.
+	for _, sx in { -1, 1 } do
+		for _, sz in { -1, 1 } do
+			sitePart(model, "Post", Vector3.new(0.6, wallHeight, 0.6),
+				ground * CFrame.new(sx * (width / 2 - 0.2), wallHeight / 2, sz * (depth / 2 - 0.2)),
+				Enum.Material.Wood, TIMBER)
+		end
+	end
+	for _, sz in { -1, 1 } do
+		sitePart(model, "Rail", Vector3.new(width + 0.3, 0.55, 0.4),
+			ground * CFrame.new(0, wallHeight * 0.6, sz * (depth / 2 + 0.05)),
+			Enum.Material.Wood, TIMBER)
+	end
+
+	gable(model, ground * CFrame.new(0, wallHeight, 0), width + 1.8, depth + 1.8,
+		wallHeight * 0.95, roofColor)
+
+	sitePart(model, "Door", Vector3.new(2.4, 3.6, 0.35),
+		ground * CFrame.new(0, 1.8, depth / 2 + 0.1), Enum.Material.Wood, Color3.fromRGB(88, 58, 36))
+	for _, sx in { -1, 1 } do
+		sitePart(model, "Window", Vector3.new(1.6, 1.6, 0.3),
+			ground * CFrame.new(sx * width * 0.3, wallHeight * 0.62, depth / 2 + 0.1),
+			Enum.Material.Glass, Color3.fromRGB(62, 72, 68))
+	end
+
+	model.Parent = parent
+	return model
+end
+
+local RING_STEPS = 7 -- wall blocks per side
+
 local function ringSlots(): { CFrame }
 	local slots: { CFrame } = {}
-	local steps = 5 -- per side
-	local half = (steps - 1) / 2
+	local half = (RING_STEPS - 1) / 2
 	for side = 0, 3 do
 		local yaw = math.rad(90 * side)
-		for i = 0, steps - 1 do
+		for i = 0, RING_STEPS - 1 do
 			local along = (i - half) * WALL_SPAN
 			slots[#slots + 1] = CFrame.Angles(0, yaw, 0) * CFrame.new(along, 0, WALL_HALF)
 		end
@@ -513,7 +795,7 @@ local function ringSlots(): { CFrame }
 end
 
 local RING = ringSlots()
-local GATE_SLOT = 3 -- middle of the first side
+local GATE_SLOT = math.ceil(RING_STEPS / 2) -- middle of the first side
 
 local function makeBase(name: string, centre: Vector2)
 	local ground = groundHeight(centre.X, centre.Y)
@@ -521,29 +803,44 @@ local function makeBase(name: string, centre: Vector2)
 	site.Name = name
 	site:SetAttribute("Kind", "Base")
 
+	-- Bare earth, not a cobbled plate. The streets are laid on top; a village
+	-- floored edge to edge in stone reads as a car park.
 	local foundation = Instance.new("Part")
 	foundation.Name = "Foundation"
 	foundation.Size = Vector3.new(BASE_FOOTPRINT, 1, BASE_FOOTPRINT)
 	foundation.Position = Vector3.new(centre.X, ground + 0.5, centre.Y)
 	foundation.Anchored = true
-	foundation.Material = Enum.Material.Cobblestone
-	foundation.Color = Color3.fromRGB(150, 144, 132)
+	foundation.Material = Enum.Material.Ground
+	foundation.Color = Color3.fromRGB(122, 106, 84)
 	foundation.TopSurface = Enum.SurfaceType.Smooth
 	foundation.BottomSurface = Enum.SurfaceType.Smooth
 	foundation.Parent = site
 	site.PrimaryPart = foundation
 
+	-- Local frame for everything inside: the foundation's top surface.
+	local floor = foundation.CFrame * CFrame.new(0, 0.5, 0)
+	local function at(x: number, z: number, yaw: number): CFrame
+		return floor * CFrame.new(x, 0, z) * CFrame.Angles(0, math.rad(yaw), 0)
+	end
+
 	local prompt = Instance.new("ProximityPrompt")
 	prompt.Name = "BuildPrompt"
 	prompt.ActionText = "Build"
-	prompt.ObjectText = "Base"
+	prompt.ObjectText = "Village"
 	prompt.HoldDuration = 0.35
-	-- Has to cover the whole compound, not just the middle. The foundation is 30
-	-- across and the gate sits 12 out, so a 16 stud reach left the owner unable
-	-- to repair while standing at their own gate - exactly where a defender is.
-	prompt.MaxActivationDistance = 26
+	-- Has to cover the whole compound, not just the middle. The village is 92
+	-- across and the gate sits 44 out, so the reach has to clear the gate or the
+	-- owner cannot repair while standing at it - exactly where a defender is.
+	prompt.MaxActivationDistance = 72
 	prompt.RequiresLineOfSight = false
 	prompt.Parent = foundation
+
+	-- Streets. A spine from the gate to the keep and one crossing it, which is
+	-- what turns a scatter of houses into a village with a middle.
+	sitePart(site, "StreetSpine", Vector3.new(11, 0.3, 84), at(0, 0, 0),
+		Enum.Material.Cobblestone, Color3.fromRGB(148, 142, 130))
+	sitePart(site, "StreetCross", Vector3.new(74, 0.3, 9), at(0, 6, 0),
+		Enum.Material.Cobblestone, Color3.fromRGB(148, 142, 130))
 
 	-- Where ResourceService puts the wall blocks it raises. The slot CFrames are
 	-- published as attributes so the service does not need the ring maths.
@@ -551,9 +848,6 @@ local function makeBase(name: string, centre: Vector2)
 	sections.Name = "Sections"
 	sections.Parent = site
 
-	local slots = Instance.new("Folder")
-	slots.Name = "WallSlots"
-	slots.Parent = site
 	for index, slot in RING do
 		if index ~= GATE_SLOT then
 			local marker = Instance.new("Attachment")
@@ -563,12 +857,36 @@ local function makeBase(name: string, centre: Vector2)
 		end
 	end
 
-	-- The gate. One chokepoint, and the only thing an attacker can hit: see
-	-- ResourceService. Always present, whether or not the wall has been raised.
+	-- Corner towers. Permanent, never part of the wall's HP: they close the four
+	-- gaps the straight runs leave and give the perimeter a shape you can read
+	-- from outside even before a single block is raised.
+	for corner = 0, 3 do
+		local yaw = math.rad(90 * corner + 45)
+		local reach = WALL_HALF * math.sqrt(2)
+		local tower = at(math.sin(yaw) * reach, math.cos(yaw) * reach, 0)
+		siteDrum(site, "CornerTower", 5.4, 13, tower, Enum.Material.Cobblestone,
+			Color3.fromRGB(132, 126, 116))
+		siteDrum(site, "CornerCap", 6.2, 1.6, tower * CFrame.new(0, 13, 0),
+			Enum.Material.Slate, Color3.fromRGB(88, 82, 78))
+	end
+
+	-- The footing the wall stands on. Permanent and only knee high, so an
+	-- unclaimed village still reads as a walled village rather than a scatter of
+	-- houses - but it is scenery, not cover: it has no HP, it stops nobody, and
+	-- a breached village SHOULD be open ground. The raised blocks cover it.
+	for side = 0, 3 do
+		local yaw = math.rad(90 * side)
+		sitePart(site, "WallFooting", Vector3.new(WALL_HALF * 2, 1.4, WALL_BLOCK.Z),
+			floor * CFrame.Angles(0, yaw, 0) * CFrame.new(0, 0.7, WALL_HALF),
+			Enum.Material.Cobblestone, Color3.fromRGB(124, 118, 108))
+	end
+
+	-- The gate. One chokepoint, and the only thing an attacker can hit while the
+	-- wall stands: see ResourceService. Always present, raised or not.
 	local gate = Instance.new("Part")
 	gate.Name = "Gate"
-	gate.Size = Vector3.new(WALL_BLOCK.X + 0.6, WALL_BLOCK.Y + 1.4, WALL_BLOCK.Z)
-	gate.CFrame = foundation.CFrame * RING[GATE_SLOT] * CFrame.new(0, (WALL_BLOCK.Y + 1.4) / 2 + 0.5, 0)
+	gate.Size = Vector3.new(WALL_BLOCK.X + 1.2, WALL_BLOCK.Y + 3.0, WALL_BLOCK.Z)
+	gate.CFrame = foundation.CFrame * RING[GATE_SLOT] * CFrame.new(0, (WALL_BLOCK.Y + 3.0) / 2 + 0.5, 0)
 	gate.Anchored = true
 	gate.Material = Enum.Material.WoodPlanks
 	gate.Color = Color3.fromRGB(104, 72, 44)
@@ -578,17 +896,17 @@ local function makeBase(name: string, centre: Vector2)
 	gatePrompt.Name = "GateFace"
 	gatePrompt.Parent = gate
 
-	-- The keep. The heart of the base and the last thing standing: razing it is
-	-- what eliminates its owner. It sits at the centre and stands taller than
-	-- anything else, because a besieger needs to be able to pick out what they
-	-- are actually trying to reach from outside the wall.
+	-- The keep. The heart of the village and the last thing standing: razing it
+	-- is what eliminates its owner. Tallest thing on the site by a clear margin,
+	-- because a besieger needs to pick out what they are trying to reach from
+	-- outside the wall.
 	--
 	-- ResourceService will not let it take a scratch until the wall is down AND
 	-- the stockpile is empty, so this is always the third stage of a siege.
 	local keep = Instance.new("Part")
 	keep.Name = "Keep"
-	keep.Size = Vector3.new(9, 15, 9)
-	keep.CFrame = foundation.CFrame * CFrame.new(0, 8, -3.5)
+	keep.Size = Vector3.new(16, 26, 16)
+	keep.CFrame = at(0, -20, 0) * CFrame.new(0, 13, 0)
 	keep.Anchored = true
 	keep.Material = Enum.Material.Brick
 	keep.Color = Color3.fromRGB(128, 118, 108)
@@ -596,59 +914,118 @@ local function makeBase(name: string, centre: Vector2)
 
 	local crown = Instance.new("Part")
 	crown.Name = "KeepCrown"
-	crown.Size = Vector3.new(10.6, 1.4, 10.6)
-	crown.CFrame = keep.CFrame * CFrame.new(0, 8.2, 0)
+	crown.Size = Vector3.new(18.4, 2.0, 18.4)
+	crown.CFrame = keep.CFrame * CFrame.new(0, 14, 0)
 	crown.Anchored = true
 	crown.Material = Enum.Material.Slate
 	crown.Color = Color3.fromRGB(84, 78, 76)
 	crown.Parent = site
 
-	-- The stockpile, moved off the centre to make room for the keep and set
-	-- toward the gate: the thing a raid is after should be the thing it reaches
-	-- first once the wall is down.
+	-- Battlements, so the keep is a keep and not a chimney.
+	for merlon = 0, 11 do
+		local ring = merlon / 12 * math.pi * 2
+		sitePart(site, "Merlon", Vector3.new(2.6, 2.4, 2.6),
+			crown.CFrame * CFrame.new(math.cos(ring) * 8.0, 2.2, math.sin(ring) * 8.0),
+			Enum.Material.Brick, Color3.fromRGB(118, 108, 100))
+	end
+
+	-- The stockpile, set toward the gate: the thing a raid is after should be
+	-- the thing it reaches first once the wall is down.
 	local stockpile = Instance.new("Part")
 	stockpile.Name = "Stockpile"
-	stockpile.Size = Vector3.new(6.5, 5, 6)
-	stockpile.CFrame = foundation.CFrame * CFrame.new(0, 3, 7.5)
+	stockpile.Size = Vector3.new(10, 7, 9)
+	stockpile.CFrame = at(0, 22, 0) * CFrame.new(0, 3.5, 0)
 	stockpile.Anchored = true
 	stockpile.Material = Enum.Material.WoodPlanks
 	stockpile.Color = Color3.fromRGB(150, 116, 76)
 	stockpile.Parent = site
 
-	local roof = Instance.new("Part")
-	roof.Name = "StockpileRoof"
-	roof.Size = Vector3.new(7.6, 1.0, 7.1)
-	roof.CFrame = stockpile.CFrame * CFrame.new(0, 3.0, 0)
-	roof.Anchored = true
-	roof.Material = Enum.Material.Slate
-	roof.Color = Color3.fromRGB(92, 84, 80)
-	roof.Parent = site
+	gable(site, stockpile.CFrame * CFrame.new(0, 3.5, 0), 11.6, 10.6, 4.4,
+		Color3.fromRGB(92, 84, 80))
 
-	-- Dressing. The doc wants the village laid out with distinct buildings now,
-	-- visually, and explicitly says NOT to wire per-building raid logic yet.
-	local dressing = {
-		{ name = "Blacksmith", offset = Vector3.new(-8.5, 0, -8), size = Vector3.new(5, 4, 5), color = Color3.fromRGB(88, 80, 74) },
-		{ name = "Alchemist", offset = Vector3.new(8.5, 0, -8), size = Vector3.new(4.5, 4.5, 4.5), color = Color3.fromRGB(120, 112, 138) },
-		{ name = "Barracks", offset = Vector3.new(-8.5, 0, 7), size = Vector3.new(5.5, 3.6, 4.5), color = Color3.fromRGB(126, 104, 84) },
-	}
-	for _, spec in dressing do
-		local hut = Instance.new("Part")
-		hut.Name = spec.name
-		hut.Size = spec.size
-		hut.CFrame = foundation.CFrame * CFrame.new(spec.offset + Vector3.new(0, spec.size.Y / 2 + 0.5, 0))
-		hut.Anchored = true
-		hut.Material = Enum.Material.WoodPlanks
-		hut.Color = spec.color
-		hut.Parent = site
+	-- --- the village proper ---------------------------------------
+	-- The blacksmith, with a forge chimney and an anvil outside it.
+	local smithy = at(-27, -22, 12)
+	cottage(site, "Blacksmith", smithy, 15, 12, 8.5, TILED)
+	sitePart(site, "ForgeChimney", Vector3.new(3.2, 15, 3.2), smithy * CFrame.new(-5.4, 7.5, -3),
+		Enum.Material.Brick, Color3.fromRGB(96, 74, 64))
+	sitePart(site, "AnvilBlock", Vector3.new(2.2, 1.6, 1.6), smithy * CFrame.new(4.5, 0.8, 8),
+		Enum.Material.Wood, Color3.fromRGB(78, 56, 38))
+	sitePart(site, "Anvil", Vector3.new(2.6, 1.0, 1.1), smithy * CFrame.new(4.5, 2.1, 8),
+		Enum.Material.Metal, Color3.fromRGB(64, 66, 72))
+
+	-- The alchemist's tower. Round, so the skyline has something that is not a
+	-- box, and second only to the keep in height.
+	local wizard = at(27, -22, -14)
+	siteDrum(site, "AlchemistBase", 6.4, 1.8, wizard, Enum.Material.Slate,
+		Color3.fromRGB(118, 112, 104))
+	siteDrum(site, "AlchemistShaft", 5.6, 15, wizard * CFrame.new(0, 1.8, 0),
+		Enum.Material.Brick, Color3.fromRGB(138, 130, 148))
+	siteDrum(site, "AlchemistCorbel", 6.5, 1.4, wizard * CFrame.new(0, 16.8, 0),
+		Enum.Material.Slate, Color3.fromRGB(104, 96, 116))
+	-- Spire from shrinking drums: Roblox has no cone, and six steps is enough
+	-- that the steps stop reading as steps.
+	for i = 0, 5 do
+		siteDrum(site, ("AlchemistSpire%d"):format(i), 5.6 * (1 - i * 0.16), 1.5,
+			wizard * CFrame.new(0, 18.2 + i * 1.35, 0), Enum.Material.Slate,
+			Color3.fromRGB(72, 60, 92))
 	end
+	sitePart(site, "AlchemistDoor", Vector3.new(2.4, 3.6, 0.4), wizard * CFrame.new(0, 3.6, 5.6),
+		Enum.Material.Wood, Color3.fromRGB(74, 50, 82))
+
+	-- Farmers. Two houses, each with a tilled strip beside it - dressing, not a
+	-- node: harvestable ground lives in ResourceNodes and nowhere else.
+	for _, farm in { { x = -29, flip = 1 }, { x = 29, flip = -1 } } do
+		local house = at(farm.x, -2, farm.flip * -90)
+		cottage(site, "FarmerHouse", house, 13, 10, 7.5, THATCH)
+
+		local plot = at(farm.x, 16, 0)
+		sitePart(site, "FarmPlot", Vector3.new(15, 0.4, 14), plot, Enum.Material.Ground,
+			Color3.fromRGB(112, 88, 62))
+		for r = 1, 3 do
+			for c = 1, 3 do
+				local height = rng:NextNumber(2.2, 3.0)
+				sitePart(site, "FarmCrop", Vector3.new(5.4, height, 5.4),
+					plot * CFrame.new((c - 2) * 4.4, 0.2 + height / 2, (r - 2) * 4.2)
+						* CFrame.Angles(0, rng:NextNumber(0, 6.28), 0),
+					Enum.Material.Grass, Color3.fromRGB(206, 176, 92))
+			end
+		end
+	end
+
+	-- Village homes, along the street in from the gate.
+	local homes = {
+		{ x = -28, z = 26, yaw = 90, w = 12, d = 10, h = 7 },
+		{ x = 28, z = 26, yaw = -90, w = 12, d = 10, h = 7 },
+		{ x = -13, z = 32, yaw = 8, w = 11, d = 9, h = 6.5 },
+		{ x = 13, z = 32, yaw = -8, w = 11, d = 9, h = 6.5 },
+		{ x = -15, z = -37, yaw = 172, w = 11, d = 9, h = 6.5 },
+		{ x = 15, z = -37, yaw = 188, w = 11, d = 9, h = 6.5 },
+	}
+	for index, home in homes do
+		cottage(site, ("Home%d"):format(index), at(home.x, home.z, home.yaw),
+			home.w, home.d, home.h, if index % 2 == 0 then THATCH else TILED)
+	end
+
+	-- The well, where the two streets cross.
+	local wellAt = at(0, 6, 0)
+	siteDrum(site, "WellWall", 3.2, 2.6, wellAt, Enum.Material.Cobblestone,
+		Color3.fromRGB(126, 120, 110))
+	siteDrum(site, "WellMouth", 2.5, 0.5, wellAt * CFrame.new(0, 2.6, 0), Enum.Material.Slate,
+		Color3.fromRGB(38, 40, 44))
+	for _, sx in { -1, 1 } do
+		sitePart(site, "WellPost", Vector3.new(0.5, 5, 0.5), wellAt * CFrame.new(sx * 2.6, 5.1, 0),
+			Enum.Material.Wood, TIMBER)
+	end
+	gable(site, wellAt * CFrame.new(0, 7.6, 0), 7.5, 5, 2.2, THATCH)
 
 	site.Parent = buildSites
 	return site
 end
 
--- Roughly a dozen claimable bases, which is the player count Conquest is written
--- for. A checkerboard of the interior tile corners, minus the ring around the
--- village so spawn does not open onto somebody's keep.
+-- Roughly a dozen claimable villages, which is the player count Conquest is
+-- written for. A checkerboard of the interior tile corners, minus the ring
+-- around the totem so nobody spawns straight into somebody's keep.
 local plotCount = 0
 for i = 2, GRID do
 	for j = 2, GRID do

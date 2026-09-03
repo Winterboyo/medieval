@@ -1359,8 +1359,9 @@ local function reviveAt(player: Player)
 	if home and home.keepHealth > 0 and inZone(home.keep.Position) then
 		root.CFrame = CFrame.new(home.keep.Position + Vector3.new(0, 4, 13))
 	end
-	-- Otherwise they keep the SpawnLocation the engine gave them, which is the
-	-- village at the centre and therefore always inside the zone.
+	-- Otherwise they keep the SpawnLocation the engine gave them, which is one of
+	-- the pads ringing the totem plaza at the centre - the point the zone closes
+	-- onto, so always inside it.
 end
 
 -- ---------------------------------------------------------------- tools

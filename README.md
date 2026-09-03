@@ -7,8 +7,8 @@ Roblox game, built in tiers. See the tier order in
 says so itself: if anything here conflicts with an older note, the doc wins.
 
 **Where this is:** a Catan board filling the whole map, five resources with a tool
-each, bases that fall in a three-stage siege, knockdown instead of respawn, and
-the Conquest match clock with its shrinking zone.
+each, walled villages that fall in a three-stage siege, knockdown instead of
+respawn, and the Conquest match clock with its shrinking zone.
 
 **Reputation is no longer next.** The doc moves it under "Negotiation & reputation
 — stretch goal, needs specialists first" and corrects it to within-match only.
@@ -80,16 +80,21 @@ one-shot, triggered by hand from `ServerStorage.BuildWorld`.
 
 ## The board
 
-A 7×7 grid of 72-stud square tiles. 7 × 72 = 504 against a 512 map, so the board
-*is* the world — there is no surrounding countryside and no lake. It is dead
-flat, because relief would fight the grid and bury nodes.
+A 7×7 grid of **160-stud** square tiles. 7 × 160 = 1120 against a 1152 map, so the
+board *is* the world — there is no surrounding countryside and no lake. It is
+dead flat, because relief would fight the grid and bury nodes.
+
+The tiles were 72 and are now 160, which is more than four times the area. At 72
+a tile held one rock and a claimable site was barely wider than its own gate; at
+160 a tile is somewhere you cross, a node is a stand of several, and a site is a
+village you can walk around inside.
 
 The layout is fixed rather than shuffled, so the map is a place you can learn:
 
 ```
 F P G H M F P      F forest / Wood      H hills / Stone
 G M H F P G H      P pasture / Wool     M mountains / Ore
-P F M G H M F      G fields / Grain     V village (spawn)
+P F M G H M F      G fields / Grain     V the totem plaza
 H G P V F P G
 M H F P G H M
 F P G M H F P
@@ -97,15 +102,41 @@ G M H F P G M
 ```
 
 Six terrain materials, one per tile kind, because a tile you cannot identify from
-ground level is just coloured floor. **One node per resource tile, at its centre
-— a tile *is* its node.** 48 nodes: 10 Wood, 10 Wool, 10 Grain, 9 Stone, 9 Ore.
+ground level is just coloured floor. **One node per resource tile** — a tile *is*
+its node. 48 nodes: 10 Wood, 10 Wool, 10 Grain, 9 Stone, 9 Ore.
 
-The village at the centre has the spawn pad and the starter wall, and grows
-nothing.
+### The seams
 
-**A castle plot on every interior tile corner** — the Catan settlement spots —
-minus the ring around the village, so spawn does not open onto somebody's keep.
-32 of them.
+The tiles used to be separated by sandstone kerbs, which made the board read as a
+diagram rather than a place. The grid still has to be legible — knowing which
+tile you stand on is what tells you what grows here — but a border between two
+tiles should look like ground meeting ground.
+
+So every interior border is broken up with overlapping patches of **both**
+neighbours' materials, thrown to alternating sides of the line, so the two bite
+into each other and the boundary comes out ragged instead of ruled. Measured
+across one 160-stud seam: 8 material changes, where a ruled line gives 0–1.
+
+Patches are square and randomly turned rather than round. A filled *ball* would
+have to be sunk so deep to avoid doming above the surface that it would barely
+tint the ground you actually walk on — its intersection with the surface plane
+shrinks to a point exactly as it gets big enough to matter.
+
+### The totem
+
+The centre is a **totem**, not a spawn pad: a landmark tall enough to navigate by
+from most of the board, standing on the one point the closing zone converges
+toward. A ring of standing stones marks the plaza.
+
+Spawning did not disappear with the pad, it moved *off* the centre — eight small
+pads ringing the plaza, flush with the ground. The engine picks between them,
+which spreads twelve arrivals out instead of stacking them on one square, and it
+keeps the fallback `reviveAt` leans on when a knocked-down player has no keep
+left to return to.
+
+**A village plot on every interior tile corner** — the Catan settlement spots —
+minus the ring around the totem, so nobody spawns straight into somebody's keep.
+16 of them.
 
 ## Resources
 
@@ -163,14 +194,35 @@ nobody else can build there, but anybody can raid it.
 
 ## Bases and raiding
 
-A base is the doc's v1 structure: a perimeter wall on **one HP value**, **one
-gate**, and a **stockpile**. 16 of them on a checkerboard of the interior tile
-corners — roughly the player count Conquest is written for.
+A claimable site is a **village**, not a walled yard. The mechanics are unchanged
+and deliberately so — a perimeter wall on **one HP value**, **one gate**, one
+**stockpile**, one **keep** — but the thing they are attached to is now 92 studs
+across and somewhere you can walk around inside. 16 of them on a checkerboard of
+the interior tile corners, roughly the player count Conquest is written for.
+
+Inside the wall: the keep, the stockpile, a **blacksmith** with a forge chimney
+and an anvil, a round **alchemist's tower**, two **farmers' houses** with tilled
+strips, six **village homes**, a well where the two streets cross, and four
+corner towers. Everything past the wall, gate, stockpile and keep is dressing —
+the doc asks for the village laid out with distinct buildings *now*, visually,
+and explicitly says not to wire per-building raid logic until specialists exist.
+
+**Not blocky** is a constraint the shapes carry, and three things do that work:
+pitched roofs instead of flat lids, exposed timber framing on the daub walls, and
+one round tower among the square houses so the skyline is not a row of identical
+boxes. Roofs are built from two wedges meeting at a ridge — a `WedgePart` is tall
+at its +Z face and tapers to nothing at −Z, which was measured in Studio rather
+than assumed.
+
+**The wall has a permanent footing.** An unclaimed village would otherwise have no
+wall at all, since the wall is the thing a player builds. The footing is knee
+high and it is scenery, not cover: no HP, stops nobody, and a breached village
+*should* be open ground. Raised blocks cover it.
 
 **The ring of blocks is not twenty-odd little walls.** It is a readout: how many
 blocks stand is drawn from the single wall value. Each purchase of 4 Wood + 4
 Stone buys 25 HP and raises one block; damage lowers the value and drops blocks
-to match. A full wall is 19 blocks, 475 HP.
+to match. A full wall is **27 blocks, 675 HP** — 28 ring slots minus the gate.
 
 **The gate is the only place the wall can be hurt.** That is the point of there
 being one — a raid is a commitment to one approach rather than chipping at
@@ -315,8 +367,11 @@ already talks to itself: through attributes on instances, not a shared module.
 | `ZoneHalf` | half-extent of the playable square, in studs |
 
 The board is a 7×7 grid centred on the origin and dead flat, so **the boundary is
-one number, not a shape**. It holds at the full 252 for the first 20% of the
-match, closes linearly to 60 by 90%, then holds. A boundary that starts closing
+one number, not a shape**. It holds at the full 560 for the first 20% of the
+match, closes linearly to 130 by 90%, then holds. Both numbers scale with the
+board; the final ring is deliberately wide enough to hold a village or two, since
+closing onto something smaller than a single compound would decide the match by
+whose walls happened to sit nearest the middle. A boundary that starts closing
 on the first second gives nobody time to establish; one still closing at the
 whistle never forces contact.
 
@@ -416,6 +471,21 @@ be placed on the shaft by eye.
 prompt sits on the base foundation, and the gate is 12 studs out from it, so a
 16 stud reach left the owner unable to repair while standing at their own gate —
 exactly where a defender is. It is 26 now, sized to the compound.
+
+**A test harness that drops the character on top of scenery will frame a bug in
+the wrong place.** Sweeping a build prompt outward to find its range gave
+*non-monotonic* results — fires at 16, ignored at 18–22, fires at 24–28 — which
+reads exactly like an engine cap on `MaxActivationDistance`. It was not. Those
+dead bands are where the stockpile and the houses stand: the character was being
+dropped onto a roof, shoved off, and ending up somewhere other than the test
+position. Placing it on a raycast surface and asserting **drift ≈ 0** before
+triggering, the prompt fires at every distance out to 70 studs, exactly as
+configured.
+
+Two lessons, and the second is the expensive one. Raycast for a standing spot —
+the same fix as the buried node. And **treat a non-monotonic result as evidence
+the harness is wrong**, not as a strange property of the thing being measured; a
+real distance cutoff cannot switch back on when you move further away.
 
 **`rojo serve` running during a playtest kills the session.** The plugin cannot
 make HTTP requests from a play datamodel — the console shows *"Http requests can

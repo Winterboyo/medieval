@@ -33,8 +33,12 @@ local DEFAULT_MATCH_LENGTH = 45 * 60
 
 -- The board is a 7x7 grid of 72-stud tiles centred on the origin and dead flat,
 -- so the boundary is one number rather than a shape.
-local ZONE_START_HALF = 252 -- the whole board
-local ZONE_FINAL_HALF = 60 -- closes onto the village at the centre
+-- Both scale with the board, which is now 7 x 160 rather than 7 x 72. The final
+-- ring is deliberately wide enough to hold a village or two: closing onto
+-- something smaller than a single compound would decide the match by whose
+-- walls happened to sit nearest the middle.
+local ZONE_START_HALF = 560 -- the whole board
+local ZONE_FINAL_HALF = 130 -- closes onto the totem at the centre
 local ZONE_GRACE = 0.20 -- fraction of the match before it starts closing
 local ZONE_CLOSED_BY = 0.90 -- fraction by which it has finished closing
 
