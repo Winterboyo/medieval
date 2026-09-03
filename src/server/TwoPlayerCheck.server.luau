@@ -377,7 +377,38 @@ task.spawn(function()
 	record("victim stripped of specialists", (victim:GetAttribute("SpecialistCount") :: number) == 0,
 		("count = %s"):format(tostring(victim:GetAttribute("SpecialistCount"))))
 
-	-- ---- 8. keep falls, elimination, fold, win --------------------
+	-- ---- 8. the theft forces a negotiation ------------------------
+	-- The panel itself needs a human clicking it, so what is checked here is
+	-- the half that does not: that a theft opens a session at all, and that the
+	-- doc's escalation - killing the messenger - actually costs the killer.
+	task.wait(1.5)
+	local messengers = Workspace:FindFirstChild("Messengers")
+	local messenger: Model? = nil
+	if messengers then
+		for _, thing in messengers:GetChildren() do
+			if thing:IsA("Model") and thing.PrimaryPart then
+				messenger = thing
+			end
+		end
+	end
+	record("theft sends a messenger", messenger ~= nil,
+		("messengers standing: %d"):format(if messengers then #messengers:GetChildren() else 0))
+
+	if messenger then
+		local anchor = (messenger :: Model).PrimaryPart :: BasePart
+		local pausedBefore = raider:GetAttribute("LabourPausedUntil")
+		place(raider, anchor.Position + Vector3.new(0, 0, 7), anchor.Position)
+		swing(raider, 2)
+		task.wait(1)
+		local pausedAfter = raider:GetAttribute("LabourPausedUntil")
+		record("killing the messenger enrages your own people",
+			typeof(pausedAfter) == "number" and pausedAfter ~= pausedBefore,
+			("LabourPausedUntil %s -> %s, messenger removed = %s"):format(
+				tostring(pausedBefore), tostring(pausedAfter),
+				tostring((messenger :: Model).Parent == nil)))
+	end
+
+	-- ---- 9. keep falls, elimination, fold, win --------------------
 	place(raider, keep.Position + Vector3.new(0, 0, (keep.Size.Z / 2) + 4), keep.Position)
 	local keepStart = base:GetAttribute("KeepHealth") :: number
 

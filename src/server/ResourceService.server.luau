@@ -42,6 +42,16 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 -- version-controlled instead of appearing at runtime.
 local notifyRemote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("Notify")
 
+-- Signals, not shared state. The attribute seam this project uses everywhere
+-- else describes what something IS; these describe something that HAPPENED, and
+-- encoding an event as an incrementing attribute counter is a worse version of
+-- a BindableEvent. They are server-only, so nothing crosses to a client here.
+local eventsFolder = ServerStorage:WaitForChild("Events")
+local specialistStolenSignal = eventsFolder:WaitForChild("SpecialistStolen") :: BindableEvent
+local messengerStruckSignal = eventsFolder:WaitForChild("MessengerStruck") :: BindableEvent
+local reputationDeltaSignal = eventsFolder:WaitForChild("ReputationDelta") :: BindableEvent
+local specialistSetSignal = eventsFolder:WaitForChild("SpecialistSet") :: BindableEvent
+
 local YIELD_PER_SWING = 1
 local MINE_RANGE = 15 -- studs, character root to node
 local FACING_DOT = 0.25 -- must be roughly looking at the node, not just near it
@@ -1498,6 +1508,34 @@ local function findSpecialistTarget(raider: Player, character: Model): (Base?, s
 	return bestBase, bestRole, bestHost
 end
 
+-- Nearest messenger you are aimed at. Messengers are the only raid target that
+-- is not part of a base, because DESIGN.md wants killing one to be an
+-- escalation open to either side - and if it is a real figure standing in a
+-- village then killing it is an ordinary swing rather than a button in a menu.
+local function findMessengerTarget(character: Model): Model?
+	local root = character:FindFirstChild("HumanoidRootPart")
+	if not root or not root:IsA("BasePart") then
+		return nil
+	end
+	local folder = Workspace:FindFirstChild("Messengers")
+	if not folder then
+		return nil
+	end
+	local best: Model? = nil
+	local bestDistance = math.huge
+	for _, messenger in folder:GetChildren() do
+		local anchor = if messenger:IsA("Model") then messenger.PrimaryPart else nil
+		if anchor then
+			local aimed, distance = isAimedAt(root, nearestPointOn(anchor, root.Position), MINE_RANGE)
+			if aimed and distance < bestDistance then
+				best = messenger :: Model
+				bestDistance = distance
+			end
+		end
+	end
+	return best
+end
+
 -- Nearest enemy KEEP you are aimed at, and only on a base that has already lost
 -- its wall, had its stockpile emptied AND lost every specialist. That ordering is
 -- the whole design: elimination is a completed siege, never a lucky hit on the
@@ -1857,12 +1895,14 @@ local function attemptSwing(player: Player, toolName: string)
 				if taken then
 					local incoming: Specialist = { role = stolenRole, rank = taken.rank, stolen = true }
 					local existing = rosterOf(player)[stolenRole]
+					local transferred = false
 					if existing and outputOf(existing) >= outputOf(incoming) then
 						-- Ours is better, so theirs is simply gone. Denial is
 						-- still worth the swing.
 						notifyPlayer(player, ("Took %s's %s - yours was better, theirs is lost"):format(
 							victim.Name, stolenRole))
 					else
+						transferred = true
 						rosterOf(player)[stolenRole] = incoming
 						publishRoster(player)
 						notifyPlayer(player, ("Took %s from %s - %s"):format(
@@ -1880,6 +1920,18 @@ local function attemptSwing(player: Player, toolName: string)
 
 					adjustReputation(player, REPUTATION_THEFT_PENALTY,
 						("took %s from %s"):format(stolenRole, victim.Name))
+
+					-- NegotiationService takes it from here: the doc says a theft
+					-- forces an engagement between the two players.
+					--
+					-- ONLY when the specialist actually changed hands. On the
+					-- denial branch they were destroyed rather than taken, so
+					-- there is nobody to ransom - and opening a session anyway
+					-- would end by granting the thief a soured copy of someone
+					-- they never had, overwriting the better one they kept.
+					if transferred then
+						specialistStolenSignal:Fire(player, victim, stolenRole, taken.rank)
+					end
 
 					local away = (root.Position - workshopHost.Position)
 					away = Vector3.new(away.X, 0, away.Z)
@@ -1923,7 +1975,15 @@ local function attemptSwing(player: Player, toolName: string)
 			return
 		end
 
-		-- 6. something to harvest, if this tool can harvest it
+		-- 6. a messenger. The doc's escalation, and a swing rather than a menu
+		-- choice on purpose - it should feel like something you did.
+		local messenger = findMessengerTarget(liveCharacter)
+		if messenger then
+			messengerStruckSignal:Fire(player, messenger)
+			return
+		end
+
+		-- 7. something to harvest, if this tool can harvest it
 		local node, hitPoint = findNode(liveCharacter, toolName)
 		if not node or not hitPoint then
 			-- Aimed at something harvestable but holding the wrong thing. Worth
@@ -2014,7 +2074,12 @@ task.spawn(function()
 			local owner = ownerId and Players:GetPlayerByUserId(ownerId)
 			-- A village outside the closing boundary stops producing, the same
 			-- rule its nodes already follow, and a razed one produces nothing.
-			if owner and base.keepHealth > 0 and inZone(base.foundation.Position) then
+			-- A village whose people have been enraged stops working. That is
+			-- what "enrages the killer's own troops" cashes out to in a game
+			-- with no troops: the labourers you do have put their tools down.
+			local pausedUntil = owner and owner:GetAttribute("LabourPausedUntil")
+			local paused = typeof(pausedUntil) == "number" and os.clock() < pausedUntil
+			if owner and not paused and base.keepHealth > 0 and inZone(base.foundation.Position) then
 				local cottages = math.min(base.stage, COTTAGE_STAGES)
 				for i = 1, cottages do
 					local counter = counterFor(owner, LABOUR_YIELD[i])
@@ -2194,6 +2259,28 @@ end
 siteFolder.ChildAdded:Connect(registerBase)
 
 Players.PlayerAdded:Connect(onPlayerAdded)
+-- The roster lives in this file too. A nil rank means "remove them"; anything
+-- else grants at that rank. NegotiationService uses both ends of this when a
+-- ransom settles: the thief loses them, the victim gets them back.
+specialistSetSignal.Event:Connect(function(player: Player, role: string, rank: number?, stolen: boolean)
+	if not (player and player:IsA("Player")) or typeof(role) ~= "string" then
+		return
+	end
+	if rank == nil then
+		takeSpecialist(player, role)
+	elseif typeof(rank) == "number" then
+		grantSpecialist(player, role, math.clamp(math.floor(rank), 1, MAX_RANK), stolen == true)
+	end
+end)
+
+-- Reputation lives in this file, so anything else that wants to move it asks
+-- rather than keeping its own copy.
+reputationDeltaSignal.Event:Connect(function(player: Player, delta: number, reason: string)
+	if typeof(delta) == "number" and player and player:IsA("Player") then
+		adjustReputation(player, delta, tostring(reason))
+	end
+end)
+
 Players.PlayerRemoving:Connect(function(player)
 	state[player] = nil
 	reputation[player] = nil

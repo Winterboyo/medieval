@@ -644,6 +644,31 @@ still fails instead of hanging.
 
 ## Things that bit, so they don't bite twice
 
+**A local function called above its own declaration silently truncated the whole
+world.** `makeMessengerTemplate()` was called at line 707 of `build-world.luau`
+and declared at line 869. In Lua a name does not exist until its declaration
+runs, and an undefined name is `nil` rather than an error - so this parsed
+perfectly and threw only when that line executed. Everything after it stopped:
+all 16 villages, every blueprint, all four tools, **and the entire lighting
+pass**, which therefore had never once run in the life of the project.
+
+Nothing caught it. The `luau` parse check cannot - it is valid syntax. The
+undeclared-identifier scan added after the `ZONE_START_HALF` incident only looked
+at `ALL_CAPS` names, and this was camelCase. And it was introduced in a tier
+whose verification never rebuilt the world.
+
+The check now looks for a `local function` **called at column 0 before its
+declaration line**. Indentation is the whole signal: a call from inside another
+function body is fine, because that body runs later. A top-level call runs
+immediately, and that is the fatal case.
+
+**`Lighting.Technology` is not scriptable.** `build-world.luau` sets it inside a
+`pcall`, which silently fails - the property cannot even be *read* from a plugin
+thread ("lacking capability RobloxScript"). Inspecting the instance shows
+`RBX_OriginalTechnologyOnFileLoad = 3`, i.e. **ShadowMap**, not Future. It has to
+be set by hand: Lighting → Technology → Future. Any lighting tuning done before
+checking which pipeline is actually live is tuning against the wrong renderer.
+
 **Surface-aiming fixes tall targets and breaks flat ones.** Clamping the aim
 point to a part's surface (`nearestPointOn`) was needed because range is measured
 in 3D to whatever point you hand `isAimedAt`, and a 30-stud keep's centre sits 15

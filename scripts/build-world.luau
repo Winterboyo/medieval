@@ -700,6 +700,15 @@ local buildSites = Instance.new("Folder")
 buildSites.Name = "BuildSites"
 buildSites.Parent = Workspace
 
+local oldMessenger = ServerStorage:FindFirstChild("MessengerTemplate")
+if oldMessenger then
+	oldMessenger:Destroy()
+end
+-- The template itself is BUILT further down, immediately after the function that
+-- makes it. Calling it here - above the declaration - was a call on a nil global,
+-- which threw and took the villages, the tools and the entire lighting pass with
+-- it. See the note on makeMessengerTemplate.
+
 local oldBlueprints = ServerStorage:FindFirstChild("VillageBlueprints")
 if oldBlueprints then
 	oldBlueprints:Destroy()
@@ -850,6 +859,48 @@ local function makeVillager(into: Instance, at: CFrame, shirt: Color3)
 		Enum.Material.Fabric, Color3.fromRGB(126, 98, 62))
 	figure.Parent = into
 end
+
+-- The messenger. Built once into ServerStorage and cloned whenever a
+-- negotiation opens, because unlike everything else in this file it appears at
+-- runtime rather than at world build.
+--
+-- It is a PHYSICAL figure rather than a dialog box on purpose: DESIGN.md wants
+-- either side to be able to escalate by killing the messenger, and if the
+-- messenger is a real thing standing in your village then killing it is just
+-- swinging at it - the combat that already exists - instead of a button that
+-- says "kill messenger".
+local function makeMessengerTemplate(): Model
+	local figure = Instance.new("Model")
+	figure.Name = "MessengerTemplate"
+
+	local torso = sitePart(figure, "Torso", Vector3.new(2.0, 2.6, 1.3),
+		CFrame.new(0, 3.5, 0), Enum.Material.Fabric, Color3.fromRGB(96, 74, 116))
+	figure.PrimaryPart = torso
+
+	sitePart(figure, "Legs", Vector3.new(1.6, 2.4, 1.2), CFrame.new(0, 1.2, 0),
+		Enum.Material.Fabric, Color3.fromRGB(64, 56, 70))
+	sitePart(figure, "Head", Vector3.new(1.3, 1.3, 1.3), CFrame.new(0, 5.4, 0),
+		Enum.Material.SmoothPlastic, Color3.fromRGB(214, 176, 140))
+	-- A tabard, so a messenger is not mistaken for a villager at a glance.
+	sitePart(figure, "Tabard", Vector3.new(2.2, 1.6, 1.5), CFrame.new(0, 3.4, 0),
+		Enum.Material.Fabric, Color3.fromRGB(150, 62, 58))
+	-- The staff and its pennant: the thing you can see over a wall.
+	sitePart(figure, "Staff", Vector3.new(0.3, 8, 0.3), CFrame.new(1.4, 4, 0),
+		Enum.Material.Wood, TIMBER)
+	sitePart(figure, "Pennant", Vector3.new(0.2, 1.8, 2.4), CFrame.new(1.4, 7.2, 1.2),
+		Enum.Material.Fabric, Color3.fromRGB(214, 196, 132))
+	sitePart(figure, "Scroll", Vector3.new(0.5, 0.5, 1.6), CFrame.new(-1.2, 3.6, 0.5),
+		Enum.Material.Sandstone, Color3.fromRGB(226, 214, 184))
+
+	return figure
+end
+
+-- Built here rather than up with the other ServerStorage teardown, because in
+-- Lua a name does not exist until its declaration has run. Calling this from
+-- line ~700 resolved to a nil GLOBAL: it parsed perfectly, threw at runtime, and
+-- silently truncated the world at the resource nodes - no villages, no tools, no
+-- lighting. Keep the call below the function.
+makeMessengerTemplate().Parent = ServerStorage
 
 local VILLAGER_SHIRTS = {
 	Color3.fromRGB(122, 96, 72),
@@ -1379,7 +1430,12 @@ Lighting.EnvironmentDiffuseScale = 0.5
 Lighting.EnvironmentSpecularScale = 0.5
 Lighting.ExposureCompensation = 0.1
 
-for _, className in { "Atmosphere", "SunRaysEffect", "ColorCorrectionEffect", "BloomEffect" } do
+-- DepthOfFieldEffect and Sky are in this list because the place file carries a
+-- stock Roblox skybox and an unconfigured DoF from the baseplate template. They
+-- were never authored, never referenced, and - because they were not in this
+-- list - survived every single rebuild.
+for _, className in { "Atmosphere", "SunRaysEffect", "ColorCorrectionEffect", "BloomEffect",
+	"DepthOfFieldEffect", "Sky" } do
 	local existing = Lighting:FindFirstChildOfClass(className)
 	if existing then
 		existing:Destroy()

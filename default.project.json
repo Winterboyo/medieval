@@ -13,6 +13,22 @@
 
       "BuildWorld": {
         "$path": "scripts/build-world.luau"
+      },
+
+      "Events": {
+        "$className": "Folder",
+        "SpecialistStolen": {
+          "$className": "BindableEvent"
+        },
+        "MessengerStruck": {
+          "$className": "BindableEvent"
+        },
+        "ReputationDelta": {
+          "$className": "BindableEvent"
+        },
+        "SpecialistSet": {
+          "$className": "BindableEvent"
+        }
       }
     },
 
@@ -23,6 +39,12 @@
       "Remotes": {
         "$className": "Folder",
         "Notify": {
+          "$className": "RemoteEvent"
+        },
+        "NegotiationState": {
+          "$className": "RemoteEvent"
+        },
+        "NegotiationAct": {
           "$className": "RemoteEvent"
         }
       }
