@@ -642,6 +642,51 @@ does not land, so a keep needing exactly 8 hits got 7 out of 10 and stopped at 2
 HP. **Loop to the outcome, not to a count**, and keep a cap so a genuine refusal
 still fails instead of hanging.
 
+## What the player can see
+
+For a long time the answer was: almost nothing. The server published the match
+clock once a second and **nothing read it, anywhere**. The zone was four
+translucent walls on the horizon. Keep health had no readout at all, not even
+prompt text. Specialists, reputation, build stage — all published, none drawn.
+
+`src/client/Hud.client.luau` draws them, and it **opens no remote**. Attributes on
+`Workspace`, on a `Player`, and on models in `Workspace` replicate to clients for
+free, and every number was already published as one. So the HUD is purely a
+reader: it asks the server for nothing and cannot desync from it, because it is
+displaying the server's own values rather than a copy of them.
+
+| Panel | Shows |
+|---|---|
+| Top centre | phase, clock, and how far the walls have closed |
+| Bottom left | the eight goods, raw on the top row and refined below |
+| Bottom right | village stage *n*/10, what is next, wall and keep meters, your specialists and standing |
+
+The one thing it computes itself is whether you are inside the boundary, since
+that depends on where you are standing. It uses the server's own max-axis rule.
+
+**The zone alarm replaced the worst spam in the game.** `MatchService` fired a
+toast *every second* you stood outside the boundary — and the toast is a single
+shared line, so a raid warning or a theft notice could not get a word in
+edgeways. It is a red screen edge now: permanent while it is true, silent
+otherwise, and it costs the notice channel nothing.
+
+**Ceilings are published, not assumed.** The meters first hardcoded 600 and 200
+because the server sent `Wall` and `KeepHealth` but never their maximums — which
+would have gone quietly wrong the moment either constant was retuned. `WallMax`
+and `KeepMax` are published now.
+
+### One palette
+
+There were two. The negotiation panel deliberately took the world's colours out
+of `build-world.luau`; the toast and the 48 node readouts predated it and used an
+unrelated near-black scheme. Two surfaces built at different times looking like
+they came from different games is most of what "unpolished" means, and it is the
+cheapest thing to fix. `src/shared/Palette.luau` is the single source now.
+
+Note its goods colours are deliberately **not** the tints in the node readouts:
+those colour a bar by regen *rate*, which is why Wood and Stone are near-identical
+greens there. Two different jobs need two different scales.
+
 ## Things that bit, so they don't bite twice
 
 **A local function called above its own declaration silently truncated the whole

@@ -465,7 +465,15 @@ task.spawn(function()
 					if humanoid and humanoid.Health > 0 and root and root:IsA("BasePart") then
 						if outsideBy(root.Position, zoneHalf) > 0 then
 							humanoid:TakeDamage(ZONE_DAMAGE)
-							notifyRemote:FireClient(player, "Outside the zone")
+							-- No notice. This used to fire a toast EVERY SECOND
+							-- for as long as you stood outside, which drowned
+							-- out every other message in the game - and the
+							-- toast is a single shared line, so a raid warning
+							-- or a theft could not get a word in.
+							--
+							-- The HUD draws a red edge instead: permanent while
+							-- it is true, silent while it is not, and it costs
+							-- the notice channel nothing.
 						end
 					end
 				end

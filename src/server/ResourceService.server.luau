@@ -1330,6 +1330,11 @@ local function registerBase(model: Instance)
 			exposed += amount
 		end
 		model:SetAttribute("LootLeft", exposed)
+		-- The ceilings, not just the current values. Without these a readout has
+		-- to hardcode 600 and 200, which silently goes wrong the moment either
+		-- constant is retuned - and the client would have no way to know.
+		model:SetAttribute("WallMax", base.wallMax)
+		model:SetAttribute("KeepMax", KEEP_HP)
 		model:SetAttribute("KeepHealth", math.floor(base.keepHealth))
 		model:SetAttribute("Fallen", base.keepHealth <= 0)
 		-- The keep darkens and finally slumps as it is broken up, so its state

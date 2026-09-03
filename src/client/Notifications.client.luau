@@ -17,6 +17,11 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 
+-- This surface predates the shared palette and used to carry its own near-black
+-- scheme, which meant the oldest and newest UI in the game looked like they came
+-- from different games. One palette now, taken from the world's own colours.
+local Palette = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Palette"))
+
 local NOTICE_TIME = 2.2
 local FADE = TweenInfo.new(0.18, Enum.EasingStyle.Quad)
 
@@ -36,17 +41,17 @@ label.AnchorPoint = Vector2.new(0.5, 1)
 label.Position = UDim2.new(0.5, 0, 0.82, 0)
 label.Size = UDim2.fromOffset(0, 34)
 label.AutomaticSize = Enum.AutomaticSize.X
-label.BackgroundColor3 = Color3.fromRGB(24, 24, 26)
+label.BackgroundColor3 = Palette.BOARD
 label.BackgroundTransparency = 1
-label.TextColor3 = Color3.fromRGB(240, 238, 232)
+label.TextColor3 = Palette.DAUB
 label.TextTransparency = 1
-label.Font = Enum.Font.GothamMedium
+label.Font = Palette.FONT_LABEL
 label.TextSize = 16
 label.Text = ""
 label.Parent = screen
 
 local corner = Instance.new("UICorner")
-corner.CornerRadius = UDim.new(0, 6)
+corner.CornerRadius = UDim.new(0, Palette.CORNER_CHIP)
 corner.Parent = label
 
 local padding = Instance.new("UIPadding")
