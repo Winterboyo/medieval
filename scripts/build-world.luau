@@ -826,7 +826,31 @@ end
 -- --- the four villager houses, deliberately identical -------------
 local HOUSE = { width = 17, depth = 15, wallHeight = 9, door = 4.6 }
 
-local function makeVillagerHouse(into: Instance, at: CFrame)
+-- A villager standing outside their door. Four parts, no animation, no AI: the
+-- point is only that a built cottage visibly houses SOMEBODY, because from this
+-- tier a cottage is a labourer rather than scenery.
+local function makeVillager(into: Instance, at: CFrame, shirt: Color3)
+	local figure = Instance.new("Model")
+	figure.Name = "Villager"
+	sitePart(figure, "Legs", Vector3.new(1.5, 2.2, 1.1), at * CFrame.new(0, 1.1, 0),
+		Enum.Material.Fabric, Color3.fromRGB(74, 62, 52))
+	sitePart(figure, "Torso", Vector3.new(1.9, 2.4, 1.2), at * CFrame.new(0, 3.4, 0),
+		Enum.Material.Fabric, shirt)
+	sitePart(figure, "Head", Vector3.new(1.2, 1.2, 1.2), at * CFrame.new(0, 5.2, 0),
+		Enum.Material.SmoothPlastic, Color3.fromRGB(214, 176, 140))
+	sitePart(figure, "Hat", Vector3.new(1.7, 0.5, 1.7), at * CFrame.new(0, 5.9, 0),
+		Enum.Material.Fabric, Color3.fromRGB(126, 98, 62))
+	figure.Parent = into
+end
+
+local VILLAGER_SHIRTS = {
+	Color3.fromRGB(122, 96, 72),
+	Color3.fromRGB(96, 108, 88),
+	Color3.fromRGB(134, 110, 96),
+	Color3.fromRGB(104, 96, 116),
+}
+
+local function makeVillagerHouse(into: Instance, at: CFrame, index: number)
 	hollowBuilding(into, at, HOUSE.width, HOUSE.depth, HOUSE.wallHeight, HOUSE.door,
 		DAUB, THATCH, Enum.Material.Sandstone)
 	for _, sx in { -1, 1 } do
@@ -834,13 +858,25 @@ local function makeVillagerHouse(into: Instance, at: CFrame)
 			at * CFrame.new(sx * HOUSE.width * 0.34, 5.4, HOUSE.depth / 2),
 			Enum.Material.Glass, Color3.fromRGB(62, 72, 68))
 	end
+	makeVillager(into, at * CFrame.new(HOUSE.width * 0.3, 0, HOUSE.depth / 2 + 3)
+		* CFrame.Angles(0, math.rad(196), 0),
+		VILLAGER_SHIRTS[((index - 1) % #VILLAGER_SHIRTS) + 1])
 end
 
 -- --- the three workshops, each unmistakably itself ----------------
 local SHOP = { width = 23, depth = 19, wallHeight = 11, door = 5.2 }
 
--- A workshop's crafting prompt. The RECIPE lives in ResourceService, which is
--- where game rules live; this only says which recipe to look up.
+-- A workshop carries two prompts on the same part: work it, and train the
+-- specialist working it. Different keyboard keys, because ProximityPrompt
+-- exclusivity is per BUTTON - two prompts on one part is fine as long as they do
+-- not compete for the same key.
+--
+-- Both stay at bench height. A prompt about five studs over the character was
+-- measured refusing to activate at nine studs while the same prompt lowered to
+-- head height fired at seven.
+--
+-- The RECIPE and the training costs live in ResourceService, which is where game
+-- rules live; these only say which role to look up.
 local function craftPrompt(host: BasePart, recipe: string, label: string)
 	local prompt = Instance.new("ProximityPrompt")
 	prompt.Name = "CraftPrompt"
@@ -851,6 +887,18 @@ local function craftPrompt(host: BasePart, recipe: string, label: string)
 	prompt.RequiresLineOfSight = false
 	prompt:SetAttribute("Recipe", recipe)
 	prompt.Parent = host
+
+	local train = Instance.new("ProximityPrompt")
+	train.Name = "TrainPrompt"
+	train.ActionText = "Train"
+	train.ObjectText = label
+	train.KeyboardKeyCode = Enum.KeyCode.R
+	train.GamepadKeyCode = Enum.KeyCode.ButtonY
+	train.HoldDuration = 0.5
+	train.MaxActivationDistance = 16
+	train.RequiresLineOfSight = false
+	train:SetAttribute("Role", recipe)
+	train.Parent = host
 end
 
 local function makeCarpenter(into: Instance, at: CFrame)
@@ -1067,7 +1115,7 @@ local function makePlot(name: string, centre: Vector2)
 		{ x = 48, z = -8, yaw = -90 },
 	}
 	for i, spot in HOUSE_SPOTS do
-		makeVillagerHouse(stage(i), at(spot.x, spot.z, spot.yaw))
+		makeVillagerHouse(stage(i), at(spot.x, spot.z, spot.yaw), i)
 	end
 
 	-- 5-7: the workshops

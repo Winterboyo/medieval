@@ -198,6 +198,50 @@ local KEEP_STAGE = 8
 local PALISADE_STAGE = 9
 local RAMPART_STAGE = 10
 
+-- ---------------------------------------------------------------- specialists
+-- DESIGN.md files specialists as the stretch goal to build once Conquest's core
+-- loop works. It does, so here they are - minus the rebellious flag and the spy
+-- variant, which the doc itself says need a decision first and which Winter has
+-- deferred.
+--
+-- A specialist is per PLAYER, not per building. You hold at most one of each
+-- role; the workshop is what lets you USE them. That is what makes stealing one
+-- coherent: the thief needs somewhere to put them.
+local SPECIALIST_ROLES = { "Blacksmith", "Alchemist", "Carpenter" }
+
+-- Which upgrade stage grants which role. Building the workshop IS hiring the
+-- specialist - there is no separate recruitment step to forget about.
+local ROLE_FOR_STAGE: { [number]: string } = {
+	[5] = "Carpenter",
+	[6] = "Blacksmith",
+	[7] = "Alchemist",
+}
+
+local MAX_RANK = 5
+
+-- The doc's number: a thief gets the specialist at a FLAT 85%, not scaled by
+-- skill. Flat matters - it means stealing a rank 5 is worth far more than
+-- stealing a rank 1, so raids aim at who is actually worth taking.
+local STOLEN_EFFICIENCY = 0.85
+
+-- Investable skill rankings, and the costs are paid in the goods specialists
+-- themselves make. Training loops back into the economy the workshops created
+-- rather than sitting outside it.
+local SKILL_COST: { [number]: { [string]: number } } = {
+	[2] = { Grain = 10, Timber = 2 },
+	[3] = { Wood = 20, Timber = 4, Ingot = 2 },
+	[4] = { Stone = 25, Ingot = 4, Tonic = 2 },
+	[5] = { Ore = 30, Ingot = 6, Tonic = 4 },
+}
+
+-- A cottage houses a labourer, so the four cottage stages stop being dressing.
+-- The doc lists "farmer/miner NPCs (classic resource gathering)" as a role; this
+-- is that, kept abstract - a slow trickle into the owner's stock rather than an
+-- NPC with pathfinding, which is a project of its own.
+local LABOUR_INTERVAL = 12 -- seconds between a village's labour tick
+local LABOUR_PER_COTTAGE = 1
+local COTTAGE_STAGES = 4
+
 -- The wall is ONE hitpoint value. The ring of blocks is how much of it is
 -- standing, drawn from that value - not twenty-odd separate little walls.
 local WALL_BLOCK_SIZE = Vector3.new(20.4, 11, 3.6)
@@ -268,6 +312,10 @@ type State = {
 local state: { [Player]: State } = {}
 local reputation: { [Player]: number } = {}
 local stockpileDirty: { [Player]: boolean } = {}
+
+type Specialist = { role: string, rank: number, stolen: boolean }
+-- One roster per player: role -> specialist. Absent means they do not have one.
+local roster: { [Player]: { [string]: Specialist } } = {}
 local nodes: { Node } = {}
 local nodeByPart: { [BasePart]: Node } = {}
 
@@ -750,6 +798,9 @@ type Base = {
 	stockpile: BasePart,
 	goods: Instance,
 	heap: Attachment,
+	-- role -> the bench a raider aims at to take that specialist. Filled in when
+	-- a workshop is installed, so the raid path never has to walk the model.
+	workshops: { [string]: BasePart },
 	blueprint: Instance?,
 	stage: number,
 	prompt: ProximityPrompt,
@@ -818,6 +869,65 @@ local function redrawWall(base: Base)
 			Debris:AddItem(existing, 2.5)
 		end
 	end
+end
+
+-- ---------------------------------------------------------------- specialists
+local function rosterOf(player: Player): { [string]: Specialist }
+	local held = roster[player]
+	if not held then
+		held = {}
+		roster[player] = held
+	end
+	return held
+end
+
+local function specialistCount(player: Player): number
+	local n = 0
+	for _ in rosterOf(player) do
+		n += 1
+	end
+	return n
+end
+
+-- What a specialist actually produces per job. Flat rank, docked to 85% if they
+-- are working for the person who took them - a stolen rank 5 out-produces an
+-- honest rank 4, which is the point of stealing one.
+local function outputOf(specialist: Specialist): number
+	local efficiency = if specialist.stolen then STOLEN_EFFICIENCY else 1
+	return math.max(1, math.floor(specialist.rank * efficiency))
+end
+
+local function describeSpecialist(specialist: Specialist): string
+	return ("%s rank %d%s"):format(
+		specialist.role, specialist.rank,
+		if specialist.stolen then (" (taken, %d%%)"):format(STOLEN_EFFICIENCY * 100) else "")
+end
+
+local function publishRoster(player: Player)
+	local held = rosterOf(player)
+	local bits = {}
+	for _, role in SPECIALIST_ROLES do
+		local specialist = held[role]
+		if specialist then
+			bits[#bits + 1] = ("%s%d%s"):format(role:sub(1, 1), specialist.rank,
+				if specialist.stolen then "*" else "")
+		end
+	end
+	player:SetAttribute("Specialists", table.concat(bits, " "))
+	player:SetAttribute("SpecialistCount", specialistCount(player))
+end
+
+local function grantSpecialist(player: Player, role: string, rank: number, stolen: boolean)
+	rosterOf(player)[role] = { role = role, rank = rank, stolen = stolen }
+	publishRoster(player)
+end
+
+local function takeSpecialist(player: Player, role: string): Specialist?
+	local held = rosterOf(player)
+	local specialist = held[role]
+	held[role] = nil
+	publishRoster(player)
+	return specialist
 end
 
 -- ---------------------------------------------------------------- blueprints
@@ -942,18 +1052,72 @@ end
 -- front, because until it is bought the prompt is sitting in ServerStorage.
 local craftBound: { [ProximityPrompt]: boolean } = {}
 
+local function bindTrainPrompts(base: Base)
+	for _, thing in base.model:GetDescendants() do
+		if thing:IsA("ProximityPrompt") and thing.Name == "TrainPrompt" and not craftBound[thing] then
+			local role = thing:GetAttribute("Role")
+			if typeof(role) == "string" then
+				craftBound[thing] = true
+				thing.Triggered:Connect(function(player: Player)
+					local owner = baseOwner(base)
+					if owner and owner ~= player.UserId then
+						notifyPlayer(player, "Someone else's workshop")
+						return
+					end
+					local specialist = rosterOf(player)[role]
+					if not specialist then
+						notifyPlayer(player, ("No %s to train"):format(role))
+						return
+					end
+					if specialist.rank >= MAX_RANK then
+						notifyPlayer(player, ("%s is already rank %d"):format(role, MAX_RANK))
+						return
+					end
+					local cost = SKILL_COST[specialist.rank + 1]
+					local affordable, missing = canAfford(player, cost)
+					if not affordable then
+						notifyPlayer(player, ("Rank %d needs %s - short on %s"):format(
+							specialist.rank + 1, describeCost(cost), tostring(missing)))
+						return
+					end
+					spend(player, cost)
+					specialist.rank += 1
+					publishRoster(player)
+					notifyPlayer(player, ("%s trained to rank %d - now makes %d a job"):format(
+						role, specialist.rank, outputOf(specialist)))
+				end)
+			end
+		end
+	end
+end
+
 local function bindCraftPrompts(base: Base)
+	bindTrainPrompts(base)
 	for _, thing in base.model:GetDescendants() do
 		if thing:IsA("ProximityPrompt") and thing.Name == "CraftPrompt" and not craftBound[thing] then
 			local recipeName = thing:GetAttribute("Recipe")
 			local recipe = if typeof(recipeName) == "string" then RECIPES[recipeName] else nil
 			if recipe then
 				craftBound[thing] = true
-				thing.ActionText = ("%s to 1 %s"):format(describeCost(recipe.cost), recipe.makes)
+				-- Remember the bench now, while we are already walking the model
+				-- for a reason. Raid targeting reads this table instead.
+				local host = thing.Parent
+				if host and host:IsA("BasePart") then
+					base.workshops[recipeName :: string] = host
+				end
+				thing.ActionText = ("%s to %s"):format(describeCost(recipe.cost), recipe.makes)
 				thing.Triggered:Connect(function(player: Player)
 					local owner = baseOwner(base)
 					if owner and owner ~= player.UserId then
 						notifyPlayer(player, "Someone else's workshop")
+						return
+					end
+					-- The workshop is the bench; the specialist is who works it.
+					-- An empty workshop makes nothing, which is what gives
+					-- stealing one its bite.
+					local specialist = rosterOf(player)[recipeName :: string]
+					if not specialist then
+						notifyPlayer(player, ("No %s to work it"):format(tostring(recipeName)))
 						return
 					end
 					local affordable, missing = canAfford(player, recipe.cost)
@@ -963,11 +1127,13 @@ local function bindCraftPrompts(base: Base)
 						return
 					end
 					spend(player, recipe.cost)
+					local yield = outputOf(specialist)
 					local made = counterFor(player, recipe.makes)
 					if made then
-						made.Value += 1
+						made.Value += yield
 					end
-					notifyPlayer(player, ("Crafted 1 %s"):format(recipe.makes), 1)
+					notifyPlayer(player, ("%s made %d %s"):format(
+						describeSpecialist(specialist), yield, recipe.makes), 1)
 				end)
 			end
 		end
@@ -988,6 +1154,17 @@ local function installStage(base: Base, index: number)
 		folder:Destroy()
 	end
 	base.stage = index
+
+	-- Building a workshop hires its specialist, at rank 1 and working honestly.
+	local role = ROLE_FOR_STAGE[index]
+	if role then
+		local ownerId = baseOwner(base)
+		local owner = ownerId and Players:GetPlayerByUserId(ownerId)
+		if owner and not rosterOf(owner)[role] then
+			grantSpecialist(owner, role, 1, false)
+			notifyPlayer(owner, ("A %s has taken up the workshop"):format(role))
+		end
+	end
 
 	if index == KEEP_STAGE then
 		local keep = base.model:FindFirstChild("Keep")
@@ -1044,6 +1221,7 @@ local function registerBase(model: Instance)
 		stockpile = stockpile,
 		goods = goods,
 		heap = heap,
+		workshops = {},
 		blueprint = blueprintFor(model.Name),
 		stage = 0,
 		prompt = prompt,
@@ -1196,9 +1374,53 @@ local function findGateTarget(raider: Player, character: Model): Base?
 	return best
 end
 
+-- How many specialists the owner of this base still has. This is the doc's
+-- fourth elimination clause, which could not be built until specialists existed.
+local function specialistsLeft(base: Base): number
+	local ownerId = baseOwner(base)
+	local owner = ownerId and Players:GetPlayerByUserId(ownerId)
+	return if owner then specialistCount(owner) else 0
+end
+
+-- Nearest enemy WORKSHOP you are aimed at, on a base whose wall has fallen, whose
+-- owner still has that specialist. Returns the base and the role.
+--
+-- The workshop bench is the aim target because it is the thing already carrying
+-- the role, so there is nothing new to place in the world.
+local function findSpecialistTarget(raider: Player, character: Model): (Base?, string?, BasePart?)
+	local root = character:FindFirstChild("HumanoidRootPart")
+	if not root or not root:IsA("BasePart") then
+		return nil, nil, nil
+	end
+	local bestBase: Base? = nil
+	local bestRole: string? = nil
+	local bestHost: BasePart? = nil
+	local bestDistance = math.huge
+
+	for _, base in bases do
+		local ownerId = baseOwner(base)
+		local owner = ownerId and Players:GetPlayerByUserId(ownerId)
+		if owner and ownerId ~= raider.UserId and base.breached then
+			-- base.workshops is at most three entries. This used to walk every
+			-- descendant of every base on every swing, which is fine on an empty
+			-- plot and thousands of traversals a second once villages are built.
+			for role, host in base.workshops do
+				if rosterOf(owner)[role] then
+					local aimed, distance = isAimedAt(root, host.Position, MINE_RANGE)
+					if aimed and distance < bestDistance then
+						bestBase, bestRole, bestHost, bestDistance = base, role, host, distance
+					end
+				end
+			end
+		end
+	end
+	return bestBase, bestRole, bestHost
+end
+
 -- Nearest enemy KEEP you are aimed at, and only on a base that has already lost
--- its wall AND had its stockpile emptied. That ordering is the whole design:
--- elimination is a completed siege, never a lucky hit on the way past.
+-- its wall, had its stockpile emptied AND lost every specialist. That ordering is
+-- the whole design: elimination is a completed siege, never a lucky hit on the
+-- way past. The specialist clause is DESIGN.md's own, finally buildable.
 local function findKeepTarget(raider: Player, character: Model): Base?
 	local root = character:FindFirstChild("HumanoidRootPart")
 	if not root or not root:IsA("BasePart") then
@@ -1213,6 +1435,7 @@ local function findKeepTarget(raider: Player, character: Model): Base?
 			and lootRemaining(base) <= 0
 			and base.keepHealth > 0
 			and base.keep -- no keep bought yet means nothing to raze
+			and specialistsLeft(base) == 0
 		then
 			local aimed, distance = isAimedAt(root, base.keep.Position, MINE_RANGE)
 			if aimed and distance < bestDistance then
@@ -1535,7 +1758,53 @@ local function attemptSwing(player: Player, toolName: string)
 			return
 		end
 
-		-- 4. an enemy keep, once the wall is down and the stockpile is spent
+		-- 4. an enemy specialist, once the wall is down. The doc's flat 85%: a
+		-- stolen rank 5 still out-produces an honest rank 4, so a raid aims at
+		-- whoever is actually worth taking rather than at whatever is nearest.
+		local specialistBase, stolenRole, workshopHost = findSpecialistTarget(player, liveCharacter)
+		if specialistBase and stolenRole and workshopHost then
+			local victimId = baseOwner(specialistBase)
+			local victim = victimId and Players:GetPlayerByUserId(victimId)
+			if victim then
+				local taken = takeSpecialist(victim, stolenRole)
+				if taken then
+					local incoming: Specialist = { role = stolenRole, rank = taken.rank, stolen = true }
+					local existing = rosterOf(player)[stolenRole]
+					if existing and outputOf(existing) >= outputOf(incoming) then
+						-- Ours is better, so theirs is simply gone. Denial is
+						-- still worth the swing.
+						notifyPlayer(player, ("Took %s's %s - yours was better, theirs is lost"):format(
+							victim.Name, stolenRole))
+					else
+						rosterOf(player)[stolenRole] = incoming
+						publishRoster(player)
+						notifyPlayer(player, ("Took %s from %s - %s"):format(
+							stolenRole, victim.Name, describeSpecialist(incoming)))
+					end
+					publishRoster(victim)
+
+					local left = specialistCount(victim)
+					notifyPlayer(victim, ("%s has taken your %s (%d specialist%s left)"):format(
+						player.Name, stolenRole, left, if left == 1 then "" else "s"))
+					if left == 0 then
+						notifyPlayer(victim, "Your keep is exposed")
+						notifyPlayer(player, ("%s has nobody left - the keep is open"):format(victim.Name))
+					end
+
+					adjustReputation(player, REPUTATION_THEFT_PENALTY,
+						("took %s from %s"):format(stolenRole, victim.Name))
+
+					local away = (root.Position - workshopHost.Position)
+					away = Vector3.new(away.X, 0, away.Z)
+					away = if away.Magnitude > 0.01 then away.Unit else Vector3.new(0, 0, 1)
+					spawnChips(workshopHost.Position + Vector3.new(0, 2, 0), away, 5)
+					return
+				end
+			end
+		end
+
+		-- 5. an enemy keep, once the wall is down, the stockpile is spent and
+		-- every specialist is gone
 		local keepTarget = findKeepTarget(player, liveCharacter)
 		if keepTarget then
 			local ownerName = tostring(keepTarget.model:GetAttribute("OwnerName") or "someone")
@@ -1566,7 +1835,7 @@ local function attemptSwing(player: Player, toolName: string)
 			return
 		end
 
-		-- 5. something to harvest, if this tool can harvest it
+		-- 6. something to harvest, if this tool can harvest it
 		local node, hitPoint = findNode(liveCharacter, toolName)
 		if not node or not hitPoint then
 			-- Aimed at something harvestable but holding the wrong thing. Worth
@@ -1627,6 +1896,42 @@ task.spawn(function()
 				for _, base in bases do
 					if baseOwner(base) == player.UserId then
 						redrawStockpile(base)
+					end
+				end
+			end
+		end
+	end
+end)
+
+-- ---------------------------------------------------------------- labour
+-- A cottage houses a labourer. DESIGN.md lists "farmer/miner NPCs (classic
+-- resource gathering)" as a specialist role; this is that, kept abstract - a
+-- slow trickle rather than an NPC with pathfinding, which is a project of its
+-- own and not what makes the tier interesting.
+--
+-- One resource per cottage, in build order, so four cottages is four different
+-- trickles and you can see which ones you have. Ore is deliberately absent:
+-- leaving it hand-mined keeps it the scarce input, which is what the blacksmith
+-- and therefore the whole keep-and-wall chain is gated on.
+local LABOUR_YIELD = { "Grain", "Wood", "Stone", "Wool" }
+
+task.spawn(function()
+	while true do
+		task.wait(LABOUR_INTERVAL)
+		if Workspace:GetAttribute("MatchState") ~= "Running" then
+			continue
+		end
+		for _, base in bases do
+			local ownerId = baseOwner(base)
+			local owner = ownerId and Players:GetPlayerByUserId(ownerId)
+			-- A village outside the closing boundary stops producing, the same
+			-- rule its nodes already follow, and a razed one produces nothing.
+			if owner and base.keepHealth > 0 and inZone(base.foundation.Position) then
+				local cottages = math.min(base.stage, COTTAGE_STAGES)
+				for i = 1, cottages do
+					local counter = counterFor(owner, LABOUR_YIELD[i])
+					if counter then
+						counter.Value += LABOUR_PER_COTTAGE
 					end
 				end
 			end
@@ -1773,6 +2078,8 @@ local function onPlayerAdded(player: Player)
 	state[player] = { track = nil, swingSpeed = 1, nextSwing = 0, nextNotice = 0, offHandIK = nil }
 	reputation[player] = 0
 	player:SetAttribute("Reputation", 0)
+	roster[player] = {}
+	publishRoster(player)
 
 	player.CharacterAdded:Connect(function(character)
 		onCharacterAdded(player, character)
@@ -1802,6 +2109,8 @@ Players.PlayerAdded:Connect(onPlayerAdded)
 Players.PlayerRemoving:Connect(function(player)
 	state[player] = nil
 	reputation[player] = nil
+	roster[player] = nil
+	stockpileDirty[player] = nil
 end)
 
 -- In Studio playtests the script can start after you are already in, so catch

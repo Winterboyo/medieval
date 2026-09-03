@@ -31,6 +31,7 @@ second person is not. Treat those parts as written, not working.
 | `src/server/ResourceService.server.luau` | Nodes, tools, bases, raiding, reputation. Rojo syncs it. |
 | `src/server/MatchService.server.luau` | The Conquest clock, the zone, squads and the win condition. |
 | `src/server/FoldWeighting.luau` | Pure maths for dealing an eliminated player to a squad. |
+| `rokit.toml` | Toolchain: Rojo, plus `luau` for checking scripts without Studio. |
 | `scripts/build-world.luau` | Builds the board: terrain, tiles, all five node kinds, build sites, the four tools, lighting. Rojo syncs it to `ServerStorage.BuildWorld`; rebuild from the command bar with the clone snippet below (a plain `require` returns a cached, stale module). Re-runnable — it tears down what it built last time. |
 | `src/client/Notifications.client.luau` | Per-player notices, driven by the `Notify` RemoteEvent. |
 | `default.project.json` | Rojo's map from this repo into the DataModel. |
@@ -139,6 +140,75 @@ left to return to.
 **A village plot on every interior tile corner** — the Catan settlement spots —
 minus the ring around the totem, so nobody spawns straight into somebody's keep.
 16 of them.
+
+## Specialists
+
+`DESIGN.md` files specialists as the stretch goal to build once Conquest's core
+loop works. It does, so they are in — minus the **rebellious flag** and the **spy
+variant**, which the doc itself says need a decision first and which Winter has
+deferred, and minus **merchants**, which the doc keeps deliberately abstract.
+
+**A specialist is per player, not per building.** You hold at most one of each
+role; the workshop is what lets you *use* them. That is what makes stealing one
+coherent — and it means an empty workshop makes nothing, which is where the bite
+comes from.
+
+| Role | Comes with | Makes |
+|---|---|---|
+| Carpenter | stage 5 | Timber |
+| Blacksmith | stage 6 | Ingot |
+| Alchemist | stage 7 | Tonic |
+
+Building the workshop *is* hiring the specialist — there is no separate
+recruitment step to forget about.
+
+**Skill ranks 1–5**, trained at the workshop bench (**R**, next to the craft
+prompt on the same part — prompt exclusivity is per *button*, so two prompts on
+one part is fine as long as they take different keys). Output is **flat rank**:
+a rank 3 blacksmith makes 3 Ingots a job where a rank 1 makes 1. Training is paid
+in the goods specialists themselves make, so it loops back into the economy the
+workshops created rather than sitting outside it.
+
+**Stealing, at the doc's flat 85%.** Breach a wall, aim at a workshop bench,
+swing. The specialist transfers at `floor(rank × 0.85)`, minimum 1. Flat matters:
+a stolen rank 5 makes 4 and still out-produces an honest rank 4, so raids aim at
+whoever is actually *worth* taking rather than at whatever is nearest. If the
+thief already holds a better one of that role, theirs is kept and the victim's is
+simply destroyed — denial is still worth the swing.
+
+### The fourth gate
+
+This finally lets the doc's own elimination condition be built as written —
+"walls breached + stockpile emptied + specialists lost". A base now falls in
+**four** stages:
+
+| Stage | What | Gate on the next |
+|---|---|---|
+| 1 | Breach the **wall** | wall → 0 |
+| 2 | Empty the **stockpile** | loot → 0 |
+| 3 | Take every **specialist** | roster → empty |
+| 4 | Raze the **keep** | owner eliminated |
+
+The more you have built, the more there is to lose before anyone can finish you —
+which is the right shape. A player who never built a workshop passes stage 3 for
+free, and has nothing to show for it either.
+
+Note the ordering is enforced on *elimination*, not on aiming: you can steal a
+specialist while loot remains. Only the keep demands all three.
+
+### Labourers
+
+A cottage houses one. The doc lists "farmer/miner NPCs (classic resource
+gathering)" as a role; this is that, kept abstract — a slow trickle every 12
+seconds rather than an NPC with pathfinding, which is a project of its own and
+not what makes the tier interesting. Each cottage carries a villager figure
+outside it so a built cottage visibly houses somebody.
+
+One resource per cottage in build order — Grain, Wood, Stone, Wool — so four
+cottages is four visible trickles. **Ore is deliberately absent**: leaving it
+hand-mined keeps it the scarce input, and the blacksmith, the keep and the wall
+are all gated on it. A village outside the closing zone stops producing, the same
+rule its nodes already follow.
 
 ## Refined goods and the workshops
 
@@ -494,6 +564,27 @@ and keep.
 
 Two attributes carry it: `Player.Eliminated` (your keep fell, you are somebody's
 worker now) and `Player.Squad`.
+
+## Checking scripts without Studio
+
+`rokit.toml` carries the `luau` CLI alongside Rojo. Running a Roblox script
+through it stops at the first `game:GetService` — which is exactly the point: a
+*runtime* stop on line 34 means the file **parsed**, while a syntax error looks
+entirely different and reports a line you can go and fix.
+
+```sh
+luau src/server/ResourceService.server.luau   # "attempt to index nil with 'GetService'" = parses fine
+```
+
+This matters because Studio is not always available — it froze hard during the
+specialist tier and stopped answering the plugin entirely, including
+`get_studio_state`. A parse check that needs nothing but the repo is the
+difference between "I cannot verify anything" and "I know it at least compiles".
+
+Anything genuinely pure can go further and be **run**: `FoldWeighting` has no
+Roblox dependencies, so its whole distribution is verifiable from the command
+line with no engine at all. That is a good reason to keep pure logic in its own
+module.
 
 ## Things that bit, so they don't bite twice
 
