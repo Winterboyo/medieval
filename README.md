@@ -7,8 +7,8 @@ Roblox game, built in tiers. See the tier order in
 says so itself: if anything here conflicts with an older note, the doc wins.
 
 **Where this is:** a Catan board filling the whole map, five resources with a tool
-each, bases with a walled perimeter, a gate and a raidable stockpile, and the
-Conquest match clock with its shrinking zone.
+each, bases that fall in a three-stage siege, knockdown instead of respawn, and
+the Conquest match clock with its shrinking zone.
 
 **Reputation is no longer next.** The doc moves it under "Negotiation & reputation
 — stretch goal, needs specialists first" and corrects it to within-match only.
@@ -183,22 +183,68 @@ taken of 20% of what the owner holds; that snapshot is the entire raid. The othe
 The snapshot matters. Recomputing "20% of what they hold" on every swing
 converges on taking everything, which is exactly the wipe the doc is avoiding.
 
-One swing does four things depending on what you are aimed at, in order:
+### A base falls in three stages
+
+The doc's own elimination condition — "walls breached + stockpile emptied +
+specialists lost" — could not be built as written. It depends on specialists,
+which the same doc files as a stretch goal to build *after* the core loop; and
+"stockpile emptied" is incoherent with the stockpile design, because only 15–25%
+of holdings is ever exposed. Either it means the exposed pot, which empties in a
+single raid and is far too easy for a win condition, or it means total holdings,
+which raiding can never reach.
+
+So it was redesigned. A base falls in three stages, and only the third eliminates:
+
+| Stage | What | Gate on the next stage |
+|---|---|---|
+| 1 | Breach the **wall** — one HP value, hit only at the gate | wall must reach 0 |
+| 2 | Empty the **stockpile** — the 20% snapshot taken at the breach | loot must reach 0 |
+| 3 | Raze the **keep** — 200 HP, 8 swings | owner eliminated *(stage 3 of the plan)* |
+
+Elimination is therefore always a completed siege, never a lucky hit on the way
+past. The specialist clause becomes a fourth gate later without reshaping any of
+this.
+
+The keep darkens as it is broken and goes translucent when it falls, and the gate
+darkens as the wall fails — both so a besieger can read how close a base is to
+going without a health bar.
+
+One swing does five things depending on what you are aimed at, in order:
 
 | Priority | Target | Effect |
 |---|---|---|
 | 1 | Another player | 20 damage |
 | 2 | An enemy gate, wall standing | 25 damage to the wall |
 | 3 | An enemy stockpile, wall down | Loots 4 of a resource from the snapshot |
-| 4 | A node your tool can work | Harvests 1 |
+| 4 | An enemy keep, wall down and stockpile spent | 25 damage to the keep |
+| 5 | A node your tool can work | Harvests 1 |
 
 A person beats their gate, and all of it beats the node you happen to be standing
 next to — otherwise you could not fight beside a node.
 
 Breaching re-enables the owner's build prompt, so a wall can be repaired back up.
 
+### Knockdown, not death
+
+Conquest has no lives and no respawn-on-death, so `Players.CharacterAutoLoads` is
+off and every spawn goes through `reviveAt`. Losing a fight is a **knockdown**:
+you go down and come back at your own keep 8 seconds later.
+
+Killing cannot be the elimination path or sieges become pointless — you would
+hunt people instead of ever breaching a wall. Combat decides whether an attacker
+can hold ground long enough to finish a siege, which is the job it should be
+doing.
+
+Two cases send you to the village instead of your keep, and both matter:
+
+- **Your keep has fallen.** Reviving at a razed keep drops you in the lap of
+  whoever just razed it.
+- **Your keep is outside the closing zone.** Reviving there is a loop of dying,
+  respawning outside, and dying again. The village is at the origin, which the
+  zone closes onto, so it is always inside.
+
 The spawn pad has an 8 second forcefield. It was 0 while nothing could hurt you;
-with combat, a forcefield-free spawn is a place to be farmed on respawn.
+with combat, a forcefield-free spawn is a place to be farmed.
 
 The world builder places geometry only. Everything that changes at runtime —
 how much stone a node holds, how fast it comes back, what a block costs —

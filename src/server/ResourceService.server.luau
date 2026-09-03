@@ -168,6 +168,17 @@ local GATE_DAMAGE = 25 -- one purchase of wall per swing, so a wall is as slow t
 local EXPOSED_FRACTION = 0.20
 local LOOT_PER_SWING = 4
 
+-- The keep is the third and last stage of a siege. Shorter than the wall on
+-- purpose: by the time an attacker is standing in a breached, emptied base they
+-- have already committed, and a long grind there is just tax.
+local KEEP_HP = 200
+
+-- Conquest has no lives and no respawn-on-death. Losing a fight is a KNOCKDOWN:
+-- you go down and come back at your own keep. Killing cannot be the elimination
+-- path or sieges become pointless - you would hunt people instead of ever
+-- breaching a wall.
+local KNOCKDOWN_SECONDS = 8
+
 -- Tier 5: reputation, minimal. DESIGN.md's negotiation/reputation system is a
 -- stretch goal that needs specialists first - this is just the number it
 -- would eventually gate, added now so theft has *a* consequence and the
@@ -679,6 +690,8 @@ type Base = {
 	wall: number, -- the single HP value
 	wallMax: number,
 	breached: boolean,
+	keep: BasePart,
+	keepHealth: number,
 	-- Snapshot of what can be taken, taken at the moment of the breach. Without
 	-- the snapshot, "20% of what they hold" recomputed per swing converges on
 	-- taking everything, which is the wipe the doc is trying to avoid.
@@ -747,10 +760,12 @@ local function registerBase(model: Instance)
 	local foundation = model.PrimaryPart or model:FindFirstChild("Foundation")
 	local gate = model:FindFirstChild("Gate")
 	local stockpile = model:FindFirstChild("Stockpile")
+	local keep = model:FindFirstChild("Keep")
 	local sections = model:FindFirstChild("Sections")
 	local prompt = foundation and foundation:FindFirstChildOfClass("ProximityPrompt")
 	if not (foundation and foundation:IsA("BasePart") and gate and gate:IsA("BasePart")
-		and stockpile and stockpile:IsA("BasePart") and sections and prompt) then
+		and stockpile and stockpile:IsA("BasePart") and keep and keep:IsA("BasePart")
+		and sections and prompt) then
 		return
 	end
 
@@ -775,6 +790,8 @@ local function registerBase(model: Instance)
 		wall = 0,
 		wallMax = #slots * WALL_HP_PER_SECTION,
 		breached = true, -- an unbuilt base has nothing keeping anyone out
+		keep = keep,
+		keepHealth = KEEP_HP,
 		loot = {},
 		refresh = function() end,
 	}
@@ -796,6 +813,13 @@ local function registerBase(model: Instance)
 
 		model:SetAttribute("Wall", math.floor(base.wall))
 		model:SetAttribute("Breached", base.breached)
+		model:SetAttribute("KeepHealth", math.floor(base.keepHealth))
+		model:SetAttribute("Fallen", base.keepHealth <= 0)
+		-- The keep darkens and finally slumps as it is broken up, so its state
+		-- reads from outside without a health bar - the same trick as the gate.
+		local keepLeft = base.keepHealth / KEEP_HP
+		base.keep.Color = Color3.fromRGB(58, 50, 46):Lerp(Color3.fromRGB(128, 118, 108), keepLeft)
+		base.keep.Transparency = if base.keepHealth <= 0 then 0.55 else 0
 		-- The gate darkens as the wall fails, so an attacker can read how close
 		-- a base is to falling without a health bar.
 		local fraction = if base.wallMax > 0 then base.wall / base.wallMax else 0
@@ -879,6 +903,33 @@ local function findGateTarget(raider: Player, character: Model): Base?
 		local owner = baseOwner(base)
 		if owner and owner ~= raider.UserId and base.wall > 0 then
 			local aimed, distance = isAimedAt(root, base.gate.Position, MINE_RANGE)
+			if aimed and distance < bestDistance then
+				best = base
+				bestDistance = distance
+			end
+		end
+	end
+	return best
+end
+
+-- Nearest enemy KEEP you are aimed at, and only on a base that has already lost
+-- its wall AND had its stockpile emptied. That ordering is the whole design:
+-- elimination is a completed siege, never a lucky hit on the way past.
+local function findKeepTarget(raider: Player, character: Model): Base?
+	local root = character:FindFirstChild("HumanoidRootPart")
+	if not root or not root:IsA("BasePart") then
+		return nil
+	end
+	local best: Base? = nil
+	local bestDistance = math.huge
+	for _, base in bases do
+		local owner = baseOwner(base)
+		if owner and owner ~= raider.UserId
+			and base.breached
+			and lootRemaining(base) <= 0
+			and base.keepHealth > 0
+		then
+			local aimed, distance = isAimedAt(root, base.keep.Position, MINE_RANGE)
 			if aimed and distance < bestDistance then
 				best = base
 				bestDistance = distance
@@ -1199,7 +1250,38 @@ local function attemptSwing(player: Player, toolName: string)
 			return
 		end
 
-		-- 4. something to harvest, if this tool can harvest it
+		-- 4. an enemy keep, once the wall is down and the stockpile is spent
+		local keepTarget = findKeepTarget(player, liveCharacter)
+		if keepTarget then
+			local ownerName = tostring(keepTarget.model:GetAttribute("OwnerName") or "someone")
+			keepTarget.keepHealth = math.max(0, keepTarget.keepHealth - GATE_DAMAGE)
+			keepTarget.refresh()
+
+			local ownerId = baseOwner(keepTarget)
+			local owner = ownerId and Players:GetPlayerByUserId(ownerId)
+
+			if keepTarget.keepHealth <= 0 then
+				-- Stage 3 turns this into elimination. For now the keep simply
+				-- falls, and says so.
+				notifyPlayer(player, ("%s's keep has fallen"):format(ownerName))
+				if owner then
+					notifyPlayer(owner, ("%s has razed your keep"):format(player.Name))
+				end
+			else
+				notifyPlayer(player, ("Breaking %s's keep"):format(ownerName), 2)
+				if owner then
+					notifyPlayer(owner, ("%s is inside your walls"):format(player.Name), 3)
+				end
+			end
+
+			local away = (root.Position - keepTarget.keep.Position)
+			away = Vector3.new(away.X, 0, away.Z)
+			away = if away.Magnitude > 0.01 then away.Unit else Vector3.new(0, 0, 1)
+			spawnChips(keepTarget.keep.Position + Vector3.new(0, 3, 0), away, 6)
+			return
+		end
+
+		-- 5. something to harvest, if this tool can harvest it
 		local node, hitPoint = findNode(liveCharacter, toolName)
 		if not node or not hitPoint then
 			-- Aimed at something harvestable but holding the wrong thing. Worth
@@ -1246,6 +1328,39 @@ local function attemptSwing(player: Player, toolName: string)
 
 		spawnChips(impactPoint, away, 7, node.config.debris)
 	end)
+end
+
+-- ---------------------------------------------------------------- knockdown
+-- Roblox respawns a dead character at a SpawnLocation by default. Conquest does
+-- not want that, so auto-loading is turned off and every spawn goes through here.
+Players.CharacterAutoLoads = false
+
+local function homeBaseOf(player: Player): Base?
+	for _, base in bases do
+		if baseOwner(base) == player.UserId then
+			return base
+		end
+	end
+	return nil
+end
+
+local function reviveAt(player: Player)
+	player:LoadCharacter()
+	local character = player.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	if not root or not root:IsA("BasePart") then
+		return
+	end
+
+	local home = homeBaseOf(player)
+	-- Back at your own keep, unless it has fallen or the closing boundary has
+	-- already abandoned it. Reviving someone outside the zone would put them in a
+	-- loop of dying, respawning outside, and dying again.
+	if home and home.keepHealth > 0 and inZone(home.keep.Position) then
+		root.CFrame = CFrame.new(home.keep.Position + Vector3.new(0, 4, 13))
+	end
+	-- Otherwise they keep the SpawnLocation the engine gave them, which is the
+	-- village at the centre and therefore always inside the zone.
 end
 
 -- ---------------------------------------------------------------- tools
@@ -1306,6 +1421,18 @@ local function onCharacterAdded(player: Player, character: Model)
 
 	playerState.offHandIK = buildOffHandIK(character)
 
+	local downHumanoid = character:FindFirstChildOfClass("Humanoid")
+	if downHumanoid then
+		downHumanoid.Died:Connect(function()
+			notifyPlayer(player, ("Knocked down - up again in %ds"):format(KNOCKDOWN_SECONDS))
+			task.delay(KNOCKDOWN_SECONDS, function()
+				if player.Parent then
+					reviveAt(player)
+				end
+			end)
+		end)
+	end
+
 	-- Equipping parents the Tool to the character, unequipping moves it back to
 	-- the Backpack, so the off hand follows those two events.
 	character.ChildAdded:Connect(function(child)
@@ -1347,6 +1474,9 @@ local function onPlayerAdded(player: Player)
 	end)
 	if player.Character then
 		task.spawn(onCharacterAdded, player, player.Character)
+	else
+		-- CharacterAutoLoads is off, so the first body has to be asked for.
+		player:LoadCharacter()
 	end
 end
 

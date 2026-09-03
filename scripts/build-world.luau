@@ -578,11 +578,38 @@ local function makeBase(name: string, centre: Vector2)
 	gatePrompt.Name = "GateFace"
 	gatePrompt.Parent = gate
 
-	-- The stockpile: the only building that is functionally anything yet.
+	-- The keep. The heart of the base and the last thing standing: razing it is
+	-- what eliminates its owner. It sits at the centre and stands taller than
+	-- anything else, because a besieger needs to be able to pick out what they
+	-- are actually trying to reach from outside the wall.
+	--
+	-- ResourceService will not let it take a scratch until the wall is down AND
+	-- the stockpile is empty, so this is always the third stage of a siege.
+	local keep = Instance.new("Part")
+	keep.Name = "Keep"
+	keep.Size = Vector3.new(9, 15, 9)
+	keep.CFrame = foundation.CFrame * CFrame.new(0, 8, -3.5)
+	keep.Anchored = true
+	keep.Material = Enum.Material.Brick
+	keep.Color = Color3.fromRGB(128, 118, 108)
+	keep.Parent = site
+
+	local crown = Instance.new("Part")
+	crown.Name = "KeepCrown"
+	crown.Size = Vector3.new(10.6, 1.4, 10.6)
+	crown.CFrame = keep.CFrame * CFrame.new(0, 8.2, 0)
+	crown.Anchored = true
+	crown.Material = Enum.Material.Slate
+	crown.Color = Color3.fromRGB(84, 78, 76)
+	crown.Parent = site
+
+	-- The stockpile, moved off the centre to make room for the keep and set
+	-- toward the gate: the thing a raid is after should be the thing it reaches
+	-- first once the wall is down.
 	local stockpile = Instance.new("Part")
 	stockpile.Name = "Stockpile"
-	stockpile.Size = Vector3.new(7, 5.5, 7)
-	stockpile.CFrame = foundation.CFrame * CFrame.new(0, 3.25, 0)
+	stockpile.Size = Vector3.new(6.5, 5, 6)
+	stockpile.CFrame = foundation.CFrame * CFrame.new(0, 3, 7.5)
 	stockpile.Anchored = true
 	stockpile.Material = Enum.Material.WoodPlanks
 	stockpile.Color = Color3.fromRGB(150, 116, 76)
@@ -590,8 +617,8 @@ local function makeBase(name: string, centre: Vector2)
 
 	local roof = Instance.new("Part")
 	roof.Name = "StockpileRoof"
-	roof.Size = Vector3.new(8.2, 1.0, 8.2)
-	roof.CFrame = stockpile.CFrame * CFrame.new(0, 3.2, 0)
+	roof.Size = Vector3.new(7.6, 1.0, 7.1)
+	roof.CFrame = stockpile.CFrame * CFrame.new(0, 3.0, 0)
 	roof.Anchored = true
 	roof.Material = Enum.Material.Slate
 	roof.Color = Color3.fromRGB(92, 84, 80)
@@ -600,9 +627,9 @@ local function makeBase(name: string, centre: Vector2)
 	-- Dressing. The doc wants the village laid out with distinct buildings now,
 	-- visually, and explicitly says NOT to wire per-building raid logic yet.
 	local dressing = {
-		{ name = "Blacksmith", offset = Vector3.new(-8, 0, -7), size = Vector3.new(5, 4, 5), color = Color3.fromRGB(88, 80, 74) },
-		{ name = "Alchemist", offset = Vector3.new(8, 0, -7), size = Vector3.new(4.5, 4.5, 4.5), color = Color3.fromRGB(120, 112, 138) },
-		{ name = "Barracks", offset = Vector3.new(-8, 0, 7), size = Vector3.new(5.5, 3.6, 4.5), color = Color3.fromRGB(126, 104, 84) },
+		{ name = "Blacksmith", offset = Vector3.new(-8.5, 0, -8), size = Vector3.new(5, 4, 5), color = Color3.fromRGB(88, 80, 74) },
+		{ name = "Alchemist", offset = Vector3.new(8.5, 0, -8), size = Vector3.new(4.5, 4.5, 4.5), color = Color3.fromRGB(120, 112, 138) },
+		{ name = "Barracks", offset = Vector3.new(-8.5, 0, 7), size = Vector3.new(5.5, 3.6, 4.5), color = Color3.fromRGB(126, 104, 84) },
 	}
 	for _, spec in dressing do
 		local hut = Instance.new("Part")
