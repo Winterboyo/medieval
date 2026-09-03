@@ -18,6 +18,7 @@ Minecraft-style voxel building + Rust-style raiding, medieval reskin (castles, n
 - Catan-style resource set, medieval reskin, working default (not fully finalized): **Wood, Stone, Grain, Ore, Wool/Cloth.**
 - Resources and specialists are spread across the generated map, not clustered, so movement/expansion is required within a match.
 - Node mechanics: finite stockpile per node, depletes on gathering, regenerates over time. Regen follows a curve — faster at moderate depletion, slower near full or near empty — not a flat rate.
+- *Currently implemented, recorded here as fact rather than as a decision:* the five raw goods above, plus three **refined** goods — **Timber**, **Ingot** and **Tonic** — produced by the carpenter, blacksmith and alchemist respectively. Build stages 8–10 require them, so they are load-bearing in the implementation as it stands. The exact final resource list remains open (see Open items).
 
 ## Base structure (v1)
 - Perimeter wall, single HP value, one ring (no segments/tiers yet).

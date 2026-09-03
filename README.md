@@ -8,21 +8,30 @@ says so itself: if anything here conflicts with an older note, the doc wins.
 
 **Where this is:** a Catan board filling the whole map, five raw resources and
 three refined ones, villages built from an empty field in ten purchases, a
-three-stage siege, knockdown instead of respawn, and the Conquest match clock
+four-stage siege, knockdown instead of respawn, and the Conquest match clock
 with its shrinking zone.
 
 **Reputation is no longer next.** The doc moves it under "Negotiation & reputation
 — stretch goal, needs specialists first" and corrects it to within-match only.
 The persistent, recency-weighted version is explicitly cut.
 
-**Two things already built now contradict the doc** and need revisiting: combat
-still has death and respawn where the doc specifies a single-hit knockout with
-elimination by base state; and the Conquest match structure (timer, shrinking
-zone, folding eliminated players into surviving teams) does not exist at all.
+**What still departs from the doc.** Combat is the one that matters: knockdown
+and elimination-by-base-state are both built, but putting someone down takes
+five swings at 20 damage where the doc specifies a *single-hit* knockout. This
+paragraph used to say the Conquest match structure — timer, shrinking zone,
+folding eliminated players into surviving teams — did not exist at all; it does
+now, in `MatchService` and `FoldWeighting`, and that claim predated two tiers.
+What is genuinely absent is what the doc parks behind a decision or behind
+specialists: the rebellious flag, the spy variant, merchants, and the whole
+negotiation loop. Reputation exists only as a number theft moves; nothing reads
+it yet.
 
 **T3 and the combat half of T4 have never been run with two players.** Everything
 solo-testable is verified and the numbers are below; everything that needs a
-second person is not. Treat those parts as written, not working.
+second person is not. Treat those parts as written, not working. Specialist
+theft is on that list, and so is the fourth gate's blocking case — a keep that
+refuses damage because the owner still holds a specialist. Neither can be
+reached at all from one client.
 
 ## Layout
 
@@ -31,11 +40,10 @@ second person is not. Treat those parts as written, not working.
 | `src/server/ResourceService.server.luau` | Nodes, tools, bases, raiding, reputation. Rojo syncs it. |
 | `src/server/MatchService.server.luau` | The Conquest clock, the zone, squads and the win condition. |
 | `src/server/FoldWeighting.luau` | Pure maths for dealing an eliminated player to a squad. |
-| `rokit.toml` | Toolchain: Rojo, plus `luau` for checking scripts without Studio. |
 | `scripts/build-world.luau` | Builds the board: terrain, tiles, all five node kinds, build sites, the four tools, lighting. Rojo syncs it to `ServerStorage.BuildWorld`; rebuild from the command bar with the clone snippet below (a plain `require` returns a cached, stale module). Re-runnable — it tears down what it built last time. |
 | `src/client/Notifications.client.luau` | Per-player notices, driven by the `Notify` RemoteEvent. |
 | `default.project.json` | Rojo's map from this repo into the DataModel. |
-| `rokit.toml` | Pins the toolchain (Rojo 7.7.0) so it is reproducible. |
+| `rokit.toml` | Pins the toolchain — Rojo 7.7.0, plus the `luau` CLI for checking scripts without Studio — so it is reproducible. |
 
 The published experience on Roblox is the artifact. This repo is the source. A
 local `.rbxl` is a working copy and is gitignored — it goes stale the moment you
@@ -180,14 +188,8 @@ simply destroyed — denial is still worth the swing.
 
 This finally lets the doc's own elimination condition be built as written —
 "walls breached + stockpile emptied + specialists lost". A base now falls in
-**four** stages:
-
-| Stage | What | Gate on the next |
-|---|---|---|
-| 1 | Breach the **wall** | wall → 0 |
-| 2 | Empty the **stockpile** | loot → 0 |
-| 3 | Take every **specialist** | roster → empty |
-| 4 | Raze the **keep** | owner eliminated |
+**four** stages, wall → stockpile → specialists → keep; the HP values and the
+history are under **A base falls in four stages**.
 
 The more you have built, the more there is to lose before anyone can finish you —
 which is the right shape. A player who never built a workshop passes stage 3 for
@@ -257,28 +259,23 @@ forest is stumps and bare trunks, a shorn flock is still a flock.
 
 ## The loop
 
-Spawn on the pad south of the board, mine an outcrop, then hold **E** at a build
-site to spend 10 Stone on a block. Two site kinds, both 24 blocks:
+Spawn on one of the eight pads ringing the totem, gather with the tool the tile
+wants, then hold **E** at a village plot to buy the next stage of a base.
 
-| Kind | Shape |
-|---|---|
-| `Wall` | 8 sections wide, 3 courses high. The Tier 1 starter sink, kept. |
-| `Castle` | A square ring stacked into a hollow tower, 8 blocks per course, 3 courses. |
+**There is one site kind left.** The world builder tags each build site with a
+`Kind` attribute and `ResourceService` owns what that tag means, but the only
+value it now recognises is `Base`. The Tier 1 sites — a `Wall` and a `Castle`,
+24 blocks each, raised a block at a time for 10 Stone — are gone, superseded by
+the ten-stage ladder under **Bases and raiding**.
 
-A block costs **4 Wood + 4 Stone** — a bundle rather than a number, so building
-consumes the economy instead of one column of it. A refusal names the resource
-you are short of.
+Costs stayed **bundles rather than single numbers**: the repair that ends the
+ladder is 4 Wood + 4 Stone, and every stage of the ladder mixes at least two
+goods.
+A single-resource price would let a village be built out of one column of the
+economy. A refusal names the resource you are short of.
 
-**Grain, Wool and Ore have no sink yet.** They are gathered and they stack up.
-That is the next design decision, and it most likely hangs off the specialists in
-the design doc rather than off more masonry.
-
-The world builder tags each site with a `Kind` attribute; `ResourceService` owns
-what that tag means. Adding a third shape is a new branch in `layoutOf` and
-nothing else.
-
-**Bases are owned.** Whoever raises the first stretch of wall claims the plot;
-nobody else can build there, but anybody can raid it.
+**Bases are owned.** Whoever makes the first purchase claims the plot; nobody
+else can build there, but anybody can raid it.
 
 ## Bases and raiding
 
@@ -366,41 +363,49 @@ taken of 20% of what the owner holds; that snapshot is the entire raid. The othe
 The snapshot matters. Recomputing "20% of what they hold" on every swing
 converges on taking everything, which is exactly the wipe the doc is avoiding.
 
-### A base falls in three stages
+### A base falls in four stages
 
 The doc's own elimination condition — "walls breached + stockpile emptied +
-specialists lost" — could not be built as written. It depends on specialists,
-which the same doc files as a stretch goal to build *after* the core loop; and
-"stockpile emptied" is incoherent with the stockpile design, because only 15–25%
-of holdings is ever exposed. Either it means the exposed pot, which empties in a
-single raid and is far too easy for a win condition, or it means total holdings,
-which raiding can never reach.
+specialists lost" — could not be built *when it was first read*, and the reason
+is worth keeping. It depends on specialists, which the same doc files as a
+stretch goal to build *after* the core loop; and "stockpile emptied" is
+incoherent with the stockpile design, because only 15–25% of holdings is ever
+exposed. Either it means the exposed pot, which empties in a single raid and is
+far too easy for a win condition, or it means total holdings, which raiding can
+never reach.
 
-So it was redesigned. A base falls in three stages, and only the third eliminates:
+So the second half was pinned down — "emptied" means the exposed snapshot — and
+the siege was built in three stages, with the specialist clause left as a fourth
+gate to add once there were specialists to lose:
 
 | Stage | What | Gate on the next stage |
 |---|---|---|
 | 1 | Breach the **wall** — one HP value, hit only at the gate | wall must reach 0 |
 | 2 | Empty the **stockpile** — the 20% snapshot taken at the breach | loot must reach 0 |
-| 3 | Raze the **keep** — 200 HP, 8 swings | owner eliminated *(stage 3 of the plan)* |
+| 3 | Take every **specialist** — see **The fourth gate** | roster must be empty |
+| 4 | Raze the **keep** — 200 HP, 8 swings | owner eliminated |
+
+There are specialists now, so stage 3 is in and the keep will not take a scratch
+while the owner still holds one. Nothing else had to be reshaped to fit it,
+which is the argument for building the ordering as gates in the first place.
 
 Elimination is therefore always a completed siege, never a lucky hit on the way
-past. The specialist clause becomes a fourth gate later without reshaping any of
-this.
+past.
 
 The keep darkens as it is broken and goes translucent when it falls, and the gate
 darkens as the wall fails — both so a besieger can read how close a base is to
 going without a health bar.
 
-One swing does five things depending on what you are aimed at, in order:
+One swing does six things depending on what you are aimed at, in order:
 
 | Priority | Target | Effect |
 |---|---|---|
 | 1 | Another player | 20 damage |
 | 2 | An enemy gate, wall standing | 25 damage to the wall |
 | 3 | An enemy stockpile, wall down | Loots 4 of a resource from the snapshot |
-| 4 | An enemy keep, wall down and stockpile spent | 25 damage to the keep |
-| 5 | A node your tool can work | Harvests 1 |
+| 4 | An enemy workshop bench, wall down | Steals the specialist at `floor(rank × 0.85)` |
+| 5 | An enemy keep, wall down, stockpile spent and roster empty | 25 damage to the keep |
+| 6 | A node your tool can work | Harvests 1 |
 
 A person beats their gate, and all of it beats the node you happen to be standing
 next to — otherwise you could not fight beside a node.
@@ -426,7 +431,7 @@ Two cases send you to the village instead of your keep, and both matter:
   respawning outside, and dying again. The village is at the origin, which the
   zone closes onto, so it is always inside.
 
-The spawn pad has an 8 second forcefield. It was 0 while nothing could hurt you;
+The spawn pads have an 8 second forcefield. It was 0 while nothing could hurt you;
 with combat, a forcefield-free spawn is a place to be farmed.
 
 The world builder places geometry only. Everything that changes at runtime —
@@ -498,9 +503,11 @@ already talks to itself: through attributes on instances, not a shared module.
 | `ZoneHalf` | half-extent of the playable square, in studs |
 
 The board is a 7×7 grid centred on the origin and dead flat, so **the boundary is
-one number, not a shape**. It holds at the full 560 for the first 20% of the
-match, closes linearly to 130 by 90%, then holds. Both numbers scale with the
-board; the final ring is deliberately wide enough to hold a village or two, since
+one number, not a shape**. It holds at the full 700 for the first 20% of the
+match, closes linearly to 130 by 90%, then holds. 700 is not a chosen number — it
+is half of 7 × 200, the board's own extent, so the zone opens flush with the edge
+of the map and nothing starts out of bounds. The final ring is deliberately wide
+enough to hold a village or two, since
 closing onto something smaller than a single compound would decide the match by
 whose walls happened to sit nearest the middle. A boundary that starts closing
 on the first second gives nobody time to establish; one still closing at the

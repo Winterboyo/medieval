@@ -43,13 +43,28 @@ local LOBBY_SECONDS = 15
 -- through three quarters of an hour to find out whether the timer fires.
 local DEFAULT_MATCH_LENGTH = 45 * 60
 
--- The board is a 7x7 grid of 72-stud tiles centred on the origin and dead flat,
--- so the boundary is one number rather than a shape.
--- Both scale with the board, which is now 7 x 160 rather than 7 x 72. The final
--- ring is deliberately wide enough to hold a village or two: closing onto
--- something smaller than a single compound would decide the match by whose
+-- The board is a square grid centred on the origin and dead flat, so the
+-- boundary is one number rather than a shape.
+--
+-- The starting extent is READ FROM THE BOARD (build-world publishes BoardHalf)
+-- instead of being restated here. It had already drifted twice as a constant -
+-- 252 was right for 72 stud tiles, 560 for 160 - and when the tiles grew to 200
+-- nobody updated it, so the outer ring of tiles sat outside the boundary from
+-- the first second and roughly half the map's nodes never yielded.
+--
+-- The fallback matches the current board (7 x 200), and follows the same rule as
+-- zoneHalf() in ResourceService: a service that has not spoken yet must not
+-- shrink the world to nothing.
+local FALLBACK_BOARD_HALF = 700
+
+local function boardHalf(): number
+	local value = Workspace:GetAttribute("BoardHalf")
+	return if typeof(value) == "number" and value > 0 then value else FALLBACK_BOARD_HALF
+end
+
+-- The final ring is deliberately wide enough to hold a village or two: closing
+-- onto something smaller than a single compound would decide the match by whose
 -- walls happened to sit nearest the middle.
-local ZONE_START_HALF = 560 -- the whole board
 local ZONE_FINAL_HALF = 130 -- closes onto the totem at the centre
 local ZONE_GRACE = 0.20 -- fraction of the match before it starts closing
 local ZONE_CLOSED_BY = 0.90 -- fraction by which it has finished closing
@@ -61,7 +76,7 @@ local ZONE_WALL_HEIGHT = 70
 local state = "Lobby"
 local phaseEndsAt = 0
 local matchLength = DEFAULT_MATCH_LENGTH
-local zoneHalf = ZONE_START_HALF
+local zoneHalf = boardHalf()
 
 -- ---------------------------------------------------------------- announcing
 local function announce(text: string)
@@ -123,13 +138,14 @@ end
 -- time to establish, and one still closing at the whistle never forces contact.
 local function zoneHalfAt(progress: number): number
 	if progress <= ZONE_GRACE then
-		return ZONE_START_HALF
+		return boardHalf()
 	end
 	if progress >= ZONE_CLOSED_BY then
 		return ZONE_FINAL_HALF
 	end
 	local through = (progress - ZONE_GRACE) / (ZONE_CLOSED_BY - ZONE_GRACE)
-	return ZONE_START_HALF + (ZONE_FINAL_HALF - ZONE_START_HALF) * through
+	local start = boardHalf()
+	return start + (ZONE_FINAL_HALF - start) * through
 end
 
 -- The zone is a square centred on the origin, so "outside" is the larger of the
@@ -382,7 +398,7 @@ end
 
 local function beginMatch()
 	matchLength = Workspace:GetAttribute("MatchLength") or DEFAULT_MATCH_LENGTH
-	zoneHalf = ZONE_START_HALF
+	zoneHalf = boardHalf()
 	drawZone(zoneHalf)
 	setZoneVisible(true)
 	startSquads()
@@ -415,7 +431,7 @@ end)
 watchForFallenKeeps()
 
 task.spawn(function()
-	zoneHalf = ZONE_START_HALF
+	zoneHalf = boardHalf()
 	drawZone(zoneHalf)
 	setZoneVisible(false)
 	enter("Lobby", LOBBY_SECONDS)

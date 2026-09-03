@@ -38,6 +38,14 @@ local GRID = 7
 local TILE = 200
 local BOARD = GRID * TILE
 
+-- Published so MatchService can size the closing boundary off the board rather
+-- than restating it as a constant. That number has now drifted twice: 252 was
+-- right for 72 stud tiles and 560 for 160, and neither was updated when the
+-- tiles grew again. The second time it left the whole outer ring of tiles
+-- OUTSIDE the boundary from the first second of the match, so roughly half the
+-- map's nodes silently never yielded. Deriving it removes the chance to forget.
+Workspace:SetAttribute("BoardHalf", BOARD / 2)
+
 -- Row-major, row 1 at -Z. Fixed rather than shuffled so the map is a place you
 -- can learn, and so the stone and ore tiles stay spread: the walk between nodes
 -- is what gives the regen curve in ResourceService any teeth.

@@ -626,6 +626,18 @@ local function isAimedAt(root: BasePart, position: Vector3, range: number): (boo
 	return root.CFrame.LookVector:Dot(flat.Unit) >= FACING_DOT, distance
 end
 
+-- Raiding only counts while a match is actually running. Without this a keep
+-- could be razed during the lobby, and MatchService only records an elimination
+-- while Running - so the keep fell, nobody was eliminated, and the two services
+-- disagreed silently about whether a player was still in the game.
+--
+-- Absent is treated as running, the same rule zoneHalf follows below: a service
+-- that has not spoken yet must not disable the game.
+local function matchRunning(): boolean
+	local value = Workspace:GetAttribute("MatchState")
+	return value == nil or value == "Running"
+end
+
 -- MatchService publishes the playable boundary. Absent before a match starts,
 -- which reads as no boundary rather than a boundary of zero - a service that has
 -- not spoken yet must not shut the whole map down.
@@ -711,6 +723,9 @@ end
 
 -- Nearest other player you are aimed at and who is still alive.
 local function findVictim(attacker: Player, character: Model): (Player?, Humanoid?)
+	if not matchRunning() then
+		return nil, nil
+	end
 	local root = character:FindFirstChild("HumanoidRootPart")
 	if not root or not root:IsA("BasePart") then
 		return nil, nil
@@ -1307,6 +1322,17 @@ local function registerBase(model: Instance)
 			return
 		end
 
+		-- An eliminated player is somebody's worker now. Letting them claim a
+		-- fresh plot would hand them a new keep that MatchService can never tie
+		-- back to a squad - squadLedBy only knows original leaders - so razing
+		-- it would record no elimination at all. They keep gathering, crafting
+		-- and fighting for the squad that took them; what they lose is the
+		-- ability to start again as their own house.
+		if not owner and player:GetAttribute("Eliminated") == true then
+			notifyPlayer(player, "You have no house of your own to build")
+			return
+		end
+
 		local next = UPGRADES[base.stage + 1]
 		local cost = if next then next.cost else BUILD_COST
 		if not next and base.wall >= base.wallMax then
@@ -1373,6 +1399,9 @@ end
 -- is the only place the wall can be hurt: that is the whole point of there being
 -- one, per the doc - a single chokepoint you have to commit to.
 local function findGateTarget(raider: Player, character: Model): Base?
+	if not matchRunning() then
+		return nil
+	end
 	local root = character:FindFirstChild("HumanoidRootPart")
 	if not root or not root:IsA("BasePart") then
 		return nil
@@ -1394,6 +1423,13 @@ end
 
 -- How many specialists the owner of this base still has. This is the doc's
 -- fourth elimination clause, which could not be built until specialists existed.
+--
+-- Deliberately the OWNER's whole roster rather than anything per-base. A
+-- specialist belongs to a player, not to a building - the workshop is only what
+-- lets you use them - so "specialists lost" is a fact about the person, which is
+-- also how DESIGN.md words it. The consequence is that a player holding two
+-- villages has both keeps gated on one roster: strip their people once and both
+-- are exposed. That is the intended reading, not an oversight.
 local function specialistsLeft(base: Base): number
 	local ownerId = baseOwner(base)
 	local owner = ownerId and Players:GetPlayerByUserId(ownerId)
@@ -1406,6 +1442,9 @@ end
 -- The workshop bench is the aim target because it is the thing already carrying
 -- the role, so there is nothing new to place in the world.
 local function findSpecialistTarget(raider: Player, character: Model): (Base?, string?, BasePart?)
+	if not matchRunning() then
+		return nil, nil, nil
+	end
 	local root = character:FindFirstChild("HumanoidRootPart")
 	if not root or not root:IsA("BasePart") then
 		return nil, nil, nil
@@ -1440,6 +1479,9 @@ end
 -- the whole design: elimination is a completed siege, never a lucky hit on the
 -- way past. The specialist clause is DESIGN.md's own, finally buildable.
 local function findKeepTarget(raider: Player, character: Model): Base?
+	if not matchRunning() then
+		return nil
+	end
 	local root = character:FindFirstChild("HumanoidRootPart")
 	if not root or not root:IsA("BasePart") then
 		return nil
@@ -1467,6 +1509,9 @@ end
 
 -- Nearest enemy STOCKPILE you are aimed at on a base whose wall has fallen.
 local function findStockpileTarget(raider: Player, character: Model): Base?
+	if not matchRunning() then
+		return nil
+	end
 	local root = character:FindFirstChild("HumanoidRootPart")
 	if not root or not root:IsA("BasePart") then
 		return nil
@@ -1833,8 +1878,9 @@ local function attemptSwing(player: Player, toolName: string)
 			local owner = ownerId and Players:GetPlayerByUserId(ownerId)
 
 			if keepTarget.keepHealth <= 0 then
-				-- Stage 3 turns this into elimination. For now the keep simply
-				-- falls, and says so.
+				-- MatchService watches the Fallen attribute and turns this into
+				-- an elimination, so this branch only has to make the keep fall
+				-- and say so.
 				notifyPlayer(player, ("%s's keep has fallen"):format(ownerName))
 				if owner then
 					notifyPlayer(owner, ("%s has razed your keep"):format(player.Name))
