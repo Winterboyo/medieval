@@ -97,10 +97,16 @@ zoneFolder = Instance.new("Folder")
 zoneFolder.Name = "MatchZone"
 zoneFolder.Parent = Workspace
 
+-- A RING, not four slabs. The world used to be a square board and the boundary
+-- squared off to match; it is an island now, so a square boundary would cut the
+-- coast at four arbitrary places and leave corners of open sea inside the
+-- "safe" area. Enough segments that the curve reads as a curve.
+local ZONE_SEGMENTS = 48
+
 local zoneWalls: { BasePart } = {}
-for i = 1, 4 do
+for i = 1, ZONE_SEGMENTS do
 	local wall = Instance.new("Part")
-	wall.Name = ("ZoneWall%d"):format(i)
+	wall.Name = ("ZoneWall%02d"):format(i)
 	wall.Anchored = true
 	wall.CanCollide = false -- it pushes with damage, not with collision
 	wall.CanQuery = false
@@ -114,17 +120,17 @@ for i = 1, 4 do
 end
 
 local function drawZone(half: number)
-	local span = half * 2
+	-- Each segment is a chord of the circle, turned to face the centre and made
+	-- a little wider than the exact arc so neighbours overlap and the ring has
+	-- no gaps to walk through.
+	local chord = (2 * math.pi * math.max(half, 1)) / ZONE_SEGMENTS * 1.08
 	local y = ZONE_WALL_HEIGHT / 2 - 6
-	-- two walls on X, two on Z
-	zoneWalls[1].Size = Vector3.new(1.5, ZONE_WALL_HEIGHT, span)
-	zoneWalls[1].Position = Vector3.new(half, y, 0)
-	zoneWalls[2].Size = Vector3.new(1.5, ZONE_WALL_HEIGHT, span)
-	zoneWalls[2].Position = Vector3.new(-half, y, 0)
-	zoneWalls[3].Size = Vector3.new(span, ZONE_WALL_HEIGHT, 1.5)
-	zoneWalls[3].Position = Vector3.new(0, y, half)
-	zoneWalls[4].Size = Vector3.new(span, ZONE_WALL_HEIGHT, 1.5)
-	zoneWalls[4].Position = Vector3.new(0, y, -half)
+	for index, wall in zoneWalls do
+		local angle = (index - 1) / ZONE_SEGMENTS * math.pi * 2
+		wall.Size = Vector3.new(chord, ZONE_WALL_HEIGHT, 1.5)
+		wall.CFrame = CFrame.new(math.cos(angle) * half, y, math.sin(angle) * half)
+			* CFrame.Angles(0, -angle + math.pi / 2, 0)
+	end
 end
 
 local function setZoneVisible(visible: boolean)
@@ -150,9 +156,10 @@ end
 
 -- The zone is a square centred on the origin, so "outside" is the larger of the
 -- two axis distances rather than a radius.
+-- Radial now. The island has no corners, so neither does the boundary.
 local function outsideBy(position: Vector3, half: number): number
-	local worst = math.max(math.abs(position.X), math.abs(position.Z))
-	return math.max(0, worst - half)
+	local flat = Vector3.new(position.X, 0, position.Z)
+	return math.max(0, flat.Magnitude - half)
 end
 
 -- ---------------------------------------------------------------- publishing

@@ -93,7 +93,82 @@ So the split is: the thing that changes every session (the scripts) syncs
 automatically; the thing that changes rarely (the world) stays a deliberate
 one-shot, triggered by hand from `ServerStorage.BuildWorld`.
 
-## The board
+## The island
+
+It was a 7×7 board of flat square tiles — a Catan grid, deliberately legible and
+deliberately artificial. It is now an **island**: an irregular landmass with real
+relief, beaches, and open water all the way round.
+
+The square had to go because it read as a diagram no matter how well the seams
+between tiles were blended. **You cannot hide a grid; you can only decorate it.**
+
+What survived the change is the part that was load bearing: resources are still
+grouped into **regions you travel between**, because the whole economy rests on
+that. The regions are organic now — they follow height and a noise field rather
+than a lattice — so you cross from forest into hills without ever seeing a
+boundary.
+
+### Written as voxels, not filled as blocks
+
+`FillBlock` can only place rectangular solids, which is precisely *why* the old
+map looked like rectangular solids. `WriteVoxels` sets a material **and an
+occupancy** per cell, so a column can end part-way through a voxel and the
+surface comes out smooth instead of stepped.
+
+Each chunk sizes its own vertical range from a coarse sample of its own terrain.
+Spanning the full world height everywhere would be ~14 million cells, almost all
+of them empty sky over open water; fitted, a deep-ocean chunk is about a dozen
+voxels tall.
+
+### One height function, asked by everything
+
+`heightAt` is sampled by the terrain writer, by node placement and by village
+placement. Everything agrees about where the land is because everything asks the
+same question.
+
+The coastline is a radial falloff whose radius is warped by **three octaves** of
+noise, each clamped — `math.noise` is documented as roughly −0.5..0.5 and
+overshoots. The frequencies matter more than the amplitudes: at 0.0007 a full lap
+of the coast covers well under one unit of noise space, so the field barely
+changes and the island comes out a circle whatever the amplitude says. Measured
+at that frequency: 760–940 across sixteen bearings, a 12% wobble. At 0.00165 it
+is 270–990, with a bay cutting deep on one side.
+
+### Placement is thrown, not laid
+
+A tile used to *be* its node, which made placement trivial and the map a
+chessboard. Nodes and villages are now thrown at the island and rejected until
+they fit — on land, not too steep, and far enough from what is already placed.
+
+Two things this taught, both of which produced a silently broken map first:
+
+- **Villages and nodes need separate registers.** One shared list made a village
+  keep 250 studs from *everything*, nodes included, so once 48 nodes were down
+  there was nowhere left and it placed **zero villages** without complaining.
+- **Quota first, terrain second.** Letting the terrain decide — sample anywhere,
+  ask "what belongs here?" — returned Grain 19, Wood 18, Wool 9, Stone 2, **Ore
+  0**. The same slope limit that keeps a node off a cliff keeps it off every
+  mountain, so the high ground where stone and ore live was filtered out before
+  it was ever classified. An economy missing an entire resource is not a
+  distribution quirk. Each resource now has a quota and its own stretch of
+  terrain to look in, and a shortfall `warn`s loudly.
+
+Villages cut a **round terrace**, because a 148-stud foundation slab on a
+hillside floats at one corner and buries itself at the other. Round because the
+first cut used squares, and sixteen square terraces cut into an island read from
+the air as sixteen brown plates — the grid the whole redesign was meant to remove,
+reintroduced by the flattening.
+
+### The boundary is a ring
+
+The zone was a square half-extent because the world was a square board. On an
+island a square boundary would cut the coast at four arbitrary places and leave
+corners of open sea inside the "safe" area. It is 48 tangential segments on a
+circle now, sized so their chords overlap and there is no gap to walk through,
+and all three places that ask "am I inside" — `MatchService`, `ResourceService`
+and the HUD — use plain radial distance.
+
+## The board (historical)
 
 A 7×7 grid of **200-stud** square tiles. 7 × 200 = 1400 against a 1440 map, so the
 board *is* the world — there is no surrounding countryside and no lake. It is

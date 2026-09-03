@@ -17,7 +17,7 @@
 --
 -- The one thing it computes for itself is whether you are inside the boundary,
 -- because that depends on where your character is standing this frame. It uses
--- the same max-axis rule the server uses in inZone().
+-- the same radial rule the server uses in inZone().
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -256,10 +256,10 @@ local function myBase(): Model?
 	return nil
 end
 
--- The server's rule, restated: the board is a square centred on the origin, so
--- "outside" is the larger of the two axis distances rather than a radius.
+-- The server's rule, restated: the world is an island centred on the origin, so
+-- the boundary is a circle and "outside" is plain radial distance.
 local function outsideBy(position: Vector3, half: number): number
-	return math.max(0, math.max(math.abs(position.X), math.abs(position.Z)) - half)
+	return math.max(0, Vector3.new(position.X, 0, position.Z).Magnitude - half)
 end
 
 local alarmShown = false
@@ -299,8 +299,8 @@ local function drawMatch()
 	if typeof(half) == "number" and typeof(board) == "number" and board > 0 then
 		local closed = math.clamp(1 - (half / board), 0, 1)
 		zoneText.Text = if closed <= 0.001
-			then "the whole board is open"
-			else ("the walls have closed %d%%"):format(math.floor(closed * 100 + 0.5))
+			then "the whole island is open"
+			else ("the sea has closed %d%%"):format(math.floor(closed * 100 + 0.5))
 	else
 		zoneText.Text = ""
 	end

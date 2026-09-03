@@ -24,79 +24,125 @@ local Terrain = Workspace.Terrain
 -- satisfy the wrapper would make every future diff unreadable.
 return function()
 
-local MAP_SIZE = 1440
-local SOIL_THICK = 30 -- terrain slab, top surface at y = 0
-
--- 7 x 200 = 1400 against a 1440 map, so the board IS the world with a hair of
--- margin. There is no surrounding countryside any more and no lake.
+-- ---------------------------------------------------------------- the island
+-- This used to be a 7x7 board of flat square tiles - a Catan grid, deliberately
+-- legible and deliberately artificial. It is now an ISLAND: an irregular
+-- landmass with real relief, beaches, and open water all the way round.
 --
--- The tiles have grown twice: 72 to 160 to 200. The last step is not about the
--- tiles at all, it is about what sits on their corners. Villages are now built
--- room by room and you walk INSIDE the buildings, so a plot is 148 studs across;
--- at a 160 tile the neighbouring plots very nearly touched.
-local GRID = 7
-local TILE = 200
-local BOARD = GRID * TILE
+-- The square had to go because it read as a diagram no matter how well the seams
+-- between tiles were blended. You cannot hide a grid; you can only decorate it.
+--
+-- What survives the change is the part that was load bearing: resources are
+-- still grouped into REGIONS you have to travel between, because the whole
+-- economy rests on that. The regions are just organic now - they follow height
+-- and a noise field instead of a lattice - so you cross from forest into hills
+-- without ever seeing a boundary.
+-- Generously bigger than the island so the SQUARE EDGE of the terrain region is
+-- far enough out to sit behind the haze. Ocean chunks are cheap - each one is
+-- about a dozen voxels tall once its vertical range is fitted to its contents -
+-- so the extra water costs far less than the extra land would.
+local MAP_SIZE = 3200 -- the terrain region; the island sits well inside it
+local SEA_LEVEL = 0
+local SEA_FLOOR = -46
 
--- Published so MatchService can size the closing boundary off the board rather
--- than restating it as a constant. That number has now drifted twice: 252 was
--- right for 72 stud tiles and 560 for 160, and neither was updated when the
--- tiles grew again. The second time it left the whole outer ring of tiles
--- OUTSIDE the boundary from the first second of the match, so roughly half the
--- map's nodes silently never yielded. Deriving it removes the chance to forget.
-Workspace:SetAttribute("BoardHalf", BOARD / 2)
+-- Nominal radius. The coastline wanders either side of it by COAST_WANDER, so
+-- the island is never a disc.
+local ISLAND_RADIUS = 880
+local COAST_WANDER = 205
+local PEAK_HEIGHT = 118
 
--- Row-major, row 1 at -Z. Fixed rather than shuffled so the map is a place you
--- can learn, and so the stone and ore tiles stay spread: the walk between nodes
--- is what gives the regen curve in ResourceService any teeth.
---   F forest/wood   P pasture/wool   G grain
---   H hills/stone   M mountains/ore  V the totem plaza at the centre
-local LAYOUT = {
-	"FPGHMFP",
-	"GMHFPGH",
-	"PFMGHMF",
-	"HGPVFPG",
-	"MHFPGHM",
-	"FPGMHFP",
-	"GMHFPGM",
-}
+local VOXEL = 4 -- terrain resolution; every region has to be aligned to this
+local CHUNK = 256 -- studs per WriteVoxels call
 
--- Six materials, one per tile kind, because a tile you cannot identify from
--- ground level is just coloured floor.
-local TILE_MATERIAL = {
-	F = Enum.Material.Mud, -- forest floor
-	P = Enum.Material.LeafyGrass, -- pasture
-	G = Enum.Material.Ground, -- tilled earth
-	H = Enum.Material.Rock,
-	M = Enum.Material.Basalt, -- darker than the stone hills, on purpose
-	V = Enum.Material.Cobblestone, -- the totem plaza
-}
-
--- Which resource a tile grows, and therefore which node goes on it. The centre
--- tile grows nothing; it is the totem plaza.
-local TILE_RESOURCE = {
-	F = "Wood",
-	P = "Wool",
-	G = "Grain",
-	H = "Stone",
-	M = "Ore",
-}
+-- Published so MatchService can size the closing boundary off the world instead
+-- of restating it. Same contract as the old BoardHalf, new shape.
+local ISLAND_HALF = ISLAND_RADIUS + COAST_WANDER
+Workspace:SetAttribute("BoardHalf", ISLAND_HALF)
+Workspace:SetAttribute("WorldShape", "Island")
 
 local rng = Random.new(20260903)
 
--- ---------------------------------------------------------------- tile helpers
-local function tileKind(row: number, col: number): string
-	return LAYOUT[row]:sub(col, col)
+-- A fixed seed for the terrain itself, separate from the rng above, so that
+-- changing how many trees a forest has does not reshape the coastline.
+local LAND_SEED = 71.3
+local RELIEF_SEED = 12.9
+local BIOME_SEED = 44.1
+
+-- ---------------------------------------------------------------- the shape
+-- One height function, sampled by the terrain writer, by node placement and by
+-- village placement. Everything agrees about where the land is because
+-- everything asks the same question.
+local function heightAt(x: number, z: number): number
+	local distance = math.sqrt(x * x + z * z)
+	-- Warp the radius by low-frequency noise: this is what turns a circle into
+	-- a coastline with bays and headlands.
+	-- Three octaves, each CLAMPED. math.noise is documented as roughly -0.5..0.5
+	-- but overshoots, and multiplying the raw value pushed the coast in as far
+	-- as r=350 on one bearing while leaving it past 900 on another - not a
+	-- wandering coastline, a bite out of the island.
+	--
+	-- One octave gave a near-circle. Bays and headlands need scale: a broad
+	-- lobe, a bay inside it, an inlet inside that.
+	-- The frequencies matter more than the amplitudes. At 0.0007 a full lap of
+	-- the coast covers well under one unit of noise space, so the field barely
+	-- changes and the island comes out a circle whatever COAST_WANDER says -
+	-- measured at 760..940 across sixteen bearings, a 12% wobble. These give
+	-- roughly eight features around the shoreline instead of one.
+	local wander =
+		math.clamp(math.noise(x * 0.00165, z * 0.00165, LAND_SEED), -1, 1) * COAST_WANDER
+		+ math.clamp(math.noise(x * 0.00380, z * 0.00380, LAND_SEED + 3), -1, 1) * COAST_WANDER * 0.50
+		+ math.clamp(math.noise(x * 0.00760, z * 0.00760, LAND_SEED + 7), -1, 1) * COAST_WANDER * 0.22
+	local edge = ISLAND_RADIUS + wander
+	local t = 1 - math.clamp(distance / math.max(edge, 1), 0, 1)
+	if t <= 0 then
+		return SEA_FLOOR
+	end
+
+	-- Smoothstep inland, then flatten the middle a little. Raised to a power
+	-- below 1 the dome stops being a cone with one summit and becomes a broad
+	-- interior with room for several.
+	local inland = t * t * (3 - 2 * t)
+	local plateau = inland ^ 0.75
+
+	-- Three octaves. The first cut used two and produced a smooth dome that fell
+	-- away monotonically from the centre - a transect read 68, 68, 23, 6, which
+	-- is a hillside, not a landscape. Relief has to be able to cut DOWN as well
+	-- as up, which is why it is added signed rather than clamped positive.
+	local relief = math.noise(x * 0.0026, z * 0.0026, RELIEF_SEED)
+		+ 0.50 * math.noise(x * 0.0061, z * 0.0061, RELIEF_SEED + 5)
+		+ 0.25 * math.noise(x * 0.0130, z * 0.0130, RELIEF_SEED + 9)
+
+	-- A quick rise out of the water so beaches are narrow, then relief. The
+	-- relief is scaled by how far inland you are so the coast stays low and the
+	-- interior gets the drama.
+	local shore = math.clamp(t * 7, 0, 1)
+	local body = plateau * PEAK_HEIGHT * 0.58
+	local broken = plateau * relief * PEAK_HEIGHT * 0.46
+	return math.max(shore * 4, shore * 4 + body + broken)
 end
 
-local function tileCentre(row: number, col: number): Vector2
-	return Vector2.new((col - (GRID + 1) / 2) * TILE, (row - (GRID + 1) / 2) * TILE)
-end
-
--- Corners are the lattice points between tiles; the interior ones are where four
--- tiles meet, which is where a castle can go.
-local function cornerPoint(i: number, j: number): Vector2
-	return Vector2.new((j - 1 - GRID / 2) * TILE, (i - 1 - GRID / 2) * TILE)
+-- Which biome a point belongs to. Height decides the extremes - you get sand at
+-- the waterline and bare rock on the tops whatever else is true - and a noise
+-- field decides everything between, which is what makes the middle of the
+-- island read as regions rather than as bands.
+local function biomeAt(x: number, z: number, height: number): Enum.Material
+	if height < 2.2 then
+		return Enum.Material.Sand
+	end
+	if height > 74 then
+		return Enum.Material.Rock
+	end
+	if height > 56 then
+		return Enum.Material.Slate
+	end
+	local field = math.noise(x * 0.0017, z * 0.0017, BIOME_SEED)
+	if field < -0.12 then
+		return Enum.Material.Mud -- forest floor
+	end
+	if field > 0.13 then
+		return Enum.Material.LeafyGrass -- meadow
+	end
+	return Enum.Material.Grass
 end
 
 -- ---------------------------------------------------------------- teardown
@@ -123,21 +169,98 @@ end
 Terrain:Clear()
 
 -- ---------------------------------------------------------------- terrain
--- Flat. A board is flat; landscape relief would fight the grid and bury nodes.
-Terrain:FillBlock(
-	CFrame.new(0, -SOIL_THICK / 2, 0),
-	Vector3.new(MAP_SIZE, SOIL_THICK, MAP_SIZE),
-	Enum.Material.Ground
-)
+-- Written as VOXELS rather than filled as blocks. FillBlock can only place
+-- rectangular solids, which is exactly why the old map was rectangular solids;
+-- WriteVoxels sets a material and an occupancy per cell, so a column can end
+-- part way through a voxel and the surface comes out smooth instead of stepped.
+--
+-- Done in chunks because one call covering the whole map would be millions of
+-- cells. Each chunk is CHUNK studs square and spans the full height range.
+local Y_BOTTOM = SEA_FLOOR - 12
 
-for row = 1, GRID do
-	for col = 1, GRID do
-		local centre = tileCentre(row, col)
-		Terrain:FillBlock(
-			CFrame.new(centre.X, -SOIL_THICK / 2, centre.Y),
-			Vector3.new(TILE, SOIL_THICK, TILE),
-			TILE_MATERIAL[tileKind(row, col)]
-		)
+local function writeChunk(originX: number, originZ: number)
+	-- Size the vertical range to what is actually in THIS chunk. Spanning the
+	-- full world height everywhere would be ~14 million cells, almost all of
+	-- them empty sky over open water, and the Lua tables alone would take
+	-- minutes to build. Sampling a coarse grid and padding generously turns a
+	-- deep-ocean chunk into about a dozen voxels tall.
+	local tallest = SEA_FLOOR
+	for sx = 0, 4 do
+		for sz = 0, 4 do
+			local h = heightAt(originX + sx * CHUNK / 4, originZ + sz * CHUNK / 4)
+			tallest = math.max(tallest, h)
+		end
+	end
+	local ceiling = math.max(SEA_LEVEL, tallest) + VOXEL * 4
+
+	local region = Region3.new(
+		Vector3.new(originX, Y_BOTTOM, originZ),
+		Vector3.new(originX + CHUNK, ceiling, originZ + CHUNK)
+	):ExpandToGrid(VOXEL)
+
+	local size = region.Size
+	local countX = math.floor(size.X / VOXEL)
+	local countY = math.floor(size.Y / VOXEL)
+	local countZ = math.floor(size.Z / VOXEL)
+	local base = region.CFrame.Position - size / 2
+
+	local materials = table.create(countX)
+	local occupancies = table.create(countX)
+
+	for ix = 1, countX do
+		local columnMaterials = table.create(countY)
+		local columnOccupancies = table.create(countY)
+		local worldX = base.X + (ix - 0.5) * VOXEL
+
+		for iy = 1, countY do
+			local rowMaterials = table.create(countZ)
+			local rowOccupancies = table.create(countZ)
+			local voxelBottom = base.Y + (iy - 1) * VOXEL
+
+			for iz = 1, countZ do
+				local worldZ = base.Z + (iz - 0.5) * VOXEL
+				local height = heightAt(worldX, worldZ)
+
+				-- How much of this voxel is below the ground surface, and how
+				-- much is below the waterline. Fractional occupancy at the top
+				-- cell is the whole reason the result looks like a hill and not
+				-- like a staircase.
+				local groundFill = math.clamp((height - voxelBottom) / VOXEL, 0, 1)
+				local waterFill = math.clamp((SEA_LEVEL - voxelBottom) / VOXEL, 0, 1)
+
+				if groundFill > 0.02 then
+					rowMaterials[iz] = biomeAt(worldX, worldZ, height)
+					rowOccupancies[iz] = groundFill
+				elseif waterFill > 0.02 then
+					rowMaterials[iz] = Enum.Material.Water
+					rowOccupancies[iz] = waterFill
+				else
+					rowMaterials[iz] = Enum.Material.Air
+					rowOccupancies[iz] = 0
+				end
+			end
+
+			columnMaterials[iy] = rowMaterials
+			columnOccupancies[iy] = rowOccupancies
+		end
+
+		materials[ix] = columnMaterials
+		occupancies[ix] = columnOccupancies
+	end
+
+	Terrain:WriteVoxels(region, VOXEL, materials, occupancies)
+end
+
+do
+	local half = MAP_SIZE / 2
+	local from = -half
+	while from < half do
+		local acrossZ = -half
+		while acrossZ < half do
+			writeChunk(from, acrossZ)
+			acrossZ += CHUNK
+		end
+		from += CHUNK
 	end
 end
 
@@ -153,67 +276,14 @@ local function groundHeight(x: number, z: number): number
 	return if hit then hit.Position.Y else 0
 end
 
--- ---------------------------------------------------------------- tile seams
--- The tiles used to be separated by sandstone kerbs, which made the board read
--- as a diagram rather than a place. The grid still has to be legible - you
--- should always know which tile you are standing on, because that is what tells
--- you what grows here - but the seam between two tiles should look like ground
--- meeting ground.
---
--- So each interior border is broken up with overlapping patches of BOTH
--- neighbours' materials, thrown to alternating sides of the line. The two
--- materials bite into each other and the boundary comes out ragged instead of
--- ruled. Patches are square and randomly turned rather than round: a filled
--- ball would have to be sunk so deep to avoid doming above the surface that it
--- would barely tint the ground you actually walk on.
+-- ---------------------------------------------------------------- board folder
+-- The seam-blending pass that used to live here existed to disguise the joins
+-- between square tiles. There are no tiles now, so there is nothing to disguise:
+-- the biome boundary is wherever a noise field crosses a threshold, which is
+-- already an irregular curve.
 local board = Instance.new("Folder")
 board.Name = "MedievalLand_Board"
 board.Parent = Workspace
-
-local SEAM_PATCHES = 8
-
-local function blendSeam(from: Vector2, to: Vector2, matA: Enum.Material, matB: Enum.Material)
-	local along = to - from
-	local length = along.Magnitude
-	local dir = along.Unit
-	local perp = Vector2.new(-dir.Y, dir.X)
-
-	for i = 1, SEAM_PATCHES do
-		local t = ((i - 0.5) / SEAM_PATCHES + rng:NextNumber(-0.05, 0.05)) * length
-		local side = if i % 2 == 0 then 1 else -1
-		local spill = rng:NextNumber(3, 13)
-		local at = from + dir * t + perp * (side * spill)
-		local size = rng:NextNumber(16, 34)
-		Terrain:FillBlock(
-			CFrame.new(at.X, -SOIL_THICK / 2, at.Y) * CFrame.Angles(0, rng:NextNumber(0, 6.28), 0),
-			Vector3.new(size, SOIL_THICK, size),
-			if side > 0 then matA else matB
-		)
-	end
-end
-
-for row = 1, GRID do
-	for col = 1, GRID do
-		local here = TILE_MATERIAL[tileKind(row, col)]
-		local centre = tileCentre(row, col)
-		local half = TILE / 2
-		-- Only the +X and +Z borders, so every seam is walked exactly once.
-		if col < GRID then
-			blendSeam(
-				Vector2.new(centre.X + half, centre.Y - half),
-				Vector2.new(centre.X + half, centre.Y + half),
-				here, TILE_MATERIAL[tileKind(row, col + 1)]
-			)
-		end
-		if row < GRID then
-			blendSeam(
-				Vector2.new(centre.X - half, centre.Y + half),
-				Vector2.new(centre.X + half, centre.Y + half),
-				here, TILE_MATERIAL[tileKind(row + 1, col)]
-			)
-		end
-	end
-end
 
 -- ---------------------------------------------------------------- nodes
 -- Geometry only. Capacity, regen and which tool works which node all live in
@@ -522,29 +592,153 @@ local function makeOutcrop(name: string, origin: Vector3, resource: string): Mod
 	return model
 end
 
--- One node per resource tile, at the tile's centre. A tile IS its node.
-local nodeCount = 0
-for row = 1, GRID do
-	for col = 1, GRID do
-		local kind = tileKind(row, col)
-		local resource = TILE_RESOURCE[kind]
-		if resource then
-			nodeCount += 1
-			local centre = tileCentre(row, col)
-			local origin = Vector3.new(centre.X, 0, centre.Y)
-			local name = ("%s_%02d"):format(resource, nodeCount)
+-- ---------------------------------------------------------------- placement
+-- Nodes and villages both need the same thing: a spot that is on land, not too
+-- steep to stand a building on, and far enough from everything already placed.
+-- So they share one sampler.
+--
+-- This replaces a lattice. A tile used to BE its node, which made placement
+-- trivial and the map a chessboard. Now candidates are thrown at the island and
+-- rejected until they fit, which is slower to write and the only way to get a
+-- distribution that does not look authored.
+-- Two registers, not one. The first cut kept a single list and made villages
+-- stay 250 studs from EVERYTHING already placed, nodes included - so once 48
+-- nodes were down there was nowhere left, and it placed zero villages without
+-- complaining. A village needs distance from other villages; it only needs
+-- elbow room from a node.
+local nodeSpots: { Vector2 } = {}
+local plotSpots: { Vector2 } = {}
 
-			if resource == "Wood" then
-				makeForest(name, origin)
-			elseif resource == "Wool" then
-				makePasture(name, origin)
-			elseif resource == "Grain" then
-				makeField(name, origin)
-			else
-				makeOutcrop(name, origin, resource)
+local function clearOf(list: { Vector2 }, point: Vector2, gap: number): boolean
+	if gap <= 0 then
+		return true
+	end
+	for _, other in list do
+		if (other - point).Magnitude < gap then
+			return false
+		end
+	end
+	return true
+end
+
+-- Steepness matters: a node on a cliff face half-buries itself, and a village
+-- foundation on a slope floats at one corner and sinks at the other. Sampled as
+-- the largest height difference across a short cross.
+local function slopeAt(x: number, z: number, reach: number): number
+	local here = heightAt(x, z)
+	local worst = 0
+	for _, offset in { Vector2.new(reach, 0), Vector2.new(-reach, 0),
+		Vector2.new(0, reach), Vector2.new(0, -reach) } do
+		worst = math.max(worst, math.abs(heightAt(x + offset.X, z + offset.Y) - here))
+	end
+	return worst
+end
+
+-- Throw darts at the island until one sticks. Returns nil if the island simply
+-- has no room left, which the callers treat as "stop asking".
+type Spec = {
+	minHeight: number,
+	maxHeight: number,
+	maxSlope: number,
+	gapNodes: number,
+	gapPlots: number,
+	clearOfCentre: number,
+	attempts: number,
+}
+
+local function findSpot(spec: Spec): Vector2?
+	for _ = 1, spec.attempts do
+		local angle = rng:NextNumber(0, math.pi * 2)
+		local distance = math.sqrt(rng:NextNumber(0, 1)) * (ISLAND_RADIUS + COAST_WANDER * 0.5)
+		local point = Vector2.new(math.cos(angle) * distance, math.sin(angle) * distance)
+		if point.Magnitude >= spec.clearOfCentre then
+			local height = heightAt(point.X, point.Y)
+			if height >= spec.minHeight and height <= spec.maxHeight
+				and slopeAt(point.X, point.Y, 14) <= spec.maxSlope
+				and clearOf(nodeSpots, point, spec.gapNodes)
+				and clearOf(plotSpots, point, spec.gapPlots)
+			then
+				return point
 			end
 		end
 	end
+	return nil
+end
+
+-- Each resource gets a QUOTA and its own stretch of terrain to look in.
+--
+-- The first cut let terrain alone decide, sampling anywhere and asking "what
+-- belongs here?". The answer came back Grain 19, Wood 18, Wool 9, Stone 2, Ore
+-- 0 - because the same slope limit that keeps a node off a cliff also keeps it
+-- off every mountain, so the high ground where stone and ore live was filtered
+-- out before it was ever classified. An economy missing an entire resource is
+-- not a distribution quirk, it is a broken game.
+--
+-- So the quota comes first and the terrain search bends to it: stone and ore
+-- look high and tolerate steeper ground, grain looks low and flat.
+local NODE_PLAN = {
+	{ resource = "Wood", count = 11, minHeight = 5, maxHeight = 48, maxSlope = 16 },
+	{ resource = "Grain", count = 10, minHeight = 3, maxHeight = 32, maxSlope = 10 },
+	{ resource = "Wool", count = 10, minHeight = 5, maxHeight = 42, maxSlope = 15 },
+	{ resource = "Stone", count = 9, minHeight = 24, maxHeight = 96, maxSlope = 30 },
+	-- Ore sat empty at minHeight 40 because the only ground that high was inside
+	-- the centre exclusion. It looks lower and is allowed nearer the middle.
+	{ resource = "Ore", count = 8, minHeight = 30, maxHeight = 160, maxSlope = 38 },
+}
+
+local nodeCount = 0
+local shortfall: { string } = {}
+for _, plan in NODE_PLAN do
+	local placed = 0
+	for _ = 1, plan.count do
+		local spot = findSpot({
+			minHeight = plan.minHeight,
+			maxHeight = plan.maxHeight,
+			maxSlope = plan.maxSlope,
+			gapNodes = 104,
+			gapPlots = 0,
+			clearOfCentre = 165,
+			attempts = 900,
+		})
+		if not spot then
+			break
+		end
+		nodeSpots[#nodeSpots + 1] = spot
+		nodeCount += 1
+		placed += 1
+
+		local origin = Vector3.new(spot.X, 0, spot.Y)
+		local name = ("%s_%02d"):format(plan.resource, nodeCount)
+		if plan.resource == "Wood" then
+			makeForest(name, origin)
+		elseif plan.resource == "Wool" then
+			makePasture(name, origin)
+		elseif plan.resource == "Grain" then
+			makeField(name, origin)
+		else
+			makeOutcrop(name, origin, plan.resource)
+		end
+	end
+	if placed < plan.count then
+		shortfall[#shortfall + 1] = ("%s %d/%d"):format(plan.resource, placed, plan.count)
+	end
+end
+if #shortfall > 0 then
+	-- Loud on purpose. A quiet shortfall is how the map ended up with no ore.
+	warn("[Medieval Land] the island had no room for: " .. table.concat(shortfall, ", "))
+end
+
+-- The plaza terrace, declared here because the plaza is built before villages
+-- are. Same idea as terraceFor below: fill to a level, then clear above it.
+local function terraceForPlaza(centre: Vector2, half: number, height: number)
+	Terrain:FillCylinder(
+		CFrame.new(centre.X, (SEA_FLOOR + height) / 2, centre.Y),
+		height - SEA_FLOOR, half, Enum.Material.Ground
+	)
+	Terrain:FillCylinder(
+		CFrame.new(centre.X, height + 100, centre.Y),
+		200, half, Enum.Material.Air
+	)
 end
 
 -- ---------------------------------------------------------------- totem
@@ -561,6 +755,10 @@ local square = Instance.new("Folder")
 square.Name = "VillageSquare"
 square.Parent = Workspace
 
+-- The plaza is the one fixed point on the island, and the zone closes onto it,
+-- so it gets a terrace like the villages do. Without this the totem stands on
+-- whatever slope the noise happened to put at the origin.
+terraceForPlaza(Vector2.new(0, 0), 150, math.max(heightAt(0, 0), 12))
 local plazaGround = groundHeight(0, 0)
 
 local function plazaPart(name: string, size: Vector3, cframe: CFrame,
@@ -1225,20 +1423,54 @@ local function makePlot(name: string, centre: Vector2)
 	return site
 end
 
+-- A village needs FLAT ground. Its foundation is a single 148 stud slab, so on
+-- a hillside it floats at one corner and buries itself at the other. Cut a
+-- terrace: fill solid up to the pad height, then clear everything above it.
+local function terraceFor(centre: Vector2, half: number, height: number)
+	-- ROUND, not square. Sixteen square terraces cut into an island read from
+	-- the air as sixteen brown plates - the grid the whole redesign was meant to
+	-- get rid of, reintroduced by the flattening. A cylinder just wide enough to
+	-- carry the corners of the foundation leaves a circular shelf instead.
+	local radius = half * math.sqrt(2) + 6
+	Terrain:FillCylinder(
+		CFrame.new(centre.X, (SEA_FLOOR + height) / 2, centre.Y),
+		height - SEA_FLOOR, radius, Enum.Material.Ground
+	)
+	Terrain:FillCylinder(
+		CFrame.new(centre.X, height + 100, centre.Y),
+		200, radius, Enum.Material.Air
+	)
+end
+
 -- Roughly a dozen claimable plots, which is the player count Conquest is written
--- for. A checkerboard of the interior tile corners, minus the ring around the
--- totem so nobody spawns straight into somebody's keep.
+-- for. Thrown at the island rather than laid on a lattice, kept clear of the
+-- totem so nobody spawns straight into somebody's keep, and kept well apart from
+-- each other and from the nodes because they share the one spacing table.
+local PLOT_TARGET = 16
+local PLOT_SPACING = 250
+
 local plotCount = 0
-for i = 2, GRID do
-	for j = 2, GRID do
-		if (i + j) % 2 == 0 then
-			local point = cornerPoint(i, j)
-			if point.Magnitude > TILE * 1.4 then
-				plotCount += 1
-				makePlot(("Base_%02d"):format(plotCount), point)
-			end
-		end
+for _ = 1, PLOT_TARGET do
+	local spot = findSpot({
+		minHeight = 7,
+		maxHeight = 58,
+		maxSlope = 14,
+		gapNodes = 86, -- elbow room from a node, not the full village spacing
+		gapPlots = PLOT_SPACING,
+		clearOfCentre = 300,
+		attempts = 1400,
+	})
+	if not spot then
+		break
 	end
+	plotSpots[#plotSpots + 1] = spot
+	plotCount += 1
+	terraceFor(spot, PLOT / 2, heightAt(spot.X, spot.Y))
+	makePlot(("Base_%02d"):format(plotCount), spot)
+end
+if plotCount < PLOT_TARGET then
+	warn(("[Medieval Land] only %d of %d village plots fit on the island"):format(
+		plotCount, PLOT_TARGET))
 end
 
 -- ---------------------------------------------------------------- tools
@@ -1469,8 +1701,8 @@ bloom.Size = 20
 bloom.Threshold = 1.6
 bloom.Parent = Lighting
 
-print(("[Medieval Land] Board: %dx%d tiles, %d nodes, %d castle plots, 4 tools."):format(
-	GRID, GRID, nodeCount, plotCount
+print(("[Medieval Land] Island r~%d, %d nodes, %d village plots, 4 tools."):format(
+	ISLAND_RADIUS, nodeCount, plotCount
 ))
 
 end

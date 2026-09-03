@@ -669,10 +669,10 @@ local function zoneHalf(): number
 	return if typeof(value) == "number" then value else math.huge
 end
 
--- The zone is a square centred on the origin, so "outside" is the larger of the
--- two axis distances rather than a radius.
+-- Radial, matching MatchService. The world is an island now: a square test
+-- would call a stretch of open sea "inside" simply because it sat in a corner.
 local function inZone(position: Vector3): boolean
-	return math.max(math.abs(position.X), math.abs(position.Z)) <= zoneHalf()
+	return Vector3.new(position.X, 0, position.Z).Magnitude <= zoneHalf()
 end
 
 -- A node is a cluster - five trees, a flock, a 32 stud field - so aiming at the
