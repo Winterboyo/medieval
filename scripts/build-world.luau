@@ -1817,28 +1817,58 @@ end)
 -- RobloxScript"). The old pcall that tried to set it was dead code pretending
 -- to be a safeguard. Style is set by hand: Lighting -> LightingStyle -> Realistic.
 
--- A LOW SUN. The old 14.6 put it almost overhead, which is the flattest light
--- there is: nothing casts a shadow long enough to give a building form, and the
--- island read as a painted map. Late afternoon gives every wall a lit face and a
--- dark one, which is most of what makes geometry legible.
-Lighting.ClockTime = 16.1
-Lighting.GeographicLatitude = 12
+-- THE SUN IS THE DIRECTIONAL LIGHT. Roblox has no DirectionalLight object; the
+-- one directional source is the sun, and the only way to aim it is ClockTime
+-- (time of day) and GeographicLatitude (how high its arc runs). So "position the
+-- directional light" means solving for those two numbers.
+--
+-- 16.1 / lat 12 put the sun 27.9 degrees up - a fine elevation - but pointing
+-- (-0.861, 0.468, -0.199), which is almost straight down the X axis. Village
+-- plots are square and axis-aligned, so axis-parallel light hits one wall
+-- FACE ON and leaves the adjacent wall no darker: the two faces you can see at
+-- once come out the same brightness, and the building reads as a flat sticker.
+--
+-- Both pairs were found by sweeping ClockTime and GeographicLatitude and
+-- measuring GetSunDirection, not by guessing at the solar formula. Scoring for
+-- a diagonal azimuth at ~31 degrees elevation:
+--
+--   axis bias (0 = perfectly diagonal, 1 = straight down an axis)
+--     16.1 / lat  12  ->  0.749   one lit face, no contrast between walls
+--      8.7 / lat -12  ->  0.045   light rakes across the corner
+--
+-- 31.9 degrees casts a shadow 1.61x the height of whatever throws it, so a
+-- 30-stud keep lays down about 48 studs of shadow. Lower would be more dramatic
+-- and would also let the terrain self-shadow into an unreadable mess.
+Lighting.ClockTime = 8.7
+Lighting.GeographicLatitude = -12
 Lighting.GlobalShadows = true
-Lighting.ShadowSoftness = 0.22
 
--- Brightness 3 with exposure above zero was blowing the ground out to near
--- white. Pulled down, with the exposure slightly negative to hold the highlights
--- on sand and water.
-Lighting.Brightness = 2.1
-Lighting.ExposureCompensation = -0.08
+-- 0.22 was a deliberately soft edge. The ask is WELL-DEFINED shadows, so this
+-- goes near zero: penumbra only wide enough to avoid a stair-stepped edge.
+Lighting.ShadowSoftness = 0.05
 
--- Warm sun against a cool sky. Ambient is the light in shadow, and making it
--- BLUER than the sun is what stops shadows reading as dirty grey - it is the
--- single cheapest trick in outdoor lighting.
-Lighting.Ambient = Color3.fromRGB(58, 62, 74)
-Lighting.OutdoorAmbient = Color3.fromRGB(118, 132, 152)
-Lighting.EnvironmentDiffuseScale = 0.65
-Lighting.EnvironmentSpecularScale = 0.6
+-- CONTRAST, NOT BRIGHTNESS. This is the actual reason the map looked flat, and
+-- it is worth being precise about: the shadows were always being cast. Every
+-- part had CastShadow on and GlobalShadows was true. They were being FILLED IN.
+--
+-- A shadow is only visible as the difference between lit and unlit. Ambient and
+-- EnvironmentDiffuseScale light the unlit side, so at OutdoorAmbient (118,132,152)
+-- with EnvironmentDiffuseScale 0.65 a shadowed surface was still receiving over
+-- half the light of a sunlit one. That is a 2:1 ratio, and 2:1 does not read as
+-- shadow - it reads as a slightly darker shade of the same paint.
+--
+-- So the sun goes UP and the fill comes DOWN. Total light on the lit side is
+-- roughly unchanged; the ratio moves to about 5:1.
+Lighting.Brightness = 3.2
+Lighting.ExposureCompensation = -0.15
+
+-- Ambient stays BLUER than the sunlight. That is what keeps a deep shadow
+-- reading as cool skylight rather than as dirty grey, and it matters more now
+-- that the shadows are actually dark enough to see the colour of.
+Lighting.Ambient = Color3.fromRGB(26, 30, 42)
+Lighting.OutdoorAmbient = Color3.fromRGB(64, 76, 98)
+Lighting.EnvironmentDiffuseScale = 0.25
+Lighting.EnvironmentSpecularScale = 0.35
 
 -- DepthOfFieldEffect and Sky are in this list because the place file carries a
 -- stock Roblox skybox and an unconfigured DoF from the baseplate template. They
@@ -1862,7 +1892,7 @@ end
 local atmosphere = Instance.new("Atmosphere")
 atmosphere.Density = 0.36
 atmosphere.Offset = 0.05
-atmosphere.Haze = 0.38
+atmosphere.Haze = 0.28
 atmosphere.Glare = 0.12
 atmosphere.Color = Color3.fromRGB(202, 214, 226)
 atmosphere.Decay = Color3.fromRGB(88, 122, 162)
@@ -1887,7 +1917,7 @@ sunRays.Parent = Lighting
 
 local colorCorrection = Instance.new("ColorCorrectionEffect")
 colorCorrection.Brightness = 0
-colorCorrection.Contrast = 0.14
+colorCorrection.Contrast = 0.2
 colorCorrection.Saturation = 0.09
 colorCorrection.TintColor = Color3.fromRGB(255, 251, 244)
 colorCorrection.Parent = Lighting

@@ -821,7 +821,8 @@ Once it ran, it needed tuning:
 
 - **The sun was the problem.** `ClockTime 14.6` put it almost overhead, which is
   the flattest light there is — nothing casts a shadow long enough to give a
-  building form, so the island read as a painted map. It is 16.1 now.
+  building form, so the island read as a painted map. It went to 16.1, and then
+  to 8.7 — see below, because 16.1 turned out to be wrong for a second reason.
 - **Haze was the other problem.** At 0.9 it washed the far half of the map into a
   flat cream band and took the horizon with it. It is 0.38, with `Density` raised
   instead: density does the work of *there is air between us*, haze is only the
@@ -839,6 +840,51 @@ even be *read* from a plugin thread. This place was migrated to unified lighting
 so the style is set by hand at Lighting → LightingStyle → Realistic. The old
 `pcall` that tried to set `Technology` was dead code pretending to be a
 safeguard, and it is gone.
+
+### Shadows were never missing — they were being filled in
+
+The map read as flat and shadowless. The obvious diagnosis is wrong: `GlobalShadows`
+was already `true`, `Terrain.CastShadow` was `true`, and **all 2,292 parts had
+`CastShadow` on**. Every shadow was being cast. None of them were legible.
+
+**A shadow is not a thing that gets drawn; it is the difference between the lit
+and the unlit side.** Ambient light and `EnvironmentDiffuseScale` illuminate the
+unlit side, so they erase shadows without ever touching a shadow setting. At
+`OutdoorAmbient` (118,132,152) and `EnvironmentDiffuseScale` 0.65, a shadowed
+surface still received over half the light of a sunlit one — a **2:1 ratio**,
+which reads as slightly darker paint, not as shadow. The fix is to raise the sun
+and drop the fill, landing near **5:1**, with total light on the lit side roughly
+unchanged.
+
+The second problem was the sun's *azimuth*, which is easy to miss because the
+elevation was fine. 16.1 / lat 12 pointed the sun `(-0.861, 0.468, -0.199)` —
+almost exactly down the X axis. The village plots are square and axis-aligned, so
+axis-parallel light strikes one wall face-on and leaves the wall beside it no
+darker: **the two faces you can see at once come out the same brightness**, and
+the building flattens into a sticker.
+
+Roblox has **no `DirectionalLight` object** — the sun is the only directional
+source, and the sole way to aim it is `ClockTime` and `GeographicLatitude`. So
+those two numbers were found by sweeping both and measuring `GetSunDirection()`,
+rather than by guessing at the solar formula:
+
+| | elevation | axis bias (0 = diagonal) |
+|---|---|---|
+| 16.1 / lat 12 | 27.9° | **0.749** — down an axis |
+| 8.7 / lat −12 | 31.9° | **0.045** — rakes the corner |
+
+31.9° lays down a shadow **1.61× the height** of whatever throws it. Verified two
+ways: raycasts toward the sun from ground behind test pillars found 11 of 12
+probes occluded — and the twelfth is the 22-stud probe behind the 10-stud pillar,
+whose shadow only reaches ~16 studs, so the miss confirms the ratio rather than
+contradicting it.
+
+`ShadowSoftness` went 0.22 → 0.05: 0.22 was a deliberately soft penumbra, and the
+brief was *well-defined*.
+
+`Atmosphere.Haze` came down with the ambient (0.38 → 0.28). Haze is aerial fill —
+it lifts distant shadows exactly the way ambient lifts near ones, so leaving it up
+would have kept the far half of the island flat after fixing the near half.
 
 ### Generated materials, and a silent trap
 
