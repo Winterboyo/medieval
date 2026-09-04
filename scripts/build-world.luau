@@ -725,41 +725,95 @@ local function makeForest(name: string, origin: Vector3): Model
 end
 
 -- --- pasture -----------------------------------------------------
+local PASTURE_FENCE = Color3.fromRGB(126, 92, 58)
+local PASTURE_RADIUS = 58
+
+-- Exaggerated, per the art direction. A realistically proportioned sheep is
+-- about two thirds of a player's height and, at the distance you actually see a
+-- pasture from, that is a white dot. The fence says "pasture"; the sheep have to
+-- be big enough to say "of sheep".
+local SHEEP = 1.5
+
 local function makePasture(name: string, origin: Vector3): Model
 	local model = Instance.new("Model")
 	model.Name = name
 	model:SetAttribute("Resource", "Wool")
 
+	-- THE FENCE IS WHAT MAKES IT A PASTURE. Six sheep standing on open grass is
+	-- six sheep; the same six inside a rail fence is somewhere a person keeps
+	-- animals, and that is the difference between a prop and a place. It is also
+	-- the silhouette that identifies the tile from outside it, since sheep are
+	-- small and the fence is forty studs of straight line.
+	--
+	-- Permanent - nothing here wears. Shearing a flock should not dismantle the
+	-- fence around it.
+	local POSTS = 14
+	local gate = rng:NextInteger(1, POSTS) -- one gap, so it reads as enterable
+	local function cornerAt(index: number): Vector3
+		local angle = (index / POSTS) * math.pi * 2
+		local x = origin.X + math.cos(angle) * PASTURE_RADIUS
+		local z = origin.Z + math.sin(angle) * PASTURE_RADIUS
+		return Vector3.new(x, groundHeight(x, z), z)
+	end
+
+	for i = 0, POSTS - 1 do
+		local here = cornerAt(i)
+		local post = newPart(("Post%d"):format(i + 1), Vector3.new(0.8, 4.4, 0.8),
+			CFrame.new(here + Vector3.new(0, 1.9, 0)), model)
+		post.Material = Enum.Material.SmoothPlastic
+		post.Color = PASTURE_FENCE
+
+		if i + 1 ~= gate then
+			-- Two rails per span, laid along the chord between neighbouring
+			-- posts and pitched to follow the ground between them.
+			local nextPost = cornerAt(i + 1)
+			local span = nextPost - here
+			local middle = here + span / 2
+			for rail = 1, 2 do
+				local lift = 1.4 + rail * 1.1
+				local bar = newPart(("Rail%d_%d"):format(i + 1, rail),
+					Vector3.new(0.4, 0.5, span.Magnitude),
+					CFrame.lookAt(middle + Vector3.new(0, lift, 0), nextPost + Vector3.new(0, lift, 0)),
+					model)
+				bar.Material = Enum.Material.SmoothPlastic
+				bar.Color = PASTURE_FENCE
+				bar.CanCollide = false -- the posts fence you in; rails only draw it
+			end
+		end
+	end
+
 	local primary: Part? = nil
 	for s = 1, 6 do
 		local angle = rng:NextNumber(0, math.pi * 2)
-		local dist = if s == 1 then 0 else rng:NextNumber(14, 50)
+		local dist = if s == 1 then 0 else rng:NextNumber(12, PASTURE_RADIUS - 14)
 		local x = origin.X + math.cos(angle) * dist
 		local z = origin.Z + math.sin(angle) * dist
 		local ground = groundHeight(x, z)
 		local facing = rng:NextNumber(0, math.pi * 2)
-		local base = CFrame.new(x, ground + 1.5, z) * CFrame.Angles(0, facing, 0)
+		local base = CFrame.new(x, ground + 1.5 * SHEEP + 0.6, z) * CFrame.Angles(0, facing, 0)
 
 		-- The sheep itself does not wear away, only its fleece. A shorn flock
 		-- should still be a flock standing there looking indignant.
-		local body = newPart(("Body%d"):format(s), Vector3.new(2.4, 1.7, 1.6), base, model)
+		local body = newPart(("Body%d"):format(s),
+			Vector3.new(2.4, 1.7, 1.6) * SHEEP, base, model)
 		body.Shape = Enum.PartType.Ball
 		body.Material = Enum.Material.Fabric
 		body.Color = Color3.fromRGB(226, 216, 200)
 		primary = primary or body
 
-		local head = newPart(("Head%d"):format(s), Vector3.new(0.9, 0.9, 0.9), base * CFrame.new(0, 0.25, -1.2), model)
+		local head = newPart(("Head%d"):format(s), Vector3.new(0.9, 0.9, 0.9) * SHEEP,
+			base * CFrame.new(0, 0.25 * SHEEP, -1.2 * SHEEP), model)
 		head.Shape = Enum.PartType.Ball
 		head.Material = Enum.Material.SmoothPlastic
 		head.Color = Color3.fromRGB(58, 54, 52)
 
 		for leg = 1, 4 do
-			local lx = if leg % 2 == 0 then 0.7 else -0.7
-			local lz = if leg <= 2 then 0.6 else -0.6
+			local lx = (if leg % 2 == 0 then 0.7 else -0.7) * SHEEP
+			local lz = (if leg <= 2 then 0.6 else -0.6) * SHEEP
 			local shin = newPart(
 				("Leg%d_%d"):format(s, leg),
-				Vector3.new(0.26, 1.5, 0.26),
-				base * CFrame.new(lx, -1.2, lz),
+				Vector3.new(0.26, 1.5, 0.26) * SHEEP,
+				base * CFrame.new(lx, -1.2 * SHEEP, lz),
 				model
 			)
 			shin.Material = Enum.Material.SmoothPlastic
@@ -767,11 +821,15 @@ local function makePasture(name: string, origin: Vector3): Model
 		end
 
 		for f = 1, 4 do
-			local size = rng:NextNumber(1.1, 1.6)
+			local size = rng:NextNumber(1.1, 1.6) * SHEEP
 			local tuft = wearing(newPart(
 				("Fleece%d_%d"):format(s, f),
 				Vector3.new(size, size * 0.85, size),
-				base * CFrame.new(rng:NextNumber(-0.8, 0.8), rng:NextNumber(0.6, 1.0), rng:NextNumber(-0.7, 0.7)),
+				base * CFrame.new(
+					rng:NextNumber(-0.8, 0.8) * SHEEP,
+					rng:NextNumber(0.6, 1.0) * SHEEP,
+					rng:NextNumber(-0.7, 0.7) * SHEEP
+				),
 				model
 			))
 			tuft.Shape = Enum.PartType.Ball
@@ -821,7 +879,37 @@ local function makeField(name: string, origin: Vector3): Model
 				model
 			))
 			skin(stalk, SKIN.wheat)
-			stalk.Color = Color3.fromRGB(216, 182, 88)
+			stalk.Color = Color3.fromRGB(232, 190, 66)
+		end
+	end
+
+	-- STOOKS. The crop itself is a flat mat of overlapping clumps - correct for
+	-- a field seen from above, and completely silhouette-less from standing
+	-- height. Four bundles propped against each other give the tile something
+	-- that breaks the skyline, which is how you spot a grain tile across a
+	-- valley rather than only once you are on it.
+	--
+	-- Permanent: a stook is cut grain already gathered, so it should still be
+	-- standing when the field itself has been harvested flat.
+	for stook = 1, 4 do
+		local angle = (stook / 4) * math.pi * 2 + rng:NextNumber(-0.4, 0.4)
+		local dist = rng:NextNumber(20, 27)
+		local sx = origin.X + math.cos(angle) * dist
+		local sz = origin.Z + math.sin(angle) * dist
+		local sy = groundHeight(sx, sz)
+		-- Five sheaves leaning inward hard enough to read as a cone. At three
+		-- bundles and a 0.2 radian lean they came out as a clump of upright
+		-- posts, which is what a stook is NOT - the whole silhouette is the
+		-- lean, so it is 0.46 now and the tops actually meet.
+		for sheaf = 1, 5 do
+			local lean = (sheaf / 5) * math.pi * 2
+			local bundle = newPart(("Stook%d_%d"):format(stook, sheaf),
+				Vector3.new(1.7, 7.4, 1.7),
+				CFrame.new(sx + math.cos(lean) * 1.5, sy + 3.4, sz + math.sin(lean) * 1.5)
+					* CFrame.Angles(math.sin(lean) * 0.46, 0, -math.cos(lean) * 0.46),
+				model)
+			skin(bundle, SKIN.wheat)
+			bundle.Color = Color3.fromRGB(238, 196, 68)
 		end
 	end
 
@@ -829,116 +917,301 @@ local function makeField(name: string, origin: Vector3): Model
 	return model
 end
 
--- --- quarry and mine ---------------------------------------------
--- A hill tile is a RANGE now, not a boulder: three outcrops spread across the
--- tile rather than one lump at the centre. At 160 studs a single rock left the
--- rest of the tile as empty floor, and made a stone tile something you stood on
--- top of instead of somewhere you walked into.
-local function makeOutcrop(name: string, origin: Vector3, resource: string): Model
+-- --- quarry (Stone) and mine (Ore) ------------------------------
+-- THESE USED TO BE ONE FUNCTION WITH A DIFFERENT GREY, and that is exactly the
+-- failure the design brief names: a label difference rather than a shape
+-- difference. Same box cluster, same silhouette, one darker than the other -
+-- from twenty studs away they were the same rock twice. They no longer share a
+-- builder at all, because two things that must read apart at a glance cannot be
+-- one function with a colour parameter.
+--
+-- Flat colour, no MaterialVariant. The ground is flat-shaded facets now and
+-- these sit on it; a textured rock in a faceted world reads as an import.
+
+local function newWedge(name: string, size: Vector3, cframe: CFrame, parent: Instance,
+	colour: Color3): WedgePart
+	local wedge = Instance.new("WedgePart")
+	wedge.Name = name
+	wedge.Size = size
+	wedge.CFrame = cframe
+	wedge.Anchored = true
+	wedge.Material = Enum.Material.SmoothPlastic
+	wedge.Color = colour
+	wedge.TopSurface = Enum.SurfaceType.Smooth
+	wedge.BottomSurface = Enum.SurfaceType.Smooth
+	wedge.Parent = parent
+	return wedge
+end
+
+-- Stone: the LIGHT one, and the angular one. Angularity comes from wedges - a
+-- rotated box is still a box, but a wedge stood on end is a blade, and a cluster
+-- of blades leaning different ways is what makes rock look broken rather than
+-- stacked.
+local QUARRY_GREYS = {
+	Color3.fromRGB(186, 189, 196),
+	Color3.fromRGB(166, 170, 178),
+	Color3.fromRGB(202, 204, 209),
+}
+
+local function makeQuarry(name: string, origin: Vector3): Model
 	local model = Instance.new("Model")
 	model.Name = name
-	model:SetAttribute("Resource", resource)
+	model:SetAttribute("Resource", "Stone")
 
-	local isOre = resource == "Ore"
-
-	local function stone(partName: string, size: Vector3, cframe: CFrame, wears: boolean): Part
-		local part = newPart(partName, size, cframe, model)
-		part.Material = Enum.Material.Rock
-		if isOre then
-			-- Ore country looks different from ordinary hill stone before you
-			-- swing at it, which is the whole point of walking to it.
-			part.MaterialVariant = SKIN.oreRock.variant
-		end
-		-- One grey, jittered equally on all three channels so it stays neutral
-		-- rather than drifting into a tint. Ore is darker, and its wearing
-		-- chunks carry the rusty colour so a rich seam reads at a glance.
-		local grey = if isOre then rng:NextInteger(74, 96) else rng:NextInteger(102, 134)
-		part.Color = Color3.fromRGB(grey + 5, grey + 3, grey)
-		if wears then
-			wearing(part)
-			if isOre then
-				part.Material = Enum.Material.Metal
-				part.Color = Color3.fromRGB(rng:NextInteger(132, 168), rng:NextInteger(92, 116), rng:NextInteger(56, 74))
-			end
-		end
-		return part
+	local function grey(): Color3
+		return QUARRY_GREYS[rng:NextInteger(1, #QUARRY_GREYS)]
 	end
 
-	-- One outcrop of the range. Scale varies per outcrop so the three do not
-	-- read as the same rock stamped out three times.
-	local function outcrop(tag: string, at: Vector2, scale: number): Part
+	-- One outcrop of the range. Three of these spread across the tile, so a
+	-- stone tile is somewhere you walk into rather than a lump you stand on.
+	local function outcrop(tag: string, at: Vector2, scale: number): BasePart
 		local groundY = groundHeight(at.X, at.Y)
-		local coreCentre = groundY + 2.4 * scale
 
-		-- No dominant centre block: one big box with smaller boxes tucked
-		-- against it reads as a box. A cluster whose TOPS sit at different
-		-- heights is what gives a rock its broken silhouette.
-		local core = stone(
-			tag .. "Core",
-			Vector3.new(3.4, 4.6, 3.0) * scale,
-			CFrame.new(at.X, coreCentre, at.Y) * CFrame.Angles(math.rad(5), math.rad(22), math.rad(-7)),
-			false
+		-- A low plinth the blades grow out of. Permanent: quarry a seam out and
+		-- what is left should still be a rock, not bare grass.
+		local core = newPart(
+			tag .. "Base",
+			Vector3.new(7.0 * scale, 2.6 * scale, 6.2 * scale),
+			CFrame.new(at.X, groundY + 1.0 * scale, at.Y)
+				* CFrame.Angles(rng:NextNumber(-0.09, 0.09), rng:NextNumber(0, 6.28), rng:NextNumber(-0.09, 0.09)),
+			model
 		)
+		core.Material = Enum.Material.SmoothPlastic
+		core.Color = grey()
 
-		for i = 1, 6 do
-			local width = rng:NextNumber(2.2, 3.6) * scale
-			local height = rng:NextNumber(2.4, 5.2) * scale
-			local angle = (i / 6) * math.pi * 2 + rng:NextNumber(-0.3, 0.3)
-			local dist = rng:NextNumber(1.7, 3.1) * scale
-			local baseY = groundY + rng:NextNumber(0, 1.1)
-			stone(
-				("%sBlock%d"):format(tag, i),
-				Vector3.new(width, height, width * rng:NextNumber(0.75, 1.2)),
+		-- The blades. Tall, thin, leaning hard, tops at different heights.
+		for i = 1, 5 do
+			local height = rng:NextNumber(4.2, 8.4) * scale
+			local width = rng:NextNumber(1.6, 3.0) * scale
+			local angle = (i / 5) * math.pi * 2 + rng:NextNumber(-0.4, 0.4)
+			local dist = rng:NextNumber(0.6, 2.9) * scale
+			wearing(newWedge(
+				("%sBlade%d"):format(tag, i),
+				Vector3.new(width, height, width * rng:NextNumber(0.8, 1.5)),
 				CFrame.new(
 					at.X + math.cos(angle) * dist,
-					baseY + height / 2,
+					groundY + 1.6 * scale + height / 2,
 					at.Y + math.sin(angle) * dist
-				) * CFrame.Angles(rng:NextNumber(-0.22, 0.22), rng:NextNumber(0, 6.28), rng:NextNumber(-0.26, 0.26)),
-				true
-			)
+				) * CFrame.Angles(
+					rng:NextNumber(-0.42, 0.42),
+					rng:NextNumber(0, 6.28),
+					rng:NextNumber(-0.42, 0.42)
+				),
+				model,
+				grey()
+			))
 		end
 
+		-- A couple of flat slabs sheared off and leaning against the pile.
 		for i = 1, 2 do
-			local height = rng:NextNumber(3.0, 4.4) * scale
-			stone(
-				("%sShard%d"):format(tag, i),
-				Vector3.new(rng:NextNumber(1.3, 2.0) * scale, height, rng:NextNumber(1.3, 2.0) * scale),
+			wearing(newWedge(
+				("%sSlab%d"):format(tag, i),
+				Vector3.new(rng:NextNumber(3.4, 5.2) * scale, rng:NextNumber(1.0, 1.8) * scale,
+					rng:NextNumber(3.0, 4.6) * scale),
 				CFrame.new(
-					at.X + rng:NextNumber(-1.6, 1.6),
-					coreCentre + 1.6 * scale + height / 2,
-					at.Y + rng:NextNumber(-1.6, 1.6)
-				) * CFrame.Angles(rng:NextNumber(-0.28, 0.28), rng:NextNumber(0, 6.28), rng:NextNumber(-0.28, 0.28)),
-				true
-			)
+					at.X + rng:NextNumber(-4.2, 4.2),
+					groundY + rng:NextNumber(0.6, 2.2),
+					at.Y + rng:NextNumber(-4.2, 4.2)
+				) * CFrame.Angles(
+					rng:NextNumber(-0.9, 0.9),
+					rng:NextNumber(0, 6.28),
+					rng:NextNumber(-0.9, 0.9)
+				),
+				model,
+				grey()
+			))
 		end
 
-		-- Rubble stays: it is what makes the outcrop sit IN the ground rather
-		-- than on it, and it should survive the seam being worked out.
-		for i = 1, 4 do
+		-- Chips around the foot. Permanent: they are what makes the outcrop sit
+		-- IN the ground rather than on it.
+		for i = 1, 5 do
 			local angle = rng:NextNumber(0, math.pi * 2)
-			local dist = rng:NextNumber(3.2, 6.0) * scale
-			local size = rng:NextNumber(0.7, 1.9) * scale
-			stone(
-				("%sRubble%d"):format(tag, i),
-				Vector3.new(size, size * rng:NextNumber(0.5, 0.9), size * rng:NextNumber(0.7, 1.2)),
-				CFrame.new(at.X + math.cos(angle) * dist, groundY + 0.25, at.Y + math.sin(angle) * dist)
-					* CFrame.Angles(rng:NextNumber(-0.4, 0.4), rng:NextNumber(0, 6.28), rng:NextNumber(-0.4, 0.4)),
-				false
+			local dist = rng:NextNumber(4.0, 7.4) * scale
+			local size = rng:NextNumber(0.8, 1.9) * scale
+			local chip = newWedge(
+				("%sChip%d"):format(tag, i),
+				Vector3.new(size, size * rng:NextNumber(0.5, 0.9), size * rng:NextNumber(0.8, 1.3)),
+				CFrame.new(at.X + math.cos(angle) * dist, groundY + 0.3, at.Y + math.sin(angle) * dist)
+					* CFrame.Angles(rng:NextNumber(-0.3, 0.3), rng:NextNumber(0, 6.28), rng:NextNumber(-0.3, 0.3)),
+				model,
+				grey()
 			)
+			chip.CanCollide = false -- ankle-height litter should not trip anyone
 		end
 
 		return core
 	end
 
-	-- Three outcrops on a wide triangle, jittered, so the range has no obvious
-	-- centre to stand in the middle of.
 	local spin = rng:NextNumber(0, math.pi * 2)
 	for i = 0, 2 do
 		local angle = spin + (i / 3) * math.pi * 2
 		local dist = rng:NextNumber(24, 42)
 		local at = Vector2.new(origin.X + math.cos(angle) * dist, origin.Z + math.sin(angle) * dist)
-		local core = outcrop(("Rock%d"):format(i + 1), at, rng:NextNumber(1.15, 1.75))
+		-- Scaled against the FACETS, not against the character. The ground is
+		-- drawn in 48 stud cells now, and an outcrop that would have read fine
+		-- on smooth terrain reads as gravel next to a triangle that size.
+		local core = outcrop(("Rock%d"):format(i + 1), at, rng:NextNumber(1.6, 2.4))
 		model.PrimaryPart = model.PrimaryPart or core
+	end
+
+	model.Parent = nodes
+	return model
+end
+
+-- Ore: a MINE, not a darker quarry. The silhouette is the whole point - a
+-- timber-framed portal into a dark mound reads as somewhere you dig from across
+-- the tile, and nothing about a pile of grey blades does.
+local MINE_ROCK = Color3.fromRGB(58, 56, 68)
+local MINE_ROCK_LIGHT = Color3.fromRGB(74, 71, 84)
+local MINE_TIMBER = Color3.fromRGB(88, 60, 38)
+local MINE_DARK = Color3.fromRGB(10, 9, 13)
+local ORE_GLINT = Color3.fromRGB(255, 174, 62)
+
+local function makeMine(name: string, origin: Vector3): Model
+	local model = Instance.new("Model")
+	model.Name = name
+	model:SetAttribute("Resource", "Ore")
+
+	local function rock(partName: string, size: Vector3, cframe: CFrame, light: boolean): Part
+		local part = newPart(partName, size, cframe, model)
+		part.Material = Enum.Material.SmoothPlastic
+		part.Color = if light then MINE_ROCK_LIGHT else MINE_ROCK
+		return part
+	end
+
+	-- Small, saturated, and NEON so they catch the eye against near-black rock.
+	-- These are the ore: they are what wears away when the seam is worked out,
+	-- which leaves the mine itself standing and empty.
+	local function glint(partName: string, at: CFrame, size: number)
+		local chunk = wearing(newPart(partName, Vector3.new(size, size * 0.8, size * 0.9), at, model))
+		chunk.Material = Enum.Material.Neon
+		chunk.Color = ORE_GLINT
+		chunk.CanCollide = false
+	end
+
+	-- --- the entrance, at the middle of the tile ---------------------
+	local mouthAt = Vector2.new(origin.X, origin.Z)
+	local groundY = groundHeight(mouthAt.X, mouthAt.Y)
+	local facing = rng:NextNumber(0, math.pi * 2)
+	local at = CFrame.new(mouthAt.X, groundY, mouthAt.Y) * CFrame.Angles(0, facing, 0)
+
+	-- The hill it is cut into. Three slabs stepped back, so the mound has a
+	-- profile instead of being one block with a hole in it.
+	for i = 1, 3 do
+		local width = 26 - i * 3.4
+		local height = 8.5 + i * 3.2
+		rock(
+			("Mound%d"):format(i),
+			Vector3.new(width, height, 11 + i * 5),
+			at * CFrame.new(0, height / 2 - 1.5, -3.4 - i * 4.2)
+				* CFrame.Angles(0, rng:NextNumber(-0.14, 0.14), 0),
+			i == 2
+		)
+	end
+
+	-- The opening. A dark box recessed into the mound - the single element that
+	-- makes this read as a mine from any distance.
+	local mouth = rock("Mouth", Vector3.new(8.2, 9.0, 5.0), at * CFrame.new(0, 4.5, -2.0), false)
+	mouth.Color = MINE_DARK
+	model.PrimaryPart = mouth
+
+	-- Angular chunks over and around the mound. Three stacked slabs give a
+	-- profile from the side and a CUBE from the front, which read as a tomb
+	-- rather than as rock; these are what make it a hillside again.
+	for i = 1, 7 do
+		local side = if i % 2 == 0 then 1 else -1
+		local size = rng:NextNumber(3.2, 6.4)
+		newWedge(
+			("Crag%d"):format(i),
+			Vector3.new(size, size * rng:NextNumber(0.9, 1.8), size * rng:NextNumber(0.8, 1.4)),
+			at * CFrame.new(
+				side * rng:NextNumber(4.0, 12.5),
+				rng:NextNumber(3.0, 13.0),
+				-rng:NextNumber(2.0, 14.0)
+			) * CFrame.Angles(
+				rng:NextNumber(-0.5, 0.5),
+				rng:NextNumber(0, 6.28),
+				rng:NextNumber(-0.5, 0.5)
+			),
+			model,
+			if i % 3 == 0 then MINE_ROCK_LIGHT else MINE_ROCK
+		)
+	end
+
+	-- Timber frame around it: two posts and a lintel, plus a leaning brace.
+	for _, side in { -1, 1 } do
+		local post = newPart(
+			("Post%d"):format(if side < 0 then 1 else 2),
+			Vector3.new(1.5, 10.0, 1.5),
+			at * CFrame.new(side * 5.0, 5.0, 0.6),
+			model
+		)
+		post.Material = Enum.Material.SmoothPlastic
+		post.Color = MINE_TIMBER
+	end
+	local lintel = newPart("Lintel", Vector3.new(12.6, 1.7, 2.0), at * CFrame.new(0, 10.6, 0.6), model)
+	lintel.Material = Enum.Material.SmoothPlastic
+	lintel.Color = MINE_TIMBER
+	local brace = newPart("Brace", Vector3.new(1.2, 6.4, 1.2),
+		at * CFrame.new(-6.6, 4.4, 3.4) * CFrame.Angles(0.36, 0, 0.22), model)
+	brace.Material = Enum.Material.SmoothPlastic
+	brace.Color = MINE_TIMBER
+
+	-- Spoil heaped either side of the mouth, and ore in it.
+	for i = 1, 6 do
+		local side = if i % 2 == 0 then 1 else -1
+		local size = rng:NextNumber(1.6, 3.4)
+		rock(
+			("Spoil%d"):format(i),
+			Vector3.new(size, size * 0.7, size * 1.1),
+			at * CFrame.new(side * rng:NextNumber(6.5, 11.0), 0.5, rng:NextNumber(2.5, 9.0))
+				* CFrame.Angles(rng:NextNumber(-0.3, 0.3), rng:NextNumber(0, 6.28), rng:NextNumber(-0.3, 0.3)),
+			true
+		)
+	end
+	for i = 1, 5 do
+		local side = if i % 2 == 0 then 1 else -1
+		glint(("MouthOre%d"):format(i),
+			at * CFrame.new(side * rng:NextNumber(6.0, 10.5), rng:NextNumber(0.9, 2.2), rng:NextNumber(2.5, 8.5))
+				* CFrame.Angles(rng:NextNumber(0, 6.28), rng:NextNumber(0, 6.28), 0),
+			rng:NextNumber(0.9, 1.6))
+	end
+
+	-- --- exposed veins elsewhere on the tile -------------------------
+	-- Two smaller seams, so the tile is a mine WORKINGS rather than one doorway
+	-- with empty ground around it.
+	local spin = rng:NextNumber(0, math.pi * 2)
+	for v = 1, 2 do
+		local angle = spin + v * 2.3
+		local dist = rng:NextNumber(28, 46)
+		local vx = origin.X + math.cos(angle) * dist
+		local vz = origin.Z + math.sin(angle) * dist
+		local vy = groundHeight(vx, vz)
+
+		for i = 1, 4 do
+			local height = rng:NextNumber(3.0, 6.0)
+			local width = rng:NextNumber(2.4, 4.2)
+			rock(
+				("Vein%d_%d"):format(v, i),
+				Vector3.new(width, height, width * rng:NextNumber(0.8, 1.3)),
+				CFrame.new(
+					vx + rng:NextNumber(-3.6, 3.6),
+					vy + height / 2 - 0.6,
+					vz + rng:NextNumber(-3.6, 3.6)
+				) * CFrame.Angles(rng:NextNumber(-0.3, 0.3), rng:NextNumber(0, 6.28), rng:NextNumber(-0.3, 0.3)),
+				i % 2 == 0
+			)
+		end
+		-- The glinting seam running through it
+		for i = 1, 5 do
+			glint(("Vein%dOre%d"):format(v, i),
+				CFrame.new(
+					vx + rng:NextNumber(-3.0, 3.0),
+					vy + rng:NextNumber(1.2, 4.4),
+					vz + rng:NextNumber(-3.0, 3.0)
+				) * CFrame.Angles(rng:NextNumber(0, 6.28), rng:NextNumber(0, 6.28), 0),
+				rng:NextNumber(0.8, 1.5))
+		end
 	end
 
 	model.Parent = nodes
@@ -1133,8 +1406,10 @@ for _, plan in NODE_PLAN do
 			makePasture(name, origin)
 		elseif plan.resource == "Grain" then
 			makeField(name, origin)
+		elseif plan.resource == "Stone" then
+			makeQuarry(name, origin)
 		else
-			makeOutcrop(name, origin, plan.resource)
+			makeMine(name, origin)
 		end
 	end
 	if placed < plan.count then
