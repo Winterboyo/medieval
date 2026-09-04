@@ -83,6 +83,39 @@ local function skin(part: BasePart, which)
 	part.MaterialVariant = which.variant
 end
 
+-- ---------------------------------------------------------------- flatten
+-- ONE PLACE DECIDES THE SURFACE LANGUAGE.
+--
+-- A cartoon world is matte. Every texture - the thatch weave, the daub render,
+-- the cobbles, the wheat - is a photographic detail, and photographic detail is
+-- the single loudest thing arguing against a drawn look. They were right when
+-- the ground was voxel terrain; against a flat-shaded heightfield they read as
+-- imports from another game.
+--
+-- This is a sweep rather than an edit at each call site because there are about
+-- twenty of those, each passing its own Enum.Material, and a sweep cannot miss
+-- one. Neon and Glass are spared: they are doing a JOB (the totem beacon, the
+-- ore glints, the alchemist's brew, windows) rather than describing a surface.
+local function flattenSurfaces(root: Instance): number
+	local changed = 0
+	for _, d in root:GetDescendants() do
+		if d:IsA("BasePart") then
+			local material = d.Material
+			if material ~= Enum.Material.Neon
+				and material ~= Enum.Material.Glass
+				and material ~= Enum.Material.ForceField
+			then
+				if material ~= Enum.Material.SmoothPlastic or d.MaterialVariant ~= "" then
+					d.Material = Enum.Material.SmoothPlastic
+					d.MaterialVariant = ""
+					changed += 1
+				end
+			end
+		end
+	end
+	return changed
+end
+
 -- Check the variants can actually be resolved, LOUDLY.
 --
 -- Roblox matches BasePart.MaterialVariant against the DIRECT children of
@@ -378,17 +411,25 @@ end
 -- world wore: a flat-shaded facet shows its colour honestly, with no texture to
 -- mediate it, so the colour carries the whole read of the terrain type.
 local GROUND_COLOUR: { [Enum.Material]: Color3 } = {
-	[Enum.Material.Sand] = Color3.fromRGB(240, 212, 132),
-	[Enum.Material.Grass] = Color3.fromRGB(88, 178, 62),
-	[Enum.Material.LeafyGrass] = Color3.fromRGB(132, 204, 68),
-	[Enum.Material.Mud] = Color3.fromRGB(138, 96, 52),
-	[Enum.Material.Slate] = Color3.fromRGB(108, 120, 138),
-	[Enum.Material.Basalt] = Color3.fromRGB(66, 70, 84),
+	-- CHROMA, NOT GREY. The realistic instinct is to desaturate rock and dirt
+	-- towards grey and brown, and that instinct is what was keeping this map
+	-- looking like a landscape rather than a drawing. Cartoon rock is BLUE, and
+	-- cartoon dirt is orange; nothing in an animated film is actually grey.
+	[Enum.Material.Sand] = Color3.fromRGB(252, 222, 138),
+	[Enum.Material.Grass] = Color3.fromRGB(106, 208, 72),
+	[Enum.Material.LeafyGrass] = Color3.fromRGB(158, 226, 86),
+	[Enum.Material.Mud] = Color3.fromRGB(178, 116, 58),
+	-- Violet, not blue. At (122,146,190) the slate regions read as LAKES from
+	-- the air - a large cool-blue patch beside a cyan sea is a body of water
+	-- until you look twice, and a player should never have to look twice at
+	-- whether ground is ground.
+	[Enum.Material.Slate] = Color3.fromRGB(146, 138, 198),
+	[Enum.Material.Basalt] = Color3.fromRGB(88, 94, 136),
 	-- Grey stone, not white. At 162 it read as snow, which is a different
 	-- climate from the one the rest of the palette describes.
-	[Enum.Material.Rock] = Color3.fromRGB(134, 136, 146),
+	[Enum.Material.Rock] = Color3.fromRGB(176, 184, 212),
 }
-local WORKED_COLOUR = Color3.fromRGB(172, 138, 94) -- terraces: turned earth
+local WORKED_COLOUR = Color3.fromRGB(202, 160, 104) -- terraces: turned earth
 
 -- 48 studs a side. The brief is chunky and deliberate, and this is about as
 -- coarse as the island tolerates before a village pad stops being able to hold
@@ -518,8 +559,8 @@ local function buildGround(): string
 	sea.Size = Vector3.new(MAP_SIZE, 2, MAP_SIZE)
 	sea.CFrame = CFrame.new(0, SEA_LEVEL - 1, 0)
 	sea.Material = Enum.Material.SmoothPlastic
-	sea.Color = Color3.fromRGB(40, 138, 206)
-	sea.Transparency = 0.28
+	sea.Color = Color3.fromRGB(46, 182, 228)
+	sea.Transparency = 0.22
 	sea.TopSurface = Enum.SurfaceType.Smooth
 	sea.BottomSurface = Enum.SurfaceType.Smooth
 	sea.Parent = ground
@@ -530,7 +571,7 @@ local function buildGround(): string
 	bed.Size = Vector3.new(MAP_SIZE, 8, MAP_SIZE)
 	bed.CFrame = CFrame.new(0, deep - 8, 0)
 	bed.Material = Enum.Material.SmoothPlastic
-	bed.Color = Color3.fromRGB(26, 92, 140)
+	bed.Color = Color3.fromRGB(32, 126, 176)
 	bed.TopSurface = Enum.SurfaceType.Smooth
 	bed.BottomSurface = Enum.SurfaceType.Smooth
 	bed.Parent = ground
@@ -582,9 +623,9 @@ end
 
 -- --- forest ------------------------------------------------------
 local LEAF_GREENS = {
-	Color3.fromRGB(64, 116, 52),
-	Color3.fromRGB(82, 134, 60),
-	Color3.fromRGB(54, 100, 46),
+	Color3.fromRGB(76, 168, 62),
+	Color3.fromRGB(104, 194, 74),
+	Color3.fromRGB(58, 142, 66),
 }
 
 -- THE MESH KIT LIVES IN THE PLACE FILE, NOT IN THIS REPO. Rojo does not manage
@@ -725,7 +766,7 @@ local function makeForest(name: string, origin: Vector3): Model
 end
 
 -- --- pasture -----------------------------------------------------
-local PASTURE_FENCE = Color3.fromRGB(126, 92, 58)
+local PASTURE_FENCE = Color3.fromRGB(166, 116, 66)
 local PASTURE_RADIUS = 58
 
 -- Exaggerated, per the art direction. A realistically proportioned sheep is
@@ -948,9 +989,9 @@ end
 -- of blades leaning different ways is what makes rock look broken rather than
 -- stacked.
 local QUARRY_GREYS = {
-	Color3.fromRGB(186, 189, 196),
-	Color3.fromRGB(166, 170, 178),
-	Color3.fromRGB(202, 204, 209),
+	Color3.fromRGB(206, 216, 240),
+	Color3.fromRGB(182, 196, 226),
+	Color3.fromRGB(224, 232, 248),
 }
 
 local function makeQuarry(name: string, origin: Vector3): Model
@@ -1061,11 +1102,13 @@ end
 -- Ore: a MINE, not a darker quarry. The silhouette is the whole point - a
 -- timber-framed portal into a dark mound reads as somewhere you dig from across
 -- the tile, and nothing about a pile of grey blades does.
-local MINE_ROCK = Color3.fromRGB(58, 56, 68)
-local MINE_ROCK_LIGHT = Color3.fromRGB(74, 71, 84)
-local MINE_TIMBER = Color3.fromRGB(88, 60, 38)
-local MINE_DARK = Color3.fromRGB(10, 9, 13)
-local ORE_GLINT = Color3.fromRGB(255, 174, 62)
+-- Ore stays the DARK one - that is how it reads apart from stone - but dark
+-- violet rather than dark grey, so it is a colour and not an absence of one.
+local MINE_ROCK = Color3.fromRGB(78, 68, 112)
+local MINE_ROCK_LIGHT = Color3.fromRGB(102, 90, 142)
+local MINE_TIMBER = Color3.fromRGB(122, 76, 44)
+local MINE_DARK = Color3.fromRGB(26, 20, 40)
+local ORE_GLINT = Color3.fromRGB(255, 190, 70)
 
 local function makeMine(name: string, origin: Vector3): Model
 	local model = Instance.new("Model")
@@ -1663,11 +1706,11 @@ local WALL_BLOCK = Vector3.new(20.4, 11, 3.6)
 local WALL_SPAN = 20 -- centre-to-centre along a side
 local RING_STEPS = 7 -- blocks per side
 
-local DAUB = Color3.fromRGB(214, 204, 182)
-local TIMBER = Color3.fromRGB(74, 52, 34)
-local THATCH = Color3.fromRGB(146, 118, 68)
+local DAUB = Color3.fromRGB(248, 240, 214)
+local TIMBER = Color3.fromRGB(116, 74, 44)
+local THATCH = Color3.fromRGB(232, 182, 86)
 local TILED = Color3.fromRGB(112, 62, 48)
-local STONEWORK = Color3.fromRGB(132, 126, 116)
+local STONEWORK = Color3.fromRGB(186, 194, 214)
 
 local function sitePart(parent: Instance, name: string, size: Vector3, cframe: CFrame,
 	material: Enum.Material, color: Color3, variant: string?): Part
@@ -2700,6 +2743,20 @@ buildTool("Shears", "Shear sheep for wool", 2.2, function(headAt, add)
 	end
 end)
 
+-- ---------------------------------------------------------------- surfaces
+-- Last, after every builder has had its say, so nothing can be added later in
+-- the file and quietly keep a texture. ServerStorage and StarterPack are swept
+-- too: the messenger, the unbuilt blueprint stages and the four tools all reach
+-- the world eventually, and a tool that arrives textured is as wrong as a wall
+-- that was built that way.
+do
+	local flattened = 0
+	for _, root in { Workspace, ServerStorage, StarterPack } do
+		flattened += flattenSurfaces(root)
+	end
+	print(("[Medieval Land] flattened %d surfaces to matte"):format(flattened))
+end
+
 -- ---------------------------------------------------------------- lighting
 -- No Technology line here on purpose. Roblox migrated this place to unified
 -- lighting, so Enum.Technology is legacy and the property is not scriptable
@@ -2733,32 +2790,38 @@ Lighting.ClockTime = 8.7
 Lighting.GeographicLatitude = -12
 Lighting.GlobalShadows = true
 
--- 0.22 was a deliberately soft edge. The ask is WELL-DEFINED shadows, so this
--- goes near zero: penumbra only wide enough to avoid a stair-stepped edge.
-Lighting.ShadowSoftness = 0.05
+-- SOFTER AGAIN, on purpose. 0.05 was chosen when the brief was "well-defined
+-- shadows" and it did that job; a drawn look wants the shadow SHAPE to stay
+-- readable while its edge stops being a knife. Animated films almost never show
+-- a hard terminator outdoors.
+Lighting.ShadowSoftness = 0.26
 
--- CONTRAST, NOT BRIGHTNESS. This is the actual reason the map looked flat, and
--- it is worth being precise about: the shadows were always being cast. Every
--- part had CastShadow on and GlobalShadows was true. They were being FILLED IN.
+-- THE CONTRAST RATIO IS A STYLE CHOICE, and it just changed sides.
 --
--- A shadow is only visible as the difference between lit and unlit. Ambient and
--- EnvironmentDiffuseScale light the unlit side, so at OutdoorAmbient (118,132,152)
--- with EnvironmentDiffuseScale 0.65 a shadowed surface was still receiving over
--- half the light of a sunlit one. That is a 2:1 ratio, and 2:1 does not read as
--- shadow - it reads as a slightly darker shade of the same paint.
+-- Shadows were being erased by ambient fill once, so the fix was to drop the
+-- fill and drive the ratio to about 5:1. That is dramatic, and dramatic is a
+-- LIVE-ACTION look: deep shadows, high contrast, a strong key. An animated film
+-- lights almost the opposite way - a bright key, a lot of bounce, and shadows
+-- that are lighter and unmistakably COLOURED rather than dark.
 --
--- So the sun goes UP and the fill comes DOWN. Total light on the lit side is
--- roughly unchanged; the ratio moves to about 5:1.
-Lighting.Brightness = 3.2
-Lighting.ExposureCompensation = -0.15
+-- So the fill comes back up, but with the lesson kept: it comes up TINTED, hard,
+-- towards blue-violet. The ratio lands near 2.5:1, which still reads as shadow
+-- because the shadow is a different HUE, not merely a darker value. That is the
+-- trade the first pass could not make, because its shadows were grey.
+Lighting.Brightness = 2.6
+-- Slightly under. Bloom, high ambient and a 0.42 saturation lift were each
+-- adding apparent exposure and nothing was taking any back, so the first cartoon
+-- pass came out bleached rather than bright.
+Lighting.ExposureCompensation = -0.06
 
--- Ambient stays BLUER than the sunlight. That is what keeps a deep shadow
--- reading as cool skylight rather than as dirty grey, and it matters more now
--- that the shadows are actually dark enough to see the colour of.
-Lighting.Ambient = Color3.fromRGB(26, 30, 42)
-Lighting.OutdoorAmbient = Color3.fromRGB(64, 76, 98)
-Lighting.EnvironmentDiffuseScale = 0.25
-Lighting.EnvironmentSpecularScale = 0.35
+-- Lifted and tinted, but not so far that the terrain loses its form. At
+-- (78,84,120) with 0.55 environment fill the ratio fell under 2:1 and the island
+-- went mushy - a cartoon is flat-SHADED, not unshaded.
+Lighting.Ambient = Color3.fromRGB(62, 68, 104)
+Lighting.OutdoorAmbient = Color3.fromRGB(104, 122, 166)
+Lighting.EnvironmentDiffuseScale = 0.42
+-- Matte. A cartoon surface does not have a hot specular highlight on it.
+Lighting.EnvironmentSpecularScale = 0.18
 
 -- DepthOfFieldEffect and Sky are in this list because the place file carries a
 -- stock Roblox skybox and an unconfigured DoF from the baseplate template. They
@@ -2780,12 +2843,17 @@ end
 -- toward the sky colour is aerial perspective, and it is what gives an island
 -- surrounded by water any sense of scale at all.
 local atmosphere = Instance.new("Atmosphere")
-atmosphere.Density = 0.36
+-- Thinner and cleaner. Aerial perspective is a realist's tool: it says "there
+-- is a mile of air between us", and a drawn world would rather say "everything
+-- is legible". Enough left to keep the far shore from cutting out flat.
+atmosphere.Density = 0.24
 atmosphere.Offset = 0.05
-atmosphere.Haze = 0.28
-atmosphere.Glare = 0.12
-atmosphere.Color = Color3.fromRGB(202, 214, 226)
-atmosphere.Decay = Color3.fromRGB(88, 122, 162)
+atmosphere.Haze = 0.12
+-- Glare at 0.2 bloomed the whole horizon into the sky and took the coastline
+-- with it. The sun is allowed to be bright; the air is not.
+atmosphere.Glare = 0.08
+atmosphere.Color = Color3.fromRGB(226, 238, 250)
+atmosphere.Decay = Color3.fromRGB(112, 168, 214)
 atmosphere.Parent = Lighting
 
 -- Volumetric clouds. Free scale reference: an empty sky over open water gives
@@ -2795,29 +2863,44 @@ if oldClouds then
 	oldClouds:Destroy()
 end
 local clouds = Instance.new("Clouds")
-clouds.Cover = 0.58
-clouds.Density = 0.62
+-- SPARSE, not thick. Cover 0.74 did not read as fat drawn clouds, it read as a
+-- grey ceiling over the whole map - past about 0.6 the individual shapes merge
+-- and you lose the very thing they were for.
+clouds.Cover = 0.46
+clouds.Density = 0.5
 clouds.Color = Color3.fromRGB(255, 253, 248)
 clouds.Parent = Terrain
 
 local sunRays = Instance.new("SunRaysEffect")
-sunRays.Intensity = 0.14
-sunRays.Spread = 0.92
+sunRays.Intensity = 0.22
+sunRays.Spread = 0.94
 sunRays.Parent = Lighting
 
 local colorCorrection = Instance.new("ColorCorrectionEffect")
-colorCorrection.Brightness = 0
-colorCorrection.Contrast = 0.2
-colorCorrection.Saturation = 0.09
-colorCorrection.TintColor = Color3.fromRGB(255, 251, 244)
+-- SATURATION IS THE WHOLE TRICK. Every colour in the palette was already
+-- pushed at source, and this pushes the composite again on top - it is the one
+-- control that acts on the mesh trees and the imported kit too, which have
+-- colours this file does not own.
+--
+-- Contrast comes DOWN as saturation goes up. Both raised together is a garish
+-- photograph; saturated and low-contrast is a cel.
+colorCorrection.Brightness = 0.0
+-- Low, but not flat. At 0.06 the palette had nothing to sit against and the
+-- whole island read as one pale wash.
+colorCorrection.Contrast = 0.14
+colorCorrection.Saturation = 0.42
+colorCorrection.TintColor = Color3.fromRGB(255, 253, 249)
 colorCorrection.Parent = Lighting
 
 -- Threshold raised so bloom picks out the genuinely bright things - the sun on
 -- water, the forge, the totem beacon - instead of smearing every pale wall.
 local bloom = Instance.new("BloomEffect")
-bloom.Intensity = 0.26
-bloom.Size = 24
-bloom.Threshold = 1.95
+-- A soft glow off genuinely bright things only. At threshold 1.15 every pale
+-- wall and every sunlit facet cleared the bar, so the entire map glowed and the
+-- effect stopped being a highlight and became a fog.
+bloom.Intensity = 0.3
+bloom.Size = 28
+bloom.Threshold = 1.7
 bloom.Parent = Lighting
 
 print(("[Medieval Land] Island r~%d, %d nodes, %d village plots, 4 tools."):format(
