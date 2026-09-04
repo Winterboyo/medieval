@@ -468,6 +468,77 @@ local LEAF_GREENS = {
 	Color3.fromRGB(54, 100, 46),
 }
 
+-- THE MESH KIT LIVES IN THE PLACE FILE, NOT IN THIS REPO. Rojo does not manage
+-- ServerStorage, so a fresh clone will not have it - exactly the trap the
+-- MaterialVariants fall into. The difference is that this one is not allowed to
+-- fail silently: without the kit the forests fall back to the old primitive
+-- trees and the build warns, rather than producing a world with no wood in it.
+--
+-- Birches are excluded on purpose. Their leaves ship in an autumn palette on
+-- flat slab geometry and read as orange boards in a green summer.
+local treeSpecies: { Model } = {}
+do
+	local kit = ServerStorage:FindFirstChild("TreeKit")
+	if kit then
+		for _, child in kit:GetChildren() do
+			if child:IsA("Model") and not child.Name:match("Birch") then
+				treeSpecies[#treeSpecies + 1] = child
+			end
+		end
+	end
+	if #treeSpecies == 0 then
+		warn("[build-world] ServerStorage.TreeKit is missing or empty - forests will "
+			.. "use primitive trees. The mesh kit lives in the place file, not the repo.")
+	end
+end
+
+-- One tree from the kit, seated on the ground and tagged for harvesting.
+--
+-- Only the LEAVES wear. Trunk, stump and the woody branch structure are the
+-- permanent frame, so a worked-out wood reads as bare trunks and stumps rather
+-- than as an empty field - the same contract the primitive trees had, mapped
+-- onto the kit's part names.
+local function plantTree(into: Model, index: number, x: number, z: number,
+	ground: number, height: number): BasePart?
+	local source = treeSpecies[rng:NextInteger(1, #treeSpecies)]
+	local tree = source:Clone()
+	tree.Name = ("Tree%d"):format(index)
+	tree.Parent = into
+
+	tree:ScaleTo(height / tree:GetExtentsSize().Y)
+
+	-- Seat it: move the pivot by however far the model's underside currently
+	-- sits above or below the ground.
+	local bottom = tree:GetBoundingBox().Position.Y - tree:GetExtentsSize().Y / 2
+	local pivot = tree:GetPivot()
+	tree:PivotTo(CFrame.new(x, pivot.Y + (ground - bottom), z)
+		* CFrame.Angles(0, rng:NextNumber(0, math.pi * 2), 0))
+
+	-- One green per tree. Picking per PART turns a stand into a sample book.
+	local green = LEAF_GREENS[rng:NextInteger(1, #LEAF_GREENS)]
+	local trunk: BasePart? = nil
+	for _, d in tree:GetDescendants() do
+		if d:IsA("BasePart") then
+			d.Anchored = true
+			d.CastShadow = true
+			if d.Name:match("Leaf") then
+				d.Color = green
+				d.CanCollide = false
+				wearing(d)
+			else
+				-- Branches are wood, not foliage - they keep their bark colour
+				-- and they stay when the leaves have gone. They do not block:
+				-- an eleven stud branch at head height is a wall you cannot see.
+				if d.Name:match("Branch") or d.Name:match("Cube") then
+					d.CanCollide = false
+				end
+				trunk = trunk or d
+			end
+		end
+	end
+	return trunk
+end
+
 local function makeForest(name: string, origin: Vector3): Model
 	local model = Instance.new("Model")
 	model.Name = name
@@ -475,45 +546,57 @@ local function makeForest(name: string, origin: Vector3): Model
 
 	-- Eight trees spread over most of the tile. On a 160 stud tile the old five
 	-- at a 22 stud radius sat in the middle like a potted plant.
-	local trunkPrimary: Part? = nil
+	local trunkPrimary: BasePart? = nil
 	for t = 1, 8 do
 		local angle = (t / 8) * math.pi * 2 + rng:NextNumber(-0.4, 0.4)
 		local dist = if t == 1 then 0 else rng:NextNumber(16, 56)
 		local x = origin.X + math.cos(angle) * dist
 		local z = origin.Z + math.sin(angle) * dist
 		local ground = groundHeight(x, z)
-		local height = rng:NextNumber(9, 14)
-		local radius = rng:NextNumber(0.7, 1.0)
 
-		-- Trunks stay. A chopped-out forest should read as stumps and bare
-		-- trunks, not as nothing at all.
-		local trunk = newPart(
-			("Trunk%d"):format(t),
-			Vector3.new(height, radius * 2, radius * 2),
-			CFrame.new(x, ground + height / 2, z) * CFrame.Angles(0, 0, math.rad(90)),
-			model
-		)
-		trunk.Shape = Enum.PartType.Cylinder
-		trunk.Material = Enum.Material.Wood
-		trunk.Color = Color3.fromRGB(96, 68, 44)
-		trunkPrimary = trunkPrimary or trunk
+		if #treeSpecies > 0 then
+			-- Varied heights. A stand of identical trees reads as wallpaper,
+			-- and the kit is cheap enough to scale per tree.
+			--
+			-- The call is NOT folded into the assignment. Writing
+			-- `trunkPrimary = trunkPrimary or plantTree(...)` short-circuits once
+			-- the first tree exists, so plantTree never runs again and every
+			-- forest is a single tree. Counting parts caught it; looking at it
+			-- would not have.
+			local trunk = plantTree(model, t, x, z, ground, rng:NextNumber(16, 23))
+			trunkPrimary = trunkPrimary or trunk
+		else
+			local height = rng:NextNumber(9, 14)
+			local radius = rng:NextNumber(0.7, 1.0)
 
-		local leafColor = LEAF_GREENS[rng:NextInteger(1, #LEAF_GREENS)]
-		for c = 1, 3 do
-			local size = rng:NextNumber(5.0, 7.5) - c * 0.7
-			local canopy = wearing(newPart(
-				("Canopy%d_%d"):format(t, c),
-				Vector3.new(size, size * 0.8, size),
-				CFrame.new(
-					x + rng:NextNumber(-0.8, 0.8),
-					ground + height * 0.72 + c * 1.7,
-					z + rng:NextNumber(-0.8, 0.8)
-				),
+			local trunk = newPart(
+				("Trunk%d"):format(t),
+				Vector3.new(height, radius * 2, radius * 2),
+				CFrame.new(x, ground + height / 2, z) * CFrame.Angles(0, 0, math.rad(90)),
 				model
-			))
-			canopy.Shape = Enum.PartType.Ball
-			canopy.Material = Enum.Material.LeafyGrass
-			canopy.Color = leafColor
+			)
+			trunk.Shape = Enum.PartType.Cylinder
+			trunk.Material = Enum.Material.Wood
+			trunk.Color = Color3.fromRGB(96, 68, 44)
+			trunkPrimary = trunkPrimary or trunk
+
+			local leafColor = LEAF_GREENS[rng:NextInteger(1, #LEAF_GREENS)]
+			for c = 1, 3 do
+				local size = rng:NextNumber(5.0, 7.5) - c * 0.7
+				local canopy = wearing(newPart(
+					("Canopy%d_%d"):format(t, c),
+					Vector3.new(size, size * 0.8, size),
+					CFrame.new(
+						x + rng:NextNumber(-0.8, 0.8),
+						ground + height * 0.72 + c * 1.7,
+						z + rng:NextNumber(-0.8, 0.8)
+					),
+					model
+				))
+				canopy.Shape = Enum.PartType.Ball
+				canopy.Material = Enum.Material.LeafyGrass
+				canopy.Color = leafColor
+			end
 		end
 	end
 
