@@ -269,7 +269,7 @@ local function biomeAt(x: number, z: number, height: number): Enum.Material
 end
 
 -- ---------------------------------------------------------------- teardown
-for _, name in { "MedievalLand_Scenery", "MedievalLand_Board", "ResourceNodes", "BuildSites", "VillageSquare", "SpawnLocation", "Baseplate" } do
+for _, name in { "MedievalLand_Scenery", "MedievalLand_Board", "ResourceNodes", "BuildSites", "VillageSquare", "SpawnLocation", "Baseplate", "Birds" } do
 	local existing = Workspace:FindFirstChild(name)
 	if existing then
 		existing:Destroy()
@@ -995,6 +995,67 @@ glow.Range = 46
 glow.Color = Color3.fromRGB(255, 214, 140)
 glow.Parent = beacon
 
+-- ---------------------------------------------------------------- birds
+-- The sky over an island is the largest empty surface in the game, and empty is
+-- what it reads as. Seven birds circling the totem fix that for twenty-one
+-- parts and no server cost - they are animated by the same client loop that
+-- walks the villagers, and by the same rule: anchored parts moved locally.
+--
+-- They orbit the ONE landmark everybody can see from anywhere, so they double
+-- as a way to find the middle of the board from the far shore.
+local birdFlock = Instance.new("Folder")
+birdFlock.Name = "Birds"
+birdFlock:SetAttribute("Centre", Vector3.new(0, plazaGround, 0))
+birdFlock.Parent = Workspace
+
+local BIRD_BODY = Color3.fromRGB(56, 52, 58)
+for i = 1, 7 do
+	local bird = Instance.new("Model")
+	bird.Name = ("Bird%d"):format(i)
+
+	-- Each on its own ring, height and clock, or seven birds fly as one bird.
+	bird:SetAttribute("Radius", 34 + (i % 4) * 13 + rng:NextNumber(-4, 4))
+	bird:SetAttribute("Height", 42 + (i % 3) * 11 + rng:NextNumber(-3, 3))
+	bird:SetAttribute("Speed", 0.22 + rng:NextNumber(0, 0.12)) -- radians per second
+	bird:SetAttribute("Phase", rng:NextNumber(0, math.pi * 2))
+	bird:SetAttribute("Flap", 5.5 + rng:NextNumber(0, 2.5))
+
+	-- Rest offsets from the bird's own root, read by the client exactly as the
+	-- villager rig's are. Wings carry a sign so they beat as a mirrored pair.
+	local body = Instance.new("Part")
+	body.Name = "Body"
+	body.Size = Vector3.new(0.8, 0.5, 2.0)
+	body.Anchored = true
+	body.CanCollide = false
+	body.CanQuery = false
+	body.Material = Enum.Material.SmoothPlastic
+	body.Color = BIRD_BODY
+	body.CFrame = CFrame.new(0, plazaGround + 50, 0)
+	body:SetAttribute("Rest", CFrame.new())
+	body:SetAttribute("Wing", 0)
+	body.Parent = bird
+	bird.PrimaryPart = body
+
+	for _, sx in { -1, 1 } do
+		local wing = Instance.new("Part")
+		wing.Name = if sx < 0 then "WingL" else "WingR"
+		wing.Size = Vector3.new(2.4, 0.14, 1.0)
+		wing.Anchored = true
+		wing.CanCollide = false
+		wing.CanQuery = false
+		wing.Material = Enum.Material.SmoothPlastic
+		wing.Color = BIRD_BODY
+		wing.CFrame = CFrame.new(0, plazaGround + 50, 0)
+		-- The wing hinges at the shoulder, so its rest sits a half span out.
+		wing:SetAttribute("Rest", CFrame.new(sx * 1.3, 0.1, 0))
+		wing:SetAttribute("Pivot", CFrame.new(sx * 0.35, 0.1, 0))
+		wing:SetAttribute("Wing", sx)
+		wing.Parent = bird
+	end
+
+	bird.Parent = birdFlock
+end
+
 -- Standing stones around the plaza, which give the square an edge without
 -- walling it in.
 for i = 1, 8 do
@@ -1112,6 +1173,86 @@ end
 -- each half is turned to aim its tall side at the ridge line.
 -- Roofs used to be Slate with a thatch-coloured tint, which is a yellow slate
 -- roof and reads as one. A thatch roof needs a thatch SURFACE.
+-- ---------------------------------------------------------------- plumes
+-- Smoke, embers and steam. A ParticleEmitter is drawn entirely on the viewer's
+-- machine: the server spawns nothing, replicates nothing and runs no loop, so
+-- this is the cheapest life in the game - a village reads as INHABITED for the
+-- price of one instance per chimney.
+--
+-- Textures are rbxasset paths that ship with the client. Nothing here is
+-- uploaded, so a fresh clone of this repo renders it identically.
+local SMOKE_TEXTURE = "rbxasset://textures/particles/smoke_main.dds"
+local SPARK_TEXTURE = "rbxasset://textures/particles/sparkles_main.dds"
+
+type Plume = {
+	texture: string,
+	rate: number,
+	life: NumberRange,
+	speed: NumberRange,
+	sizeFrom: number,
+	sizeTo: number,
+	colour: ColorSequence,
+	opacity: number,
+	spread: number,
+	drift: Vector3,
+	glow: number,
+	lit: number,
+}
+
+local function plume(parent: BasePart, name: string, offset: Vector3, spec: Plume)
+	local attachment = Instance.new("Attachment")
+	attachment.Name = name
+	attachment.Position = offset
+	attachment.Parent = parent
+
+	local emitter = Instance.new("ParticleEmitter")
+	emitter.Name = name
+	emitter.Texture = spec.texture
+	emitter.Rate = spec.rate
+	emitter.Lifetime = spec.life
+	emitter.Speed = spec.speed
+	emitter.SpreadAngle = Vector2.new(spec.spread, spec.spread)
+	emitter.Acceleration = spec.drift
+	emitter.Color = spec.colour
+	emitter.LightEmission = spec.glow
+	-- Smoke that ignores the sun is a bright grey smear at dusk, but smoke that
+	-- obeys it COMPLETELY vanishes against a backlit sky - which is exactly what
+	-- the first attempt did. Partial influence keeps it in the same world as the
+	-- roof while leaving it legible from the shadowed side.
+	emitter.LightInfluence = spec.lit
+	emitter.Size = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, spec.sizeFrom),
+		NumberSequenceKeypoint.new(1, spec.sizeTo),
+	})
+	-- Fade in as well as out: a particle that appears at full strength pops.
+	emitter.Transparency = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 1),
+		NumberSequenceKeypoint.new(0.14, spec.opacity),
+		NumberSequenceKeypoint.new(1, 1),
+	})
+	emitter.Rotation = NumberRange.new(0, 360)
+	emitter.RotSpeed = NumberRange.new(-24, 24)
+	emitter.Parent = attachment
+	return emitter
+end
+
+local HEARTH_SMOKE: Plume = {
+	texture = SMOKE_TEXTURE,
+	rate = 4,
+	life = NumberRange.new(2.6, 4.0),
+	speed = NumberRange.new(3.0, 4.2),
+	sizeFrom = 1.4,
+	sizeTo = 4.2,
+	colour = ColorSequence.new(Color3.fromRGB(214, 214, 210), Color3.fromRGB(168, 168, 165)),
+	opacity = 0.3,
+	spread = 7,
+	-- Drift is an ACCELERATION, not a velocity: 1.4 studs/s/s looks gentle and
+	-- then compounds over a four second life into a plume raked flat sideways.
+	drift = Vector3.new(0.6, 0.9, 0.25),
+	glow = 0,
+	lit = 0.7,
+}
+
 local function gable(parent: Instance, eaves: CFrame, width: number, depth: number,
 	height: number, color: Color3, roofSkin)
 	-- A ridge beam along the apex. The two halves meet on an exact plane, and a
@@ -1356,6 +1497,15 @@ local function makeVillagerHouse(into: Instance, at: CFrame, index: number)
 	-- Out from the door towards the street and back: about eighteen studs, which
 	-- stops short of the spine and stays clear of the next cottage. The village
 	-- terrace is flat, so both ends share a Y and no ground raycast is needed.
+	-- A CHIMNEY IS THE CHEAPEST SIGN OF LIFE THERE IS. A cottage with smoke
+	-- coming out of it is occupied; the same cottage without is a model of a
+	-- cottage. It clears the roof line at this x (the gable is about 13 studs up
+	-- there, the stack tops out at 19).
+	local chimney = sitePart(into, "Chimney", Vector3.new(2.2, 12, 2.2),
+		at * CFrame.new(HOUSE.width * 0.28, 13, -HOUSE.depth * 0.2),
+		Enum.Material.Brick, Color3.fromRGB(112, 96, 88), SKIN.cobble.variant)
+	plume(chimney, "Hearth", Vector3.new(0, 6.2, 0), HEARTH_SMOKE)
+
 	local doorSide = at * CFrame.new(HOUSE.width * 0.3, 0, HOUSE.depth / 2 + 3)
 	local streetward = at * CFrame.new(HOUSE.width * 0.3, 0, HOUSE.depth / 2 + 21)
 	makeVillager(into, doorSide * CFrame.Angles(0, math.rad(196), 0),
@@ -1437,9 +1587,40 @@ local function makeBlacksmith(into: Instance, at: CFrame)
 	sitePart(into, "ForgeChimney", Vector3.new(4.2, 19, 4.2),
 		at * CFrame.new(-SHOP.width / 2 + 3, 9.5, -SHOP.depth / 2 + 3),
 		Enum.Material.Brick, Color3.fromRGB(96, 74, 64))
-	sitePart(into, "ForgeGlow", Vector3.new(2.4, 1.2, 2.4),
+	local forgeGlow = sitePart(into, "ForgeGlow", Vector3.new(2.4, 1.2, 2.4),
 		at * CFrame.new(-SHOP.width / 2 + 3, 19.6, -SHOP.depth / 2 + 3),
 		Enum.Material.Neon, Color3.fromRGB(226, 128, 62))
+	-- A working forge, so: dirtier and faster than a cottage hearth, with
+	-- embers riding up on it.
+	plume(forgeGlow, "ForgeSmoke", Vector3.new(0, 1.2, 0), {
+		texture = SMOKE_TEXTURE,
+		rate = 7,
+		life = NumberRange.new(3.0, 4.6),
+		speed = NumberRange.new(4.5, 6.0),
+		sizeFrom = 2.0,
+		sizeTo = 6.5,
+		colour = ColorSequence.new(Color3.fromRGB(150, 146, 142), Color3.fromRGB(96, 94, 92)),
+		opacity = 0.24,
+		spread = 9,
+		drift = Vector3.new(0.8, 1.1, 0.3),
+		glow = 0,
+		lit = 0.7,
+	})
+	plume(forgeGlow, "Embers", Vector3.new(0, 0.9, 0), {
+		texture = SPARK_TEXTURE,
+		rate = 16,
+		life = NumberRange.new(0.7, 1.5),
+		speed = NumberRange.new(7, 11),
+		sizeFrom = 0.6,
+		sizeTo = 0,
+		colour = ColorSequence.new(Color3.fromRGB(255, 196, 96), Color3.fromRGB(214, 84, 34)),
+		opacity = 0,
+		spread = 18,
+		-- Embers slow, stall and drop: gravity beats the updraught.
+		drift = Vector3.new(0.8, -7, 0.3),
+		glow = 1,
+		lit = 0,
+	})
 	sitePart(into, "AnvilBlock", Vector3.new(2.6, 2, 2),
 		at * CFrame.new(SHOP.width / 2 + 4, 1, 3), Enum.Material.Wood, Color3.fromRGB(78, 56, 38))
 	local anvil = sitePart(into, "Anvil", Vector3.new(3.2, 1.3, 1.4),
@@ -1468,9 +1649,24 @@ local function makeAlchemist(into: Instance, at: CFrame)
 	local vat = siteDrum(into, "Cauldron", 2.4, 2.6,
 		at * CFrame.new(SHOP.width / 2 + 4.2, 0, 2), Enum.Material.Metal,
 		Color3.fromRGB(66, 70, 78))
-	sitePart(into, "Brew", Vector3.new(4.2, 0.4, 4.2),
+	local brew = sitePart(into, "Brew", Vector3.new(4.2, 0.4, 4.2),
 		at * CFrame.new(SHOP.width / 2 + 4.2, 2.7, 2), Enum.Material.Neon,
 		Color3.fromRGB(126, 220, 148))
+	-- Slow, cold and green: this should read as a vat working, not a fire.
+	plume(brew, "Vapour", Vector3.new(0, 0.3, 0), {
+		texture = SMOKE_TEXTURE,
+		rate = 5,
+		life = NumberRange.new(1.8, 3.0),
+		speed = NumberRange.new(1.6, 2.6),
+		sizeFrom = 0.7,
+		sizeTo = 3.0,
+		colour = ColorSequence.new(Color3.fromRGB(178, 246, 186), Color3.fromRGB(112, 176, 128)),
+		opacity = 0.32,
+		spread = 22,
+		drift = Vector3.new(0.3, 0.6, 0.15),
+		glow = 0.35,
+		lit = 0.4,
+	})
 	craftPrompt(vat, "Alchemist", "Alchemist")
 end
 
