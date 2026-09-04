@@ -1152,6 +1152,64 @@ Caught by a throwaway scan comparing each top-level `local`'s declaration line
 against its first use. **That scan should be a committed tool rather than
 something retyped each time this bites.**
 
+## A prop scene per resource
+
+`DESIGN.md` takes Catan's approach: **the ground stays simple and a node's
+identity comes from what is built on it**, never from the colour underneath. One
+builder per resource, each tied to the node model itself rather than scattered
+as ambient decoration — every prop is a descendant of the node, so it is
+harvestable, erodes with the seam, and disappears with it.
+
+| Resource | Prop scene | Wears away | Stays |
+|---|---|---|---|
+| **Wood** | 8 mesh trees from the kit, chunky faceted canopies | leaves | trunks, stumps, branches |
+| **Stone** | 3 outcrops of pale jagged wedge blades | blades and sheared slabs | plinths, chips |
+| **Ore** | timber-framed mine mouth in a dark crag mound, plus 2 exposed seams | the glinting chunks | the mine, spoil, crags |
+| **Grain** | golden field of overlapping crop, 4 leaning stooks | the crop | the tilled plot, the stooks |
+| **Wool** | rail-fenced pasture with 6 sheep | fleece | fence, posts, the sheep themselves |
+
+### Stone and Ore were the same rock twice
+
+The real failure the brief names. They shared one `makeOutcrop(name, origin,
+resource)` and differed by **a grey value and nothing else** — same box cluster,
+same silhouette, one darker. That is a label difference, and from twenty studs
+it was the same prop drawn twice.
+
+Two things that must read apart at a glance cannot be one function with a colour
+parameter, so they no longer share a builder at all:
+
+- **Stone** is the pale, angular one, and its angularity comes from **wedges**. A
+  rotated box is still a box; a wedge stood on end is a blade, and a cluster of
+  blades leaning different ways is what makes rock look broken rather than
+  stacked.
+- **Ore** is a *mine*, not a darker quarry. A timber-framed portal into a dark
+  mound is a silhouette; no arrangement of grey lumps is. The ore itself is
+  small `Neon` chunks against near-black rock, so a seam glints from across the
+  tile — and mining a node out strips the glints and leaves the workings.
+
+Flat colour throughout, no `MaterialVariant`: the ground is flat-shaded facets
+now, and a textured rock in a faceted world reads as an import. (This leaves
+`SKIN.oreRock` generated but unused.)
+
+### Scaled against the facets, not the character
+
+An outcrop sized to look right on smooth terrain reads as **gravel** beside a
+48-stud triangle, so stone scale went up ~50%. Same reasoning made the sheep
+1.5×: a realistically proportioned sheep is two thirds of a player's height,
+which at the distance you actually see a pasture from is a white dot. The fence
+says *pasture*; the sheep have to be big enough to say *of sheep*.
+
+The fence is the other half of that. Six sheep on open grass are six sheep; the
+same six inside a rail ring is somewhere a person keeps animals — and it is the
+part visible from outside the tile, since it is forty studs of straight line and
+a sheep is three.
+
+Grain got **stooks** for the same reason: a field is a flat mat of overlapping
+crop, correct from above and completely silhouette-less from standing height.
+Four bundles leaning together break the skyline. At three sheaves and a 0.2
+radian lean they came out as a clump of upright posts, which is precisely what a
+stook is not — the lean *is* the silhouette, so it is 0.46 now and the tops meet.
+
 ## Things that bit, so they don't bite twice
 
 **Rojo can leave duplicate scripts after a playtest.** `StarterPlayerScripts`
