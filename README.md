@@ -134,6 +134,53 @@ changes and the island comes out a circle whatever the amplitude says. Measured
 at that frequency: 760–940 across sixteen bearings, a 12% wobble. At 0.00165 it
 is 270–990, with a bay cutting deep on one side.
 
+### Biomes are Voronoi cells, not thresholds
+
+The first version already snapped every voxel to exactly one material — it never
+interpolated — and it still read as mud. The reason is worth writing down.
+
+**Slicing one smooth noise field with thresholds puts the boundary wherever the
+field happens to cross a number, and a smooth field crosses a number many times
+in the same neighbourhood.** You get tendrils, fringes and marooned islands of
+one material inside another, because the boundary is a contour line of a wobbly
+surface rather than an edge. Cutting three similar earthy materials from the same
+field made it worse: their boundaries interleaved instead of separating.
+
+A Voronoi partition has the wanted property by construction — every point belongs
+to exactly one region, every region is contiguous, and the boundary between two
+of them is a line. Fifteen seeds, dealt a **weighted cycle** of materials so the
+proportions are exact rather than left to luck. The lookup position is warped by
+a little noise first, which keeps edges from being suspiciously straight without
+softening them: still a hard line, just not a chord.
+
+Measured on the same 26-stud grid, before and after — blob counts and how much of
+each material sits in its single largest blob:
+
+| | thresholds | Voronoi |
+|---|---|---|
+| Grass | 8 blobs, biggest holds 37% | 4 blobs, 62% |
+| LeafyGrass | 11 blobs, 43% | 2 blobs, 68% |
+| Mud | 3 blobs, 48% | 6 blobs, 81% |
+| Slate | 3 blobs, 89% | 2 blobs, 58% |
+
+Two things the measurement caught that the eye did not:
+
+- The equal round-robin gave the two rock materials **half the island between
+  them**, which reads as a quarry rather than somewhere people farm. The cycle is
+  weighted green-dominant now: Grass 5, Mud 4, LeafyGrass 3, Slate 2, Basalt 1.
+- The summit band was `height > 80` on an island that tops out at 82, so it
+  caught **three cells in the whole world**. A band that does not exist is not a
+  region, it is a rounding error. At 68 the peaks read as bare rock, which also
+  tells a player where the ore is.
+
+`Ground` at 27% is not a biome — it is the seventeen village terraces, which is
+why it shows as seventeen small blobs.
+
+**Height and biome are resolved once per column**, not per voxel. They only
+depend on x and z, and recomputing them for every voxel meant `heightAt` ran tens
+of times per surface point. Build time went 4.3s → 1.7s, which is what paid for
+the Voronoi lookup.
+
 ### Placement is thrown, not laid
 
 A tile used to *be* its node, which made placement trivial and the map a

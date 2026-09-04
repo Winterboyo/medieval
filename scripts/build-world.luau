@@ -111,7 +111,6 @@ end
 -- changing how many trees a forest has does not reshape the coastline.
 local LAND_SEED = 71.3
 local RELIEF_SEED = 12.9
-local BIOME_SEED = 44.1
 
 -- ---------------------------------------------------------------- the shape
 -- One height function, sampled by the terrain writer, by node placement and by
@@ -166,28 +165,107 @@ local function heightAt(x: number, z: number): number
 	return math.max(shore * 4, shore * 4 + body + broken)
 end
 
--- Which biome a point belongs to. Height decides the extremes - you get sand at
--- the waterline and bare rock on the tops whatever else is true - and a noise
--- field decides everything between, which is what makes the middle of the
--- island read as regions rather than as bands.
+-- ---------------------------------------------------------------- regions
+-- Biomes are VORONOI CELLS, not thresholds on a noise field.
+--
+-- The previous version already snapped every voxel to exactly one material - it
+-- never interpolated - but it read as mud anyway, and the reason is worth
+-- writing down. Slicing one smooth noise field with thresholds puts the
+-- boundary wherever the field happens to cross a number, and a smooth field
+-- crosses a number many times in the same neighbourhood. You get tendrils,
+-- fringes and little marooned islands of one material inside another, because
+-- the boundary is a contour line of a wobbly surface rather than an edge.
+-- Three similar earthy materials cut from the same field made that worse: their
+-- boundaries interleaved instead of separating.
+--
+-- A Voronoi partition has the property being asked for by construction: every
+-- point belongs to exactly one region, every region is contiguous, and the
+-- boundary between two of them is a line. Warping the lookup position with a
+-- little noise first keeps the edges from being suspiciously straight without
+-- softening them - the edge is still a hard line, it is just not a chord.
+-- A WEIGHTED CYCLE, not one of each. Round-robin over five materials gave the
+-- two rock ones half the island between them, which reads as a quarry rather
+-- than somewhere people farm. Seeds are dealt from this list in order, so the
+-- proportions are exact rather than left to luck, and consecutive seeds still
+-- differ - neighbouring regions contrast.
+--
+-- Over fifteen seeds this deals Grass 5, Mud 4, LeafyGrass 3, Slate 2, Basalt 1.
+local REGION_MATERIALS = {
+	Enum.Material.Grass,
+	Enum.Material.Mud,
+	Enum.Material.LeafyGrass,
+	Enum.Material.Slate,
+	Enum.Material.Grass,
+	Enum.Material.Mud,
+	Enum.Material.LeafyGrass,
+	Enum.Material.Basalt,
+	Enum.Material.Grass,
+	Enum.Material.Mud,
+}
+
+local REGION_SEEDS = 15
+local REGION_MIN_GAP = 250
+local REGION_WARP = 120
+local WARP_SEED = 63.7
+
+type Region = { x: number, z: number, material: Enum.Material }
+local regions: { Region } = {}
+
+do
+	-- Deliberately its own generator, seeded separately. Changing how many trees
+	-- a forest has should not redraw the map.
+	local seedRng = Random.new(90210)
+	local attempts = 0
+	while #regions < REGION_SEEDS and attempts < 4000 do
+		attempts += 1
+		local angle = seedRng:NextNumber(0, math.pi * 2)
+		local radius = math.sqrt(seedRng:NextNumber(0, 1)) * ISLAND_RADIUS * 0.94
+		local x, z = math.cos(angle) * radius, math.sin(angle) * radius
+		local ok = true
+		for _, other in regions do
+			if (Vector2.new(x - other.x, z - other.z)).Magnitude < REGION_MIN_GAP then
+				ok = false
+				break
+			end
+		end
+		if ok then
+			-- Round robin rather than random, so every material is guaranteed to
+			-- appear and no single one can swamp the island by luck.
+			local material = REGION_MATERIALS[(#regions % #REGION_MATERIALS) + 1]
+			regions[#regions + 1] = { x = x, z = z, material = material }
+		end
+	end
+end
+
+-- Which region a point falls in. Beach and summit still win outright: those are
+-- real bands that follow the water and the tops, and they are legible precisely
+-- because they are narrow and everywhere.
 local function biomeAt(x: number, z: number, height: number): Enum.Material
-	if height < 2.2 then
+	if height < 3.0 then
 		return Enum.Material.Sand
 	end
-	if height > 74 then
+	-- 68, not 80. The island tops out around 82, so a threshold of 80 caught
+	-- three sample cells in the whole world - a summit band that does not exist
+	-- is not a region, it is a rounding error. At 68 the high ground actually
+	-- reads as bare rock, which also tells a player where the ore is.
+	if height > 68 then
 		return Enum.Material.Rock
 	end
-	if height > 56 then
-		return Enum.Material.Slate
+
+	local warpX = x + math.noise(x * 0.0024, z * 0.0024, WARP_SEED) * REGION_WARP
+	local warpZ = z + math.noise(x * 0.0024, z * 0.0024, WARP_SEED + 31) * REGION_WARP
+
+	local best = regions[1]
+	local bestDistance = math.huge
+	for _, region in regions do
+		local dx, dz = warpX - region.x, warpZ - region.z
+		local distance = dx * dx + dz * dz -- squared; the ordering is all we need
+		if distance < bestDistance then
+			best = region
+			bestDistance = distance
+		end
 	end
-	local field = math.noise(x * 0.0017, z * 0.0017, BIOME_SEED)
-	if field < -0.12 then
-		return Enum.Material.Mud -- forest floor
-	end
-	if field > 0.13 then
-		return Enum.Material.LeafyGrass -- meadow
-	end
-	return Enum.Material.Grass
+	return best.material
 end
 
 -- ---------------------------------------------------------------- teardown
@@ -252,10 +330,31 @@ local function writeChunk(originX: number, originZ: number)
 	local materials = table.create(countX)
 	local occupancies = table.create(countX)
 
+	-- Height and biome depend only on x and z, so they are resolved ONCE per
+	-- column. They used to be recomputed for every voxel in the column, which
+	-- meant heightAt ran tens of times per surface point for no reason - and a
+	-- Voronoi lookup could not have afforded that.
+	local columnHeight = table.create(countX)
+	local columnBiome = table.create(countX)
+	for ix = 1, countX do
+		local worldX = base.X + (ix - 0.5) * VOXEL
+		local heightRow = table.create(countZ)
+		local biomeRow = table.create(countZ)
+		for iz = 1, countZ do
+			local worldZ = base.Z + (iz - 0.5) * VOXEL
+			local height = heightAt(worldX, worldZ)
+			heightRow[iz] = height
+			biomeRow[iz] = biomeAt(worldX, worldZ, height)
+		end
+		columnHeight[ix] = heightRow
+		columnBiome[ix] = biomeRow
+	end
+
 	for ix = 1, countX do
 		local columnMaterials = table.create(countY)
 		local columnOccupancies = table.create(countY)
-		local worldX = base.X + (ix - 0.5) * VOXEL
+		local heightRow = columnHeight[ix]
+		local biomeRow = columnBiome[ix]
 
 		for iy = 1, countY do
 			local rowMaterials = table.create(countZ)
@@ -263,8 +362,7 @@ local function writeChunk(originX: number, originZ: number)
 			local voxelBottom = base.Y + (iy - 1) * VOXEL
 
 			for iz = 1, countZ do
-				local worldZ = base.Z + (iz - 0.5) * VOXEL
-				local height = heightAt(worldX, worldZ)
+				local height = heightRow[iz]
 
 				-- How much of this voxel is below the ground surface, and how
 				-- much is below the waterline. Fractional occupancy at the top
@@ -274,7 +372,7 @@ local function writeChunk(originX: number, originZ: number)
 				local waterFill = math.clamp((SEA_LEVEL - voxelBottom) / VOXEL, 0, 1)
 
 				if groundFill > 0.02 then
-					rowMaterials[iz] = biomeAt(worldX, worldZ, height)
+					rowMaterials[iz] = biomeRow[iz]
 					rowOccupancies[iz] = groundFill
 				elseif waterFill > 0.02 then
 					rowMaterials[iz] = Enum.Material.Water
