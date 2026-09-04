@@ -1263,6 +1263,80 @@ buildings, they already read well, and the art direction names *stone* as the
 thing to face and flatten. That line is deliberate and easy to move if the
 textured workshops start to look out of place beside flat stone.
 
+## Making it cartoon
+
+Three levers, in order of how much they moved: **kill every texture**, **push
+the palette off grey**, and **relight it like an animated film instead of a
+photograph**. No geometry changed.
+
+### One sweep decides the surface language
+
+Every texture — the thatch weave, the daub render, the cobbles, the wheat, the
+ore rock — is *photographic detail*, and photographic detail is the single
+loudest thing arguing against a drawn look. Those `MaterialVariant`s were right
+when the ground was voxel terrain; against a flat-shaded heightfield they read
+as imports from another game.
+
+`flattenSurfaces` is a sweep rather than an edit at each call site, because
+there are about twenty of those and each passes its own `Enum.Material` — a
+sweep cannot miss one. **12,195 parts across Workspace, ServerStorage and
+StarterPack, 0 textured.** `Neon` and `Glass` are spared: they are doing a *job*
+(the totem beacon, the ore glints, the alchemist's brew, windows) rather than
+describing a surface.
+
+It sweeps `ServerStorage` too, and that turned out to matter — the unbuilt
+blueprint stages live there, so a village built mid-match would otherwise have
+arrived textured into a matte world. Verified by building one out: 347 parts, 0
+textured.
+
+### Nothing in a cartoon is grey
+
+The realistic instinct is to desaturate rock and dirt toward grey and brown, and
+that instinct was what kept this reading as a landscape rather than a drawing.
+**Cartoon rock is blue and cartoon dirt is orange.** Slate went to violet,
+basalt to blue-violet, mud to a real orange, and the summit rock to pale
+periwinkle.
+
+One correction on the way: slate first went to `(122,146,190)`, and from the air
+the slate regions read as **lakes** — a large cool-blue patch beside a cyan sea
+is a body of water until you look twice, and a player should never have to look
+twice at whether ground is ground. It is violet now.
+
+### The contrast ratio changed sides
+
+Worth stating plainly, because it reverses an earlier decision *on purpose*.
+
+Shadows were once being erased by ambient fill, so that pass dropped the fill
+and drove the ratio to about **5:1**. That is dramatic — and dramatic is a
+*live-action* look: deep shadows, high contrast, a strong key. An animated film
+lights close to the opposite: bright key, plenty of bounce, and shadows that are
+lighter and unmistakably **coloured** rather than dark.
+
+So the fill came back up — but *tinted*, hard, toward blue-violet. The ratio sits
+near **2.5:1** and still reads as shadow, because the shadow is a different
+**hue** rather than merely a darker value. That is the trade the earlier pass
+could not make, because its shadows were grey.
+
+`ShadowSoftness` 0.05 → 0.26 for the same reason: the shadow *shape* should stay
+readable while its edge stops being a knife.
+
+### Overshooting, and what caught it
+
+The first cartoon pass came out **bleached**. Bloom at threshold 1.15, ambient at
+`(78,84,120)`, environment fill at 0.55 and a +0.42 saturation lift were each
+adding apparent exposure and *nothing was taking any back*. Everything past a
+pale wall cleared the bloom threshold, so the whole map glowed and the effect
+stopped being a highlight and became a fog.
+
+Pulled back: exposure −0.06, ambient down a step, fill 0.42, bloom threshold 1.7.
+Contrast went the other way — 0.06 → 0.14, because at 0.06 the palette had
+nothing to sit against and read as one wash. **Saturation up and contrast down
+is a cel; both up is a garish photograph; both down is fog.**
+
+Clouds needed the same correction: `Cover` 0.74 did not read as fat drawn clouds,
+it read as a grey ceiling. Past about 0.6 the individual shapes merge and you
+lose the thing they were for. 0.46 now.
+
 ## Things that bit, so they don't bite twice
 
 **Rojo can leave duplicate scripts after a playtest.** `StarterPlayerScripts`
