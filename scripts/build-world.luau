@@ -1205,20 +1205,92 @@ end
 -- --- the four villager houses, deliberately identical -------------
 local HOUSE = { width = 17, depth = 15, wallHeight = 9, door = 4.6 }
 
--- A villager standing outside their door. Four parts, no animation, no AI: the
--- point is only that a built cottage visibly houses SOMEBODY, because from this
--- tier a cottage is a labourer rather than scenery.
-local function makeVillager(into: Instance, at: CFrame, shirt: Color3)
+-- A villager is a RIG rather than a statue - but nothing here moves, and the
+-- server never touches one after it is built. The walking happens entirely on
+-- the client, in src/client/Villagers.client.luau.
+--
+-- WHY THE CLIENT. Villagers are decoration: no player outcome depends on where
+-- one is standing. Walking them on the server would spend replication on every
+-- frame, for sixty-four rigs, forever, to change nothing. Anchored parts
+-- CFramed locally do not replicate back, so each player animates only the
+-- villagers near their own camera and the server never learns it happened.
+--
+-- WHY NO Motor6D AND NO Animator. An Animator needs an uploaded Animation
+-- asset, which this toolchain cannot produce, and Motor6D only drives UNANCHORED
+-- parts - which would hand sixty-four rigs to the physics solver and raise a
+-- network-ownership question for parts the server created. Procedural limb
+-- CFrames need no asset, no solver and no ownership.
+--
+-- Each part carries the two CFrames the animator needs, both relative to the rig
+-- root: Rest is where the part sits in the pose, Pivot is the joint it swings
+-- around. THE LAYOUT IS AUTHORED ONCE, HERE. The client never hardcodes a hip
+-- height; it reads what the rig tells it, so changing a limb below cannot
+-- desynchronise the two files.
+local VILLAGER_SKIN = Color3.fromRGB(214, 176, 140)
+local VILLAGER_CLOTH = Color3.fromRGB(74, 62, 52)
+local VILLAGER_HAT = Color3.fromRGB(126, 98, 62)
+
+-- name, size, rest offset from root, pivot height, swing sign (0 = still), tone
+-- Arms swing opposite their leg, which is the whole of what makes a walk read as
+-- a walk rather than as a shuffle.
+local VILLAGER_RIG = {
+	{ "LegL", Vector3.new(0.7, 2.2, 0.9), Vector3.new(-0.45, 1.1, 0), 2.2, 1, "cloth" },
+	{ "LegR", Vector3.new(0.7, 2.2, 0.9), Vector3.new(0.45, 1.1, 0), 2.2, -1, "cloth" },
+	{ "Torso", Vector3.new(1.9, 2.4, 1.2), Vector3.new(0, 3.4, 0), 0, 0, "shirt" },
+	{ "ArmL", Vector3.new(0.6, 2.0, 0.8), Vector3.new(-1.25, 3.6, 0), 4.5, -1, "shirt" },
+	{ "ArmR", Vector3.new(0.6, 2.0, 0.8), Vector3.new(1.25, 3.6, 0), 4.5, 1, "shirt" },
+	{ "Head", Vector3.new(1.2, 1.2, 1.2), Vector3.new(0, 5.2, 0), 0, 0, "skin" },
+	{ "Hat", Vector3.new(1.7, 0.5, 1.7), Vector3.new(0, 5.9, 0), 0, 0, "hat" },
+}
+
+local function makeVillager(into: Instance, at: CFrame, shirt: Color3,
+	patrolA: Vector3, patrolB: Vector3, phase: number)
 	local figure = Instance.new("Model")
 	figure.Name = "Villager"
-	sitePart(figure, "Legs", Vector3.new(1.5, 2.2, 1.1), at * CFrame.new(0, 1.1, 0),
-		Enum.Material.Fabric, Color3.fromRGB(74, 62, 52))
-	sitePart(figure, "Torso", Vector3.new(1.9, 2.4, 1.2), at * CFrame.new(0, 3.4, 0),
-		Enum.Material.Fabric, shirt)
-	sitePart(figure, "Head", Vector3.new(1.2, 1.2, 1.2), at * CFrame.new(0, 5.2, 0),
-		Enum.Material.SmoothPlastic, Color3.fromRGB(214, 176, 140))
-	sitePart(figure, "Hat", Vector3.new(1.7, 0.5, 1.7), at * CFrame.new(0, 5.9, 0),
-		Enum.Material.Fabric, Color3.fromRGB(126, 98, 62))
+
+	for _, spec in VILLAGER_RIG do
+		local name = spec[1] :: string
+		local size = spec[2] :: Vector3
+		local offset = spec[3] :: Vector3
+		local pivotY = spec[4] :: number
+		local swing = spec[5] :: number
+		local tone = spec[6] :: string
+
+		local colour = if tone == "shirt"
+			then shirt
+			elseif tone == "skin" then VILLAGER_SKIN
+			elseif tone == "hat" then VILLAGER_HAT
+			else VILLAGER_CLOTH
+		local material = if tone == "skin"
+			then Enum.Material.SmoothPlastic
+			else Enum.Material.Fabric
+
+		local rest = CFrame.new(offset)
+		local part = sitePart(figure, name, size, at * rest, material, colour)
+		-- A moving anchored part that can collide SHOVES players, and can wedge
+		-- one against a wall with no way out. A villager is scenery with legs;
+		-- let people walk through it.
+		part.CanCollide = false
+		part:SetAttribute("Rest", rest)
+		part:SetAttribute("Pivot", CFrame.new(offset.X, pivotY, offset.Z))
+		part:SetAttribute("Swing", swing)
+		if name == "Torso" then
+			figure.PrimaryPart = part
+		end
+	end
+
+	-- The patrol, in world space. Phase desynchronises them: sixteen villagers
+	-- stepping in time reads as a chorus line, which is worse than standing
+	-- still.
+	-- The animator needs the leg length to keep the feet on the ground (a rigid
+	-- leg pivoting at the hip shortens its vertical reach), and it must not
+	-- hardcode it - that is the number most likely to drift if a limb changes
+	-- here. LegL's pivot height IS the leg length, since a foot rests at y=0.
+	figure:SetAttribute("LegLength", VILLAGER_RIG[1][4] :: number)
+	figure:SetAttribute("PatrolA", patrolA)
+	figure:SetAttribute("PatrolB", patrolB)
+	figure:SetAttribute("Phase", phase)
+	figure:SetAttribute("Speed", 3.2 + phase * 1.8)
 	figure.Parent = into
 end
 
@@ -1279,9 +1351,16 @@ local function makeVillagerHouse(into: Instance, at: CFrame, index: number)
 			at * CFrame.new(sx * HOUSE.width * 0.34, 5.4, HOUSE.depth / 2),
 			Enum.Material.Glass, Color3.fromRGB(62, 72, 68))
 	end
-	makeVillager(into, at * CFrame.new(HOUSE.width * 0.3, 0, HOUSE.depth / 2 + 3)
-		* CFrame.Angles(0, math.rad(196), 0),
-		VILLAGER_SHIRTS[((index - 1) % #VILLAGER_SHIRTS) + 1])
+	-- The patrol is authored in HOUSE-LOCAL space and multiplied out, so it
+	-- rotates with the house and never needs to know which way this plot faces.
+	-- Out from the door towards the street and back: about eighteen studs, which
+	-- stops short of the spine and stays clear of the next cottage. The village
+	-- terrace is flat, so both ends share a Y and no ground raycast is needed.
+	local doorSide = at * CFrame.new(HOUSE.width * 0.3, 0, HOUSE.depth / 2 + 3)
+	local streetward = at * CFrame.new(HOUSE.width * 0.3, 0, HOUSE.depth / 2 + 21)
+	makeVillager(into, doorSide * CFrame.Angles(0, math.rad(196), 0),
+		VILLAGER_SHIRTS[((index - 1) % #VILLAGER_SHIRTS) + 1],
+		doorSide.Position, streetward.Position, (index - 1) / #VILLAGER_SHIRTS)
 end
 
 -- --- the three workshops, each unmistakably itself ----------------
