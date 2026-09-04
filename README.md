@@ -762,6 +762,62 @@ Note its goods colours are deliberately **not** the tints in the node readouts:
 those colour a bar by regen *rate*, which is why Wood and Stone are near-identical
 greens there. Two different jobs need two different scales.
 
+## Light and surface
+
+### The lighting had never run
+
+Worth stating plainly because it explains a lot of "this looks like a prototype":
+the whole lighting block sat after a line that threw, so until recently the place
+had no atmosphere, no bloom, no sun rays and no colour correction at all.
+
+Once it ran, it needed tuning:
+
+- **The sun was the problem.** `ClockTime 14.6` put it almost overhead, which is
+  the flattest light there is — nothing casts a shadow long enough to give a
+  building form, so the island read as a painted map. It is 16.1 now.
+- **Haze was the other problem.** At 0.9 it washed the far half of the map into a
+  flat cream band and took the horizon with it. It is 0.38, with `Density` raised
+  instead: density does the work of *there is air between us*, haze is only the
+  milkiness on top.
+- **Warm sun, cool shadow.** `Ambient` is deliberately bluer than the sunlight.
+  That is what stops shadows reading as dirty grey, and it is the cheapest trick
+  in outdoor lighting.
+- Brightness came 3 → 2.1 with slightly negative exposure, because 3 was blowing
+  the ground to near-white.
+- One `Clouds` instance, for free scale reference — an empty sky over open water
+  gives the eye nothing to judge distance against.
+
+**`Lighting.Technology` is not scriptable and no longer meaningful.** It cannot
+even be *read* from a plugin thread. This place was migrated to unified lighting,
+so the style is set by hand at Lighting → LightingStyle → Realistic. The old
+`pcall` that tried to set `Technology` was dead code pretending to be a
+safeguard, and it is gone.
+
+### Generated materials, and a silent trap
+
+Five `MaterialVariant`s — thatch, daub, cobble, ore-bearing rock, wheat. They cost
+nothing at runtime: a variant is a skin on an existing base material, not new
+geometry. 1,363 parts wear one.
+
+The thatch one matters most. Roofs were previously **Slate with a yellow tint**,
+which is a yellow slate roof and reads as exactly that.
+
+**The trap:** Roblox resolves `BasePart.MaterialVariant` against the **direct
+children of `MaterialService`** and nothing else. The generator drops new
+variants into a nested `AssistantMaterials` folder, four variations apiece — where
+nothing will ever look at them. A name that cannot be resolved is **not an
+error**: the part quietly renders as its base material. So 800 parts were wearing
+skins that did not exist, and the only symptom was that the world looked like
+stock Roblox.
+
+`build-world` now checks every name in `SKIN` against `MaterialService` at build
+time and `warn`s loudly if one cannot be resolved.
+
+> **The variants are not in this repo.** They live in the place file under
+> `MaterialService`, because Rojo does not manage that service. A fresh clone
+> builds the same geometry with stock materials and warns about all five. Either
+> regenerate them or copy them across.
+
 ## Things that bit, so they don't bite twice
 
 **A local function called above its own declaration silently truncated the whole

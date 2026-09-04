@@ -62,6 +62,51 @@ Workspace:SetAttribute("WorldShape", "Island")
 
 local rng = Random.new(20260903)
 
+-- ---------------------------------------------------------------- surfaces
+-- MaterialVariants generated for this place. They cost nothing at runtime - a
+-- variant is a skin on an existing base material, not new geometry - and they
+-- are the difference between "Roblox Sandstone" and a wall somebody plastered.
+--
+-- Each name must match a MaterialVariant under MaterialService, and each must be
+-- applied together with the BASE material it was generated against, or Roblox
+-- ignores the variant and you get the stock texture with no warning.
+local SKIN = {
+	thatch = { material = Enum.Material.Grass, variant = "MedievalThatch" },
+	daub = { material = Enum.Material.Sandstone, variant = "MedievalDaub" },
+	cobble = { material = Enum.Material.Cobblestone, variant = "MedievalCobble" },
+	oreRock = { material = Enum.Material.Rock, variant = "MedievalOreRock" },
+	wheat = { material = Enum.Material.Grass, variant = "MedievalWheat" },
+}
+
+local function skin(part: BasePart, which)
+	part.Material = which.material
+	part.MaterialVariant = which.variant
+end
+
+-- Check the variants can actually be resolved, LOUDLY.
+--
+-- Roblox matches BasePart.MaterialVariant against the DIRECT children of
+-- MaterialService and nothing else. A name it cannot find is not an error: the
+-- part quietly renders as its base material, so 800 parts can be wearing a skin
+-- that does not exist and the only symptom is that the world looks like stock
+-- Roblox. The generator drops new variants into a nested folder, so this is the
+-- normal case rather than the exotic one.
+do
+	local MaterialService = game:GetService("MaterialService")
+	local absent: { string } = {}
+	for _, which in SKIN do
+		local found = MaterialService:FindFirstChild(which.variant)
+		if not (found and found:IsA("MaterialVariant")) then
+			absent[#absent + 1] = which.variant
+		end
+	end
+	if #absent > 0 then
+		warn(("[Medieval Land] these MaterialVariants are not direct children of "
+			.. "MaterialService, so every part using them will silently fall back "
+			.. "to its base material: %s"):format(table.concat(absent, ", ")))
+	end
+end
+
 -- A fixed seed for the terrain itself, separate from the rng above, so that
 -- changing how many trees a forest has does not reshape the coastline.
 local LAND_SEED = 71.3
@@ -303,7 +348,10 @@ local function wearing(part: BasePart): BasePart
 	return part
 end
 
-local function newPart(name: string, size: Vector3, cframe: CFrame, parent: Instance): Part
+-- The variant argument is optional and last, so every existing call site is
+-- unaffected by its arrival.
+local function newPart(name: string, size: Vector3, cframe: CFrame, parent: Instance,
+	variant: string?): Part
 	local part = Instance.new("Part")
 	part.Name = name
 	part.Size = size
@@ -472,7 +520,7 @@ local function makeField(name: string, origin: Vector3): Model
 					* CFrame.Angles(0, rng:NextNumber(0, 6.28), 0),
 				model
 			))
-			stalk.Material = Enum.Material.Grass
+			skin(stalk, SKIN.wheat)
 			stalk.Color = Color3.fromRGB(216, 182, 88)
 		end
 	end
@@ -496,6 +544,11 @@ local function makeOutcrop(name: string, origin: Vector3, resource: string): Mod
 	local function stone(partName: string, size: Vector3, cframe: CFrame, wears: boolean): Part
 		local part = newPart(partName, size, cframe, model)
 		part.Material = Enum.Material.Rock
+		if isOre then
+			-- Ore country looks different from ordinary hill stone before you
+			-- swing at it, which is the whole point of walking to it.
+			part.MaterialVariant = SKIN.oreRock.variant
+		end
 		-- One grey, jittered equally on all three channels so it stays neutral
 		-- rather than drifting into a tint. Ore is darker, and its wearing
 		-- chunks carry the rusty colour so a rich seam reads at a glance.
@@ -762,13 +815,16 @@ terraceForPlaza(Vector2.new(0, 0), 150, math.max(heightAt(0, 0), 12))
 local plazaGround = groundHeight(0, 0)
 
 local function plazaPart(name: string, size: Vector3, cframe: CFrame,
-	material: Enum.Material, color: Color3): Part
+	material: Enum.Material, color: Color3, variant: string?): Part
 	local part = Instance.new("Part")
 	part.Name = name
 	part.Size = size
 	part.CFrame = cframe
 	part.Anchored = true
 	part.Material = material
+	if variant then
+		part.MaterialVariant = variant
+	end
 	part.Color = color
 	part.TopSurface = Enum.SurfaceType.Smooth
 	part.BottomSurface = Enum.SurfaceType.Smooth
@@ -790,7 +846,7 @@ end
 
 plazaPart("TotemStep", Vector3.new(26, 1.2, 26),
 	CFrame.new(0, plazaGround + 0.6, 0) * CFrame.Angles(0, math.rad(45), 0),
-	Enum.Material.Cobblestone, Color3.fromRGB(150, 144, 132))
+	Enum.Material.Cobblestone, Color3.fromRGB(150, 144, 132), SKIN.cobble.variant)
 
 drum("TotemPlinth", 4.2, 2.0, 1.2, Enum.Material.Slate, Color3.fromRGB(104, 100, 96), 0)
 
@@ -928,13 +984,16 @@ local TILED = Color3.fromRGB(112, 62, 48)
 local STONEWORK = Color3.fromRGB(132, 126, 116)
 
 local function sitePart(parent: Instance, name: string, size: Vector3, cframe: CFrame,
-	material: Enum.Material, color: Color3): Part
+	material: Enum.Material, color: Color3, variant: string?): Part
 	local part = Instance.new("Part")
 	part.Name = name
 	part.Size = size
 	part.CFrame = cframe
 	part.Anchored = true
 	part.Material = material
+	if variant then
+		part.MaterialVariant = variant
+	end
 	part.Color = color
 	part.TopSurface = Enum.SurfaceType.Smooth
 	part.BottomSurface = Enum.SurfaceType.Smooth
@@ -953,8 +1012,10 @@ end
 -- A gable roof from two wedges meeting at a ridge. A WedgePart is tall at its
 -- +Z face and tapers to nothing at -Z - measured in Studio, not assumed - so
 -- each half is turned to aim its tall side at the ridge line.
+-- Roofs used to be Slate with a thatch-coloured tint, which is a yellow slate
+-- roof and reads as one. A thatch roof needs a thatch SURFACE.
 local function gable(parent: Instance, eaves: CFrame, width: number, depth: number,
-	height: number, color: Color3)
+	height: number, color: Color3, roofSkin)
 	-- A ridge beam along the apex. The two halves meet on an exact plane, and a
 	-- ray cast straight up from inside slips between them - measured: 5 of 25
 	-- interior points saw open sky, all of them on the x = 0 line. The beam
@@ -978,7 +1039,11 @@ local function gable(parent: Instance, eaves: CFrame, width: number, depth: numb
 			* CFrame.new(-side * width / 4, height / 2, 0)
 			* CFrame.Angles(0, math.rad(90) * side, 0)
 		half.Anchored = true
-		half.Material = Enum.Material.Slate
+		if roofSkin then
+			skin(half, roofSkin)
+		else
+			half.Material = Enum.Material.Slate
+		end
 		half.Color = color
 		half.TopSurface = Enum.SurfaceType.Smooth
 		half.BottomSurface = Enum.SurfaceType.Smooth
@@ -994,16 +1059,17 @@ local DOOR_HEIGHT = 7
 
 local function hollowBuilding(into: Instance, at: CFrame, width: number, depth: number,
 	wallHeight: number, doorWidth: number, wallColor: Color3, roofColor: Color3,
-	wallMaterial: Enum.Material)
+	wallMaterial: Enum.Material, wallVariant: string?, roofSkin: any?)
 	sitePart(into, "Floor", Vector3.new(width, 0.6, depth), at * CFrame.new(0, 0.3, 0),
 		Enum.Material.WoodPlanks, Color3.fromRGB(126, 96, 62))
 
 	sitePart(into, "WallBack", Vector3.new(width, wallHeight, WALL_THICK),
-		at * CFrame.new(0, wallHeight / 2, -depth / 2 + WALL_THICK / 2), wallMaterial, wallColor)
+		at * CFrame.new(0, wallHeight / 2, -depth / 2 + WALL_THICK / 2), wallMaterial, wallColor,
+		wallVariant)
 	for _, sx in { -1, 1 } do
 		sitePart(into, "WallSide", Vector3.new(WALL_THICK, wallHeight, depth),
 			at * CFrame.new(sx * (width / 2 - WALL_THICK / 2), wallHeight / 2, 0),
-			wallMaterial, wallColor)
+			wallMaterial, wallColor, wallVariant)
 	end
 
 	-- The front, split around the doorway, with a lintel bridging the gap.
@@ -1011,7 +1077,7 @@ local function hollowBuilding(into: Instance, at: CFrame, width: number, depth: 
 	for _, sx in { -1, 1 } do
 		sitePart(into, "WallFront", Vector3.new(cheek, wallHeight, WALL_THICK),
 			at * CFrame.new(sx * (doorWidth + cheek) / 2, wallHeight / 2, depth / 2 - WALL_THICK / 2),
-			wallMaterial, wallColor)
+			wallMaterial, wallColor, wallVariant)
 	end
 	if wallHeight > DOOR_HEIGHT then
 		sitePart(into, "Lintel", Vector3.new(doorWidth, wallHeight - DOOR_HEIGHT, WALL_THICK),
@@ -1035,7 +1101,7 @@ local function hollowBuilding(into: Instance, at: CFrame, width: number, depth: 
 	end
 
 	gable(into, at * CFrame.new(0, wallHeight, 0), width + 2.0, depth + 2.0,
-		wallHeight * 0.8, roofColor)
+		wallHeight * 0.8, roofColor, roofSkin)
 end
 
 -- --- the four villager houses, deliberately identical -------------
@@ -1109,7 +1175,7 @@ local VILLAGER_SHIRTS = {
 
 local function makeVillagerHouse(into: Instance, at: CFrame, index: number)
 	hollowBuilding(into, at, HOUSE.width, HOUSE.depth, HOUSE.wallHeight, HOUSE.door,
-		DAUB, THATCH, Enum.Material.Sandstone)
+		DAUB, THATCH, Enum.Material.Sandstone, SKIN.daub.variant, SKIN.thatch)
 	for _, sx in { -1, 1 } do
 		sitePart(into, "Window", Vector3.new(1.8, 1.8, 0.3),
 			at * CFrame.new(sx * HOUSE.width * 0.34, 5.4, HOUSE.depth / 2),
@@ -1210,7 +1276,8 @@ local function makeAlchemist(into: Instance, at: CFrame)
 	-- unmistakable from outside the wall. A hollow cylinder would need a ring of
 	-- parts and would still be a worse room.
 	hollowBuilding(into, at, SHOP.width, SHOP.depth, SHOP.wallHeight, SHOP.door,
-		Color3.fromRGB(150, 142, 162), Color3.fromRGB(78, 62, 104), Enum.Material.Sandstone)
+		Color3.fromRGB(150, 142, 162), Color3.fromRGB(78, 62, 104), Enum.Material.Sandstone,
+		SKIN.daub.variant)
 	local turretAt = at * CFrame.new(0, SHOP.wallHeight + SHOP.wallHeight * 0.8 - 1, 0)
 	siteDrum(into, "TurretBase", 5.6, 1.4, turretAt, Enum.Material.Slate,
 		Color3.fromRGB(112, 104, 124))
@@ -1340,9 +1407,9 @@ local function makePlot(name: string, centre: Vector2)
 	-- Streets, laid from the start: they are what make an empty plot read as a
 	-- place that is GOING to be a village.
 	sitePart(site, "StreetSpine", Vector3.new(12, 0.3, 132), at(0, -4, 0),
-		Enum.Material.Cobblestone, Color3.fromRGB(148, 142, 130))
+		Enum.Material.Cobblestone, Color3.fromRGB(148, 142, 130), SKIN.cobble.variant)
 	sitePart(site, "StreetCross", Vector3.new(112, 0.3, 10), at(0, 6, 0),
-		Enum.Material.Cobblestone, Color3.fromRGB(148, 142, 130))
+		Enum.Material.Cobblestone, Color3.fromRGB(148, 142, 130), SKIN.cobble.variant)
 
 	local well = at(0, 6, 0)
 	siteDrum(site, "WellWall", 3.6, 3, well, Enum.Material.Cobblestone,
@@ -1646,21 +1713,34 @@ buildTool("Shears", "Shear sheep for wool", 2.2, function(headAt, add)
 end)
 
 -- ---------------------------------------------------------------- lighting
--- Lighting.Technology is not scriptable from a normal script and the MCP cannot
--- write it either. If the place looks flat, set it by hand in
--- Properties -> Lighting -> Technology -> Future.
-pcall(function()
-	Lighting.Technology = Enum.Technology.Future
-end)
+-- No Technology line here on purpose. Roblox migrated this place to unified
+-- lighting, so Enum.Technology is legacy and the property is not scriptable
+-- anyway - it cannot even be READ from a plugin thread ("lacking capability
+-- RobloxScript"). The old pcall that tried to set it was dead code pretending
+-- to be a safeguard. Style is set by hand: Lighting -> LightingStyle -> Realistic.
 
-Lighting.ClockTime = 14.6
-Lighting.Brightness = 3
+-- A LOW SUN. The old 14.6 put it almost overhead, which is the flattest light
+-- there is: nothing casts a shadow long enough to give a building form, and the
+-- island read as a painted map. Late afternoon gives every wall a lit face and a
+-- dark one, which is most of what makes geometry legible.
+Lighting.ClockTime = 16.1
+Lighting.GeographicLatitude = 12
 Lighting.GlobalShadows = true
-Lighting.Ambient = Color3.fromRGB(72, 70, 62)
-Lighting.OutdoorAmbient = Color3.fromRGB(140, 136, 118)
-Lighting.EnvironmentDiffuseScale = 0.5
-Lighting.EnvironmentSpecularScale = 0.5
-Lighting.ExposureCompensation = 0.1
+Lighting.ShadowSoftness = 0.22
+
+-- Brightness 3 with exposure above zero was blowing the ground out to near
+-- white. Pulled down, with the exposure slightly negative to hold the highlights
+-- on sand and water.
+Lighting.Brightness = 2.1
+Lighting.ExposureCompensation = -0.08
+
+-- Warm sun against a cool sky. Ambient is the light in shadow, and making it
+-- BLUER than the sun is what stops shadows reading as dirty grey - it is the
+-- single cheapest trick in outdoor lighting.
+Lighting.Ambient = Color3.fromRGB(58, 62, 74)
+Lighting.OutdoorAmbient = Color3.fromRGB(118, 132, 152)
+Lighting.EnvironmentDiffuseScale = 0.65
+Lighting.EnvironmentSpecularScale = 0.6
 
 -- DepthOfFieldEffect and Sky are in this list because the place file carries a
 -- stock Roblox skybox and an unconfigured DoF from the baseplate template. They
@@ -1674,31 +1754,52 @@ for _, className in { "Atmosphere", "SunRaysEffect", "ColorCorrectionEffect", "B
 	end
 end
 
+-- HAZE WAS THE PROBLEM. At 0.9 it washed the far half of the map into a flat
+-- cream band and took the horizon with it. Density does the work of "there is
+-- air between us"; haze is the milkiness on top, and a little goes a long way.
+--
+-- Decay is deliberately blue: distant things losing saturation and drifting
+-- toward the sky colour is aerial perspective, and it is what gives an island
+-- surrounded by water any sense of scale at all.
 local atmosphere = Instance.new("Atmosphere")
-atmosphere.Density = 0.28
-atmosphere.Offset = 0.15
-atmosphere.Haze = 0.9
-atmosphere.Glare = 0.35
-atmosphere.Color = Color3.fromRGB(224, 220, 200)
-atmosphere.Decay = Color3.fromRGB(126, 152, 178)
+atmosphere.Density = 0.36
+atmosphere.Offset = 0.05
+atmosphere.Haze = 0.38
+atmosphere.Glare = 0.12
+atmosphere.Color = Color3.fromRGB(202, 214, 226)
+atmosphere.Decay = Color3.fromRGB(88, 122, 162)
 atmosphere.Parent = Lighting
 
+-- Volumetric clouds. Free scale reference: an empty sky over open water gives
+-- the eye nothing to judge distance against, and this is one instance.
+local oldClouds = Terrain:FindFirstChildOfClass("Clouds")
+if oldClouds then
+	oldClouds:Destroy()
+end
+local clouds = Instance.new("Clouds")
+clouds.Cover = 0.58
+clouds.Density = 0.62
+clouds.Color = Color3.fromRGB(255, 253, 248)
+clouds.Parent = Terrain
+
 local sunRays = Instance.new("SunRaysEffect")
-sunRays.Intensity = 0.09
-sunRays.Spread = 0.5
+sunRays.Intensity = 0.14
+sunRays.Spread = 0.92
 sunRays.Parent = Lighting
 
 local colorCorrection = Instance.new("ColorCorrectionEffect")
-colorCorrection.Brightness = 0.02
-colorCorrection.Contrast = 0.08
-colorCorrection.Saturation = 0.06
-colorCorrection.TintColor = Color3.fromRGB(255, 249, 238)
+colorCorrection.Brightness = 0
+colorCorrection.Contrast = 0.14
+colorCorrection.Saturation = 0.09
+colorCorrection.TintColor = Color3.fromRGB(255, 251, 244)
 colorCorrection.Parent = Lighting
 
+-- Threshold raised so bloom picks out the genuinely bright things - the sun on
+-- water, the forge, the totem beacon - instead of smearing every pale wall.
 local bloom = Instance.new("BloomEffect")
-bloom.Intensity = 0.35
-bloom.Size = 20
-bloom.Threshold = 1.6
+bloom.Intensity = 0.26
+bloom.Size = 24
+bloom.Threshold = 1.95
 bloom.Parent = Lighting
 
 print(("[Medieval Land] Island r~%d, %d nodes, %d village plots, 4 tools."):format(
