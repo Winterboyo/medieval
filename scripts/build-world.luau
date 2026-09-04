@@ -269,7 +269,7 @@ local function biomeAt(x: number, z: number, height: number): Enum.Material
 end
 
 -- ---------------------------------------------------------------- teardown
-for _, name in { "MedievalLand_Scenery", "MedievalLand_Board", "ResourceNodes", "BuildSites", "VillageSquare", "SpawnLocation", "Baseplate", "Birds" } do
+for _, name in { "MedievalLand_Scenery", "MedievalLand_Board", "ResourceNodes", "BuildSites", "VillageSquare", "SpawnLocation", "Baseplate", "Birds", "MedievalLand_Ground" } do
 	local existing = Workspace:FindFirstChild(name)
 	if existing then
 		existing:Destroy()
@@ -291,132 +291,251 @@ for _, toolName in { "Pickaxe", "Axe", "Hoe", "Shears" } do
 end
 Terrain:Clear()
 
--- ---------------------------------------------------------------- terrain
--- Written as VOXELS rather than filled as blocks. FillBlock can only place
--- rectangular solids, which is exactly why the old map was rectangular solids;
--- WriteVoxels sets a material and an occupancy per cell, so a column can end
--- part way through a voxel and the surface comes out smooth instead of stepped.
+-- ---------------------------------------------------------------- ground
+-- THE GROUND IS GEOMETRY, NOT TERRAIN.
 --
--- Done in chunks because one call covering the whole map would be millions of
--- cells. Each chunk is CHUNK studs square and spans the full height range.
-local Y_BOTTOM = SEA_FLOOR - 12
+-- SmoothTerrain resolves a material per voxel and then blends neighbours at the
+-- ENGINE level: it dithers the transition and rounds the surface, both of which
+-- are the opposite of what a flat-faceted look needs. That blending is not a
+-- setting, so no amount of material tuning reaches it - the previous pass
+-- proved it by fixing the assignment logic (hard Voronoi regions, one material
+-- per voxel, no interpolation anywhere in this file) and still getting soft,
+-- rounded boundaries out of the other end.
+--
+-- So the ground is built out of parts: a triangulated heightfield, one flat
+-- colour per cell, hard edges by construction, because two facets that meet
+-- simply have different colours.
+--
+-- WHAT DID NOT CHANGE: heightAt still draws the island and biomeAt still
+-- decides the regions. The shape and the regions are the same; only how they
+-- are realised is different.
+--
+-- WHAT DID CHANGE, beyond looks: the surface is now a PURE FUNCTION instead of
+-- something you raycast. Nothing has to exist before something else can ask how
+-- high the ground is, which is what lets plot placement stop depending on the
+-- order things are built in.
 
-local function writeChunk(originX: number, originZ: number)
-	-- Size the vertical range to what is actually in THIS chunk. Spanning the
-	-- full world height everywhere would be ~14 million cells, almost all of
-	-- them empty sky over open water, and the Lua tables alone would take
-	-- minutes to build. Sampling a coarse grid and padding generously turns a
-	-- deep-ocean chunk into about a dozen voxels tall.
-	local tallest = SEA_FLOOR
-	for sx = 0, 4 do
-		for sz = 0, 4 do
-			local h = heightAt(originX + sx * CHUNK / 4, originZ + sz * CHUNK / 4)
-			tallest = math.max(tallest, h)
-		end
-	end
-	local ceiling = math.max(SEA_LEVEL, tallest) + VOXEL * 4
+-- Terraces are REGISTERED, NOT CARVED. With voxels a flat village pad meant
+-- FillCylinder-ing a shelf into terrain that had already been written: a second
+-- destructive pass over a thing that existed. A terrace is now a claim recorded
+-- before the ground is generated, and the ground comes out with the claim
+-- already in it. No carving, no second pass, no ordering hazard.
+type Terrace = { centre: Vector2, radius: number, height: number }
+local terraces: { Terrace } = {}
 
-	local region = Region3.new(
-		Vector3.new(originX, Y_BOTTOM, originZ),
-		Vector3.new(originX + CHUNK, ceiling, originZ + CHUNK)
-	):ExpandToGrid(VOXEL)
+-- Studs of ramp outside the flat pad. A sheer cylinder wall would leave every
+-- village unreachable on foot; this lands the shelf into the hillside.
+local TERRACE_RAMP = 48 -- one facet cell: the shelf lands in a single row of them
 
-	local size = region.Size
-	local countX = math.floor(size.X / VOXEL)
-	local countY = math.floor(size.Y / VOXEL)
-	local countZ = math.floor(size.Z / VOXEL)
-	local base = region.CFrame.Position - size / 2
-
-	local materials = table.create(countX)
-	local occupancies = table.create(countX)
-
-	-- Height and biome depend only on x and z, so they are resolved ONCE per
-	-- column. They used to be recomputed for every voxel in the column, which
-	-- meant heightAt ran tens of times per surface point for no reason - and a
-	-- Voronoi lookup could not have afforded that.
-	local columnHeight = table.create(countX)
-	local columnBiome = table.create(countX)
-	for ix = 1, countX do
-		local worldX = base.X + (ix - 0.5) * VOXEL
-		local heightRow = table.create(countZ)
-		local biomeRow = table.create(countZ)
-		for iz = 1, countZ do
-			local worldZ = base.Z + (iz - 0.5) * VOXEL
-			local height = heightAt(worldX, worldZ)
-			heightRow[iz] = height
-			biomeRow[iz] = biomeAt(worldX, worldZ, height)
-		end
-		columnHeight[ix] = heightRow
-		columnBiome[ix] = biomeRow
-	end
-
-	for ix = 1, countX do
-		local columnMaterials = table.create(countY)
-		local columnOccupancies = table.create(countY)
-		local heightRow = columnHeight[ix]
-		local biomeRow = columnBiome[ix]
-
-		for iy = 1, countY do
-			local rowMaterials = table.create(countZ)
-			local rowOccupancies = table.create(countZ)
-			local voxelBottom = base.Y + (iy - 1) * VOXEL
-
-			for iz = 1, countZ do
-				local height = heightRow[iz]
-
-				-- How much of this voxel is below the ground surface, and how
-				-- much is below the waterline. Fractional occupancy at the top
-				-- cell is the whole reason the result looks like a hill and not
-				-- like a staircase.
-				local groundFill = math.clamp((height - voxelBottom) / VOXEL, 0, 1)
-				local waterFill = math.clamp((SEA_LEVEL - voxelBottom) / VOXEL, 0, 1)
-
-				if groundFill > 0.02 then
-					rowMaterials[iz] = biomeRow[iz]
-					rowOccupancies[iz] = groundFill
-				elseif waterFill > 0.02 then
-					rowMaterials[iz] = Enum.Material.Water
-					rowOccupancies[iz] = waterFill
-				else
-					rowMaterials[iz] = Enum.Material.Air
-					rowOccupancies[iz] = 0
-				end
-			end
-
-			columnMaterials[iy] = rowMaterials
-			columnOccupancies[iy] = rowOccupancies
-		end
-
-		materials[ix] = columnMaterials
-		occupancies[ix] = columnOccupancies
-	end
-
-	Terrain:WriteVoxels(region, VOXEL, materials, occupancies)
+local function registerTerrace(centre: Vector2, radius: number, height: number)
+	terraces[#terraces + 1] = { centre = centre, radius = radius, height = height }
 end
 
-do
-	local half = MAP_SIZE / 2
-	local from = -half
-	while from < half do
-		local acrossZ = -half
-		while acrossZ < half do
-			writeChunk(from, acrossZ)
-			acrossZ += CHUNK
+-- The surface: the island with every registered terrace stamped into it.
+-- Returns the height, and whether the point is on worked ground.
+--
+-- The NEAREST terrace wins rather than the last one found, so two pads whose
+-- ramps overlap give one sensible slope instead of whichever was registered
+-- second.
+local function surfaceInfo(x: number, z: number): (number, boolean)
+	local base = heightAt(x, z)
+	local nearest: Terrace? = nil
+	local nearestDistance = math.huge
+	for _, terrace in terraces do
+		local distance = (Vector2.new(x, z) - terrace.centre).Magnitude
+		if distance < nearestDistance then
+			nearest, nearestDistance = terrace, distance
 		end
-		from += CHUNK
 	end
+	if not nearest or nearestDistance > nearest.radius + TERRACE_RAMP then
+		return base, false
+	end
+	if nearestDistance <= nearest.radius then
+		return nearest.height, true
+	end
+	local t = (nearestDistance - nearest.radius) / TERRACE_RAMP
+	local blend = t * t * (3 - 2 * t) -- smoothstep, so the ramp meets both ends flat
+	-- FALSE, not true. The ramp is a natural slope that happens to have been
+	-- graded; it is not worked ground and must not be coloured as it. Marking it
+	-- worked painted the approach to every village brown, and with seventeen
+	-- pads on a 1085 radius island those approaches met: 86% of the map came out
+	-- one flat tan, which is what the measurement caught and the eye read as
+	-- "it is all sand".
+	return nearest.height + (base - nearest.height) * blend, false
 end
 
 -- ---------------------------------------------------------------- ground probe
--- Nothing below may assume the ground is at y = 0; terrain smoothing lifts it.
--- Placing at a hardcoded height once buried a whole resource node inside a hill.
-local groundParams = RaycastParams.new()
-groundParams.FilterType = Enum.RaycastFilterType.Include
-groundParams.FilterDescendantsInstances = { Terrain }
-
+-- This used to raycast the terrain. It evaluates the function instead: exact
+-- rather than sampled, correct before any geometry exists, and free of the
+-- raycast budget that placing a few hundred props used to spend.
 local function groundHeight(x: number, z: number): number
-	local hit = Workspace:Raycast(Vector3.new(x, 220, z), Vector3.new(0, -440, 0), groundParams)
-	return if hit then hit.Position.Y else 0
+	local height = surfaceInfo(x, z)
+	return height
+end
+
+-- ---------------------------------------------------------------- facets
+-- Saturated and separated on purpose. These are not the muted tints the voxel
+-- world wore: a flat-shaded facet shows its colour honestly, with no texture to
+-- mediate it, so the colour carries the whole read of the terrain type.
+local GROUND_COLOUR: { [Enum.Material]: Color3 } = {
+	[Enum.Material.Sand] = Color3.fromRGB(240, 212, 132),
+	[Enum.Material.Grass] = Color3.fromRGB(88, 178, 62),
+	[Enum.Material.LeafyGrass] = Color3.fromRGB(132, 204, 68),
+	[Enum.Material.Mud] = Color3.fromRGB(138, 96, 52),
+	[Enum.Material.Slate] = Color3.fromRGB(108, 120, 138),
+	[Enum.Material.Basalt] = Color3.fromRGB(66, 70, 84),
+	-- Grey stone, not white. At 162 it read as snow, which is a different
+	-- climate from the one the rest of the palette describes.
+	[Enum.Material.Rock] = Color3.fromRGB(134, 136, 146),
+}
+local WORKED_COLOUR = Color3.fromRGB(172, 138, 94) -- terraces: turned earth
+
+-- 48 studs a side. The brief is chunky and deliberate, and this is about as
+-- coarse as the island tolerates before a village pad stops being able to hold
+-- its own shape. It also sets the part budget: every cell is two triangles and
+-- every triangle is two wedges.
+local CELL = 48
+local FACET_THICKNESS = 1.2
+
+-- An arbitrary 3D triangle out of two WedgeParts. Rotate the vertices so the
+-- longest edge is the hypotenuse, split there, and each wedge covers one half.
+-- The two share the split edge exactly, so there is no seam between them - and
+-- neighbouring cells share their corner heights, so there is none there either.
+local function facet(a: Vector3, b: Vector3, c: Vector3, colour: Color3, parent: Instance): number
+	local ab, ac, bc = b - a, c - a, c - b
+	local abd, acd, bcd = ab:Dot(ab), ac:Dot(ac), bc:Dot(bc)
+	if abd > acd and abd > bcd then
+		c, a = a, c
+	elseif acd > bcd and acd > abd then
+		a, b = b, a
+	end
+	ab, ac, bc = b - a, c - a, c - b
+
+	local cross = ac:Cross(ab)
+	if cross.Magnitude < 1e-4 then
+		return 0 -- three collinear points describe no triangle
+	end
+	local right = cross.Unit
+	local up = bc:Cross(right).Unit
+	local back = bc.Unit
+	local height = math.abs(ab:Dot(up))
+
+	local first = Instance.new("WedgePart")
+	first.Anchored = true
+	first.Material = Enum.Material.SmoothPlastic
+	first.Color = colour
+	first.TopSurface = Enum.SurfaceType.Smooth
+	first.BottomSurface = Enum.SurfaceType.Smooth
+	first.Size = Vector3.new(FACET_THICKNESS, height, math.abs(ab:Dot(back)))
+	first.CFrame = CFrame.fromMatrix((a + b) / 2, right, up, back)
+	first.Parent = parent
+
+	local second = Instance.new("WedgePart")
+	second.Anchored = true
+	second.Material = Enum.Material.SmoothPlastic
+	second.Color = colour
+	second.TopSurface = Enum.SurfaceType.Smooth
+	second.BottomSurface = Enum.SurfaceType.Smooth
+	second.Size = Vector3.new(FACET_THICKNESS, height, math.abs(ac:Dot(back)))
+	second.CFrame = CFrame.fromMatrix((a + c) / 2, -right, up, -back)
+	second.Parent = parent
+
+	return 2
+end
+
+-- Called at the very END of the build, once every terrace has been claimed.
+-- Nothing needs it earlier, because everything else asks groundHeight.
+local function buildGround(): string
+	local ground = Instance.new("Folder")
+	ground.Name = "MedievalLand_Ground"
+	ground.Parent = Workspace
+
+	local deep = SEA_LEVEL - 16
+	local reach = math.ceil((ISLAND_HALF + CELL * 2) / CELL)
+
+	-- Sample the grid ONCE. Corners are shared between four cells, so sampling
+	-- per cell would evaluate every interior corner four times - and worse,
+	-- could disagree at a shared corner and tear a seam open between two cells.
+	local heights: { [number]: { [number]: number } } = {}
+	for ix = -reach, reach do
+		local column: { [number]: number } = {}
+		for iz = -reach, reach do
+			column[iz] = surfaceInfo(ix * CELL, iz * CELL)
+		end
+		heights[ix] = column
+	end
+
+	local cells, parts = 0, 0
+	for ix = -reach, reach - 1 do
+		for iz = -reach, reach - 1 do
+			local h00 = heights[ix][iz]
+			local h10 = heights[ix + 1][iz]
+			local h11 = heights[ix + 1][iz + 1]
+			local h01 = heights[ix][iz + 1]
+
+			-- Skip cells entirely well under the sea. They are hidden by the
+			-- water and the seabed, and they are most of the part budget.
+			if math.max(h00, h10, h11, h01) > deep then
+				local x0, z0 = ix * CELL, iz * CELL
+				local x1, z1 = x0 + CELL, z0 + CELL
+
+				-- COLOUR IS DECIDED AT THE CELL CENTRE, not from its corners.
+				-- Taking "worked if any of the four corners is on a pad" bled
+				-- every terrace outward by a whole cell - it grew each pad's
+				-- painted area by about two and a half times, and with
+				-- seventeen of them that was most of the island. The corner
+				-- heights still build the geometry; only the colour moved to
+				-- the centre, where a single sample answers it exactly.
+				local cx, cz = x0 + CELL / 2, z0 + CELL / 2
+				local middle, isWorked = surfaceInfo(cx, cz)
+				local colour = if isWorked
+					then WORKED_COLOUR
+					else GROUND_COLOUR[biomeAt(cx, cz, middle)] or WORKED_COLOUR
+
+				-- One colour for the whole cell, both triangles. Colouring per
+				-- triangle halves the block size and starts to read as noise.
+				parts += facet(Vector3.new(x0, h00, z0), Vector3.new(x1, h10, z0),
+					Vector3.new(x1, h11, z1), colour, ground)
+				parts += facet(Vector3.new(x0, h00, z0), Vector3.new(x1, h11, z1),
+					Vector3.new(x0, h01, z1), colour, ground)
+				cells += 1
+			end
+		end
+	end
+
+	-- The sea. A flat plane rather than Terrain water: the brief wants water to
+	-- be one of the separated colours, and a voxel sea would drag the engine's
+	-- blending back in at the shoreline, which is the whole thing being fixed.
+	--
+	-- It does not collide. Terrain water let you swim and a part cannot, so the
+	-- seabed under it is solid: a player who wades out walks on the bottom
+	-- rather than falling out of the world.
+	local sea = Instance.new("Part")
+	sea.Name = "Sea"
+	sea.Anchored = true
+	sea.CanCollide = false
+	sea.CanQuery = false
+	sea.Size = Vector3.new(MAP_SIZE, 2, MAP_SIZE)
+	sea.CFrame = CFrame.new(0, SEA_LEVEL - 1, 0)
+	sea.Material = Enum.Material.SmoothPlastic
+	sea.Color = Color3.fromRGB(40, 138, 206)
+	sea.Transparency = 0.28
+	sea.TopSurface = Enum.SurfaceType.Smooth
+	sea.BottomSurface = Enum.SurfaceType.Smooth
+	sea.Parent = ground
+
+	local bed = Instance.new("Part")
+	bed.Name = "Seabed"
+	bed.Anchored = true
+	bed.Size = Vector3.new(MAP_SIZE, 8, MAP_SIZE)
+	bed.CFrame = CFrame.new(0, deep - 8, 0)
+	bed.Material = Enum.Material.SmoothPlastic
+	bed.Color = Color3.fromRGB(26, 92, 140)
+	bed.TopSurface = Enum.SurfaceType.Smooth
+	bed.BottomSurface = Enum.SurfaceType.Smooth
+	bed.Parent = ground
+
+	return ("%d cells, %d facet parts, %d terraces"):format(cells, parts, #terraces)
 end
 
 -- ---------------------------------------------------------------- board folder
@@ -910,6 +1029,67 @@ end
 --
 -- So the quota comes first and the terrain search bends to it: stone and ore
 -- look high and tolerate steeper ground, grain looks low and flat.
+-- ---------------------------------------------------------------- plots first
+-- PLOTS ARE CHOSEN BEFORE NODES, and that ordering is the point.
+--
+-- A plot is the constrained thing: it needs flat ground, a 250 stud gap from
+-- every other plot, and clearance from the middle. A resource node needs
+-- almost nothing - five kinds between them accept anything from the waterline
+-- to the summit. Letting 48 nodes take the first pick and giving the plots
+-- whatever survived had the scarce thing competing for scraps, and when the
+-- pads grew to clear the new facet grid only NINE of sixteen plots still fit.
+--
+-- Selection is split from construction. Only the SPOT and the terrace claim
+-- are decided here; makePlot needs several hundred lines of building
+-- vocabulary that does not exist yet, so the villages themselves are built
+-- from this list much further down.
+local PLOT = 148 -- village footprint
+local PLOT_TARGET = 16
+local PLOT_SPACING = 250
+
+-- The plaza is claimed here too, for the same reason and in the same breath.
+-- It used to be registered after the nodes were placed, which meant a node
+-- allowed as close as 165 studs to the middle could sit inside a 198 stud pad
+-- and end up under the shelf. Every terrace on the island is now claimed before
+-- a single thing is positioned.
+local PLAZA_PAD = 150 + 14
+registerTerrace(Vector2.new(0, 0), PLAZA_PAD, math.max(heightAt(0, 0), 12))
+
+-- The flat pad a village stands on. It has to carry the CORNERS of the
+-- foundation, hence the diagonal - that sets a floor of 104.6 and there is no
+-- arguing with it, because the slab is 148 square.
+--
+-- The margin on top is deliberately SMALL. A whole facet cell of margin put the
+-- pad diameter at 305 against a plot spacing of 250, so neighbouring villages
+-- shared a shelf and each pair met in a step where the two flat heights
+-- disagreed. Fourteen studs keeps 237 clear of 250 and still gives the slab
+-- something to stand on past its corners.
+local PLOT_PAD = PLOT / 2 * math.sqrt(2) + 14
+
+for _ = 1, PLOT_TARGET do
+	local spot = findSpot({
+		minHeight = 7,
+		maxHeight = 58,
+		maxSlope = 14,
+		gapNodes = 0, -- nothing has been placed yet; this is the first pick
+		gapPlots = PLOT_SPACING,
+		clearOfCentre = 300,
+		attempts = 1400,
+	})
+	if not spot then
+		break
+	end
+	plotSpots[#plotSpots + 1] = spot
+	-- Claim the shelf now. heightAt rather than groundHeight on purpose: the
+	-- pad should sit at the NATURAL height of the ground under it, not at the
+	-- height of some neighbouring pad's ramp.
+	registerTerrace(spot, PLOT_PAD, heightAt(spot.X, spot.Y))
+end
+if #plotSpots < PLOT_TARGET then
+	warn(("[Medieval Land] only %d of %d village plots fit on the island"):format(
+		#plotSpots, PLOT_TARGET))
+end
+
 local NODE_PLAN = {
 	{ resource = "Wood", count = 11, minHeight = 5, maxHeight = 48, maxSlope = 16 },
 	{ resource = "Grain", count = 10, minHeight = 3, maxHeight = 32, maxSlope = 10 },
@@ -930,8 +1110,12 @@ for _, plan in NODE_PLAN do
 			maxHeight = plan.maxHeight,
 			maxSlope = plan.maxSlope,
 			gapNodes = 104,
-			gapPlots = 0,
-			clearOfCentre = 165,
+			-- Off the village pads entirely. A node inside one would have been
+			-- placed at the natural ground height and then found itself buried
+			-- under a flat shelf - true of the old FillCylinder too, so this
+			-- closes a long-standing hazard rather than inventing a new rule.
+			gapPlots = PLOT_PAD + 24,
+			clearOfCentre = PLAZA_PAD + 24,
 			attempts = 900,
 		})
 		if not spot then
@@ -962,19 +1146,6 @@ if #shortfall > 0 then
 	warn("[Medieval Land] the island had no room for: " .. table.concat(shortfall, ", "))
 end
 
--- The plaza terrace, declared here because the plaza is built before villages
--- are. Same idea as terraceFor below: fill to a level, then clear above it.
-local function terraceForPlaza(centre: Vector2, half: number, height: number)
-	Terrain:FillCylinder(
-		CFrame.new(centre.X, (SEA_FLOOR + height) / 2, centre.Y),
-		height - SEA_FLOOR, half, Enum.Material.Ground
-	)
-	Terrain:FillCylinder(
-		CFrame.new(centre.X, height + 100, centre.Y),
-		200, half, Enum.Material.Air
-	)
-end
-
 -- ---------------------------------------------------------------- totem
 -- The centre used to be a bare sandstone spawn pad. It is now a totem: a
 -- landmark tall enough to navigate by from most of the board, standing on the
@@ -989,10 +1160,9 @@ local square = Instance.new("Folder")
 square.Name = "VillageSquare"
 square.Parent = Workspace
 
--- The plaza is the one fixed point on the island, and the zone closes onto it,
--- so it gets a terrace like the villages do. Without this the totem stands on
--- whatever slope the noise happened to put at the origin.
-terraceForPlaza(Vector2.new(0, 0), 150, math.max(heightAt(0, 0), 12))
+-- The plaza is the one fixed point on the island and the zone closes onto it,
+-- so it stands on a terrace like the villages do. That terrace was claimed at
+-- the top of the file; groundHeight simply reports it back.
 local plazaGround = groundHeight(0, 0)
 
 local function plazaPart(name: string, size: Vector3, cframe: CFrame,
@@ -1213,7 +1383,6 @@ local blueprints = Instance.new("Folder")
 blueprints.Name = "VillageBlueprints"
 blueprints.Parent = ServerStorage
 
-local PLOT = 148 -- village footprint
 local WALL_HALF = 70 -- wall ring sits at +/- this
 local WALL_BLOCK = Vector3.new(20.4, 11, 3.6)
 local WALL_SPAN = 20 -- centre-to-centre along a side
@@ -1946,55 +2115,18 @@ local function makePlot(name: string, centre: Vector2)
 	return site
 end
 
--- A village needs FLAT ground. Its foundation is a single 148 stud slab, so on
--- a hillside it floats at one corner and buries itself at the other. Cut a
--- terrace: fill solid up to the pad height, then clear everything above it.
-local function terraceFor(centre: Vector2, half: number, height: number)
-	-- ROUND, not square. Sixteen square terraces cut into an island read from
-	-- the air as sixteen brown plates - the grid the whole redesign was meant to
-	-- get rid of, reintroduced by the flattening. A cylinder just wide enough to
-	-- carry the corners of the foundation leaves a circular shelf instead.
-	local radius = half * math.sqrt(2) + 6
-	Terrain:FillCylinder(
-		CFrame.new(centre.X, (SEA_FLOOR + height) / 2, centre.Y),
-		height - SEA_FLOOR, radius, Enum.Material.Ground
-	)
-	Terrain:FillCylinder(
-		CFrame.new(centre.X, height + 100, centre.Y),
-		200, radius, Enum.Material.Air
-	)
+-- The villages themselves, built from the spots chosen right at the top of the
+-- file. Everything scarce about a plot was settled then; this is only masonry.
+for index, spot in plotSpots do
+	makePlot(("Base_%02d"):format(index), spot)
 end
 
--- Roughly a dozen claimable plots, which is the player count Conquest is written
--- for. Thrown at the island rather than laid on a lattice, kept clear of the
--- totem so nobody spawns straight into somebody's keep, and kept well apart from
--- each other and from the nodes because they share the one spacing table.
-local PLOT_TARGET = 16
-local PLOT_SPACING = 250
-
-local plotCount = 0
-for _ = 1, PLOT_TARGET do
-	local spot = findSpot({
-		minHeight = 7,
-		maxHeight = 58,
-		maxSlope = 14,
-		gapNodes = 86, -- elbow room from a node, not the full village spacing
-		gapPlots = PLOT_SPACING,
-		clearOfCentre = 300,
-		attempts = 1400,
-	})
-	if not spot then
-		break
-	end
-	plotSpots[#plotSpots + 1] = spot
-	plotCount += 1
-	terraceFor(spot, PLOT / 2, heightAt(spot.X, spot.Y))
-	makePlot(("Base_%02d"):format(plotCount), spot)
-end
-if plotCount < PLOT_TARGET then
-	warn(("[Medieval Land] only %d of %d village plots fit on the island"):format(
-		plotCount, PLOT_TARGET))
-end
+-- ---------------------------------------------------------------- the ground
+-- LAST, deliberately. Every terrace has now been claimed - the plaza and all
+-- sixteen villages - so the heightfield can be generated once with every pad
+-- already in it. Nothing above needed the ground to exist, because everything
+-- above asked groundHeight, which is a function rather than a raycast.
+print("[Medieval Land] ground: " .. buildGround())
 
 -- ---------------------------------------------------------------- tools
 -- Four tools, one shaft. Only the head differs, so the haft, grip, hold pose and
@@ -2289,7 +2421,7 @@ bloom.Threshold = 1.95
 bloom.Parent = Lighting
 
 print(("[Medieval Land] Island r~%d, %d nodes, %d village plots, 4 tools."):format(
-	ISLAND_RADIUS, nodeCount, plotCount
+	ISLAND_RADIUS, nodeCount, #plotSpots
 ))
 
 end

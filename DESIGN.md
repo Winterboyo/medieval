@@ -5,6 +5,17 @@ This supersedes earlier persistent-world assumptions. If anything here conflicts
 ## Core concept
 Minecraft-style voxel building + Rust-style raiding, medieval reskin (castles, not forts), with base/economy management between raids and tactical live raiding as the driver that makes the economy matter. Loss should create distress out of proportion to the material value lost — Clash of Clans style, not a full Rust wipe. Armies persist after a raid loss.
 
+## Art direction (confirmed)
+- Overall style: stylized low-poly — chunky, faceted geometry with flat angled surfaces, not smooth/rounded default Roblox shapes. Exaggerated proportions, saturated flat color separation between materials. Closer to a fantasy-medieval low-poly asset-pack look than realistic or default-Studio terrain.
+- Resource node identity follows Catan's approach: ground material can stay simple and consistent — a node's identity comes from a distinct built prop scene sitting on top of it, not from ground color alone:
+  - **Wood** — an actual cluster of low-poly trees, chunky faceted canopies, not a green patch.
+  - **Stone** — a jagged angular rock outcropping, distinctly lighter/grayer than Ore so the two read as different at a glance.
+  - **Ore** — a mine entrance or exposed vein: dark rock with small embedded glinting chunks.
+  - **Grain** — a golden wheat-stalk cluster or a strongly colored field patch.
+  - **Wool** — a small fenced pasture with a few sheep models scattered in it.
+- Castle: stylized low-poly castle-pack treatment — faceted stone blocks, angled roof panels, exaggerated tower proportions — but scaled down and simplified relative to typical asset-pack scale. Must match actual Roblox player scale (~5-stud character height), not a cinematic showpiece scale.
+- **Ground terrain itself is included in this style, not just props.** Roblox's native SmoothTerrain blends materials at the engine level and cannot produce the flat-faceted look the reference images show, so ground is being rebuilt as low-poly parts/mesh geometry instead of the Terrain service. This is a real rebuild, not a material tweak — castle-plot placement logic (currently tied to Terrain's surface) needs to be reworked against the new representation as part of the same pass.
+
 ## Game mode: Conquest (v1 — this is what gets built first)
 - ~12 players, one generated map, one match, last player/team standing wins.
 - Match length: full session, closer to Catan pacing (45–60 min) than a fast round.
@@ -18,7 +29,6 @@ Minecraft-style voxel building + Rust-style raiding, medieval reskin (castles, n
 - Catan-style resource set, medieval reskin, working default (not fully finalized): **Wood, Stone, Grain, Ore, Wool/Cloth.**
 - Resources and specialists are spread across the generated map, not clustered, so movement/expansion is required within a match.
 - Node mechanics: finite stockpile per node, depletes on gathering, regenerates over time. Regen follows a curve — faster at moderate depletion, slower near full or near empty — not a flat rate.
-- *Currently implemented, recorded here as fact rather than as a decision:* the five raw goods above, plus three **refined** goods — **Timber**, **Ingot** and **Tonic** — produced by the carpenter, blacksmith and alchemist respectively. Build stages 8–10 require them, so they are load-bearing in the implementation as it stands. The exact final resource list remains open (see Open items).
 
 ## Base structure (v1)
 - Perimeter wall, single HP value, one ring (no segments/tiers yet).
