@@ -911,7 +911,91 @@ time and `warn`s loudly if one cannot be resolved.
 > builds the same geometry with stock materials and warns about all five. Either
 > regenerate them or copy them across.
 
+## Things that move
+
+### The village animates on the client, and only on the client
+
+Sixty-four villagers were four anchored boxes apiece and had never moved. They
+are rigs now, and a client script walks them.
+
+**Nothing about a villager reaches the server.** No outcome depends on where one
+is standing, so walking them server-side would spend replication every frame, on
+64 rigs, forever, to change nothing anyone can act on. An anchored part CFramed
+locally does not replicate back, so each player animates only what is near their
+own camera and the server never learns it happened. The same rule covers the
+birds. Beyond 260 studs a villager simply stands still — verified: with the
+camera moved 700 studs out, all four moved **0.00 studs in a second**.
+
+**No `Humanoid`, no `Motor6D`, no `Animator`, no `Animation` asset.** An
+`Animator` needs an uploaded animation this toolchain cannot produce, and
+`Motor6D` only drives *unanchored* parts — which would hand 64 rigs to the
+physics solver and raise a network-ownership question for parts the server
+created. Procedural limb CFrames need no asset, no solver and no ownership.
+
+The rig publishes its own layout as attributes — each part carries the offset it
+rests at and the joint it swings around — so the client hardcodes no hip height
+and the two files cannot drift apart.
+
+### Rigid legs hover, and the fix is arithmetic
+
+A leg pivoting at the hip is a pendulum, and a pendulum **shortens its vertical
+reach**: the foot rises by `legLength * (1 - cos t)`. Both legs sit at `+t` and
+`-t`, and cosine is even, so *both* feet rise by the same amount — the villager
+hovers at the peak of every stride. Nothing about the pose looks wrong in
+isolation; it only reads as floating once it moves.
+
+Dropping the root by exactly that much plants them. Measured in a live playtest,
+the worst foot-above-ground gap across every rig and every frame was **0.110
+studs**, which is precisely the intended bob constant — so the compensation is
+not approximately right, it is exact.
+
+(Feet still slide, because these legs have no knee. At this scale, with a bob on
+top, that reads fine; a knee is four more parts per villager if it ever stops
+reading fine.)
+
+### Smoke is the cheapest life there is
+
+A `ParticleEmitter` is drawn entirely on the viewer's machine: no script, no
+loop, no replication after the part exists. Seven per village — four hearths,
+forge smoke, embers, and the alchemist's vat — is 112 instances for a fully built
+world and costs the server nothing.
+
+Two things had to be got right before any of it was visible:
+
+- **Drift is an acceleration, not a velocity.** 1.4 studs/s² looks gentle and
+  then compounds over a four second life into a plume raked flat sideways off
+  the chimney. It is 0.6 now, up-weighted.
+- **`LightInfluence = 1` erased them.** Smoke that ignores the sun is a grey
+  smear at dusk, but smoke that obeys it completely vanishes against a backlit
+  sky — which is exactly what the first attempt did. 0.7 keeps it in the same
+  world as the roof while leaving it legible from the shadowed side.
+
+### A folder replicates before its contents do
+
+The bird script enumerated the flock once, the instant `WaitForChild` returned,
+and found the folder **empty**. Seven birds sat frozen in the sky and *nothing
+was logged* — a one-shot scan against a tree that is still arriving fails
+silently, which is the worst way for it to fail.
+
+The villager script never had this bug because it listens for late arrivals
+anyway: villages are built during the match, so a villager cannot be enumerated
+at join. Rescanning on `DescendantAdded` costs a couple of dozen cheap passes at
+join and nothing afterwards.
+
+**Anything new in `Workspace` must also go in the rebuild teardown list.**
+`Birds` was not, so every rebuild would have stacked another flock — the same
+trap the stock skybox and the orphan `DepthOfFieldEffect` fell into. Caught by
+rebuilding twice and counting, not by looking.
+
 ## Things that bit, so they don't bite twice
+
+**Rojo can leave duplicate scripts after a playtest.** `StarterPlayerScripts`
+came back holding *two* `Villagers` and *two* `Birds` LocalScripts — so two
+animation loops, each with its own state, writing CFrames to the same parts.
+Both copies were byte-identical, so nothing was stale and the symptom was
+invisible; a divergent pair would have been much worse. **Check for duplicates
+after a play/stop cycle before trusting anything a client script does**, and
+compare sources before deleting either one.
 
 **A local function called above its own declaration silently truncated the whole
 world.** `makeMessengerTemplate()` was called at line 707 of `build-world.luau`
