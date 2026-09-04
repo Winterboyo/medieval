@@ -987,6 +987,64 @@ join and nothing afterwards.
 trap the stock skybox and the orphan `DepthOfFieldEffect` fell into. Caught by
 rebuilding twice and counting, not by looking.
 
+## Trees are meshes now
+
+The old trees were a cylinder trunk with three ball canopies, and next to the
+mesh kit they read as **lollipops** — thin sticks with a small green blob on
+top. The kit is `Low Poly Tree Pack` (asset `15217079919`, free), one artist,
+which is the point: a world assembled from a dozen artists reads worse than
+consistent primitives.
+
+**The first judgement was wrong, and the way it was wrong is worth keeping.**
+Lined up on bare ground at a uniform height, the pack looked like chunky
+rectangular slabs and no better than the spheres. Stood *next to an actual
+forest node on real terrain*, it was not close. A prop compared against nothing
+tells you about the prop; a prop compared against what it replaces tells you
+whether to ship it.
+
+Every marketplace insert is audited before it is looked at, never after:
+
+- **Scripts stripped first.** Free Roblox models are a well-known malware
+  vector and the payload always rides in a `LuaSourceContainer`. This pack had
+  **zero** — plus no RemoteEvents, no BindableEvents, no Sounds, no Decals — but
+  that is a finding, not an assumption, and the strip runs again on the kit that
+  is actually kept.
+- **Part properties normalised.** Marketplace models routinely ship unanchored.
+  Foliage is set non-colliding: a player who walks into a canopy should walk
+  through it rather than be shoved, and an eleven-stud oak branch at head height
+  is a wall you cannot see. Trunks and stumps still stop you.
+
+**Only the leaves wear.** Trunk, stump and the woody branch structure are the
+permanent frame, so a worked-out wood reads as bare trunks and stumps — the same
+contract the primitive trees had, mapped onto the kit's part names. Erosion
+walks `GetDescendants()`, so the nested tree models are found without changing
+anything in `ResourceService`.
+
+Birches are excluded: their leaves ship in an autumn palette on flat slab
+geometry and read as orange boards in a green summer.
+
+88 trees across 11 wood nodes, 352 mesh parts — **exactly the count the
+primitives used** (8 trunks + 24 canopies per node), so the part budget did not
+move: 2,313 in Workspace.
+
+> **The kit is not in this repo.** Like the `MaterialVariant`s, it lives in the
+> place file under `ServerStorage.TreeKit`, because Rojo does not manage
+> `ServerStorage`. Unlike the variants, this one is **not allowed to fail
+> silently**: without the kit, `makeForest` falls back to the primitive trees
+> and the build warns. A missing dependency should degrade loudly, not produce
+> a world with no wood in it.
+
+### `x = x or f()` does not call `f`
+
+`trunkPrimary = trunkPrimary or plantTree(...)` short-circuits the moment
+`trunkPrimary` is non-nil, so `plantTree` ran **once per forest** and every wood
+node was a single tree. The fix is to call it into a local first.
+
+Worth stating because of how it was caught: counting parts said 44 across 11
+nodes — four per node, when eight trees of four parts each should be 32. A
+screenshot would have shown a thin-looking wood and invited a shrug about tree
+density. **The count was unambiguous where the picture was not.**
+
 ## Things that bit, so they don't bite twice
 
 **Rojo can leave duplicate scripts after a playtest.** `StarterPlayerScripts`
