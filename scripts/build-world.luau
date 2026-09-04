@@ -1687,12 +1687,67 @@ local function sitePart(parent: Instance, name: string, size: Vector3, cframe: C
 	return part
 end
 
+-- A FACETED SQUARE PRISM, not a cylinder. Enum.PartType.Cylinder is smooth and
+-- round, which is exactly the look the art direction rules out - and once the
+-- ground became flat triangles, a smooth tower was the one thing on the plot
+-- still shaded like stock Roblox.
+--
+-- The first attempt tried an octagon from two square prisms at 45 degrees. That
+-- is wrong and the screenshot said so: the INTERSECTION of two rotated squares
+-- is a regular octagon, but two overlapping PARTS make a union, and the union
+-- is an eight-pointed star. Parts cannot intersect, so a real octagon needs
+-- eight panels - and at nineteen drums per plot across sixteen plots, that is
+-- not a trade worth making for a shape nobody stands close enough to count.
+--
+-- One square prism it is. Four flat faces, one part, unambiguously faceted, and
+-- HALF the cost of the star it replaces. Square towers with pyramid caps are
+-- the standard low-poly castle read anyway.
+--
+-- Same signature and same return as the cylinder version, so every caller -
+-- wells, turrets, cauldrons, towers - is faceted by this one change.
 local function siteDrum(parent: Instance, name: string, radius: number, height: number,
 	at: CFrame, material: Enum.Material, color: Color3): Part
-	local part = sitePart(parent, name, Vector3.new(height, radius * 2, radius * 2),
-		at * CFrame.new(0, height / 2, 0) * CFrame.Angles(0, 0, math.rad(90)), material, color)
-	part.Shape = Enum.PartType.Cylinder
-	return part
+	-- Across the flats rather than across the corners, so the prism sits inside
+	-- the footprint the old cylinder had instead of overhanging it.
+	local side = radius * 1.7
+	return sitePart(parent, name, Vector3.new(side, height, side),
+		at * CFrame.new(0, height / 2, 0), material, color)
+end
+
+-- ---------------------------------------------------------------- castle
+-- Flat, saturated, separated - the stonework palette. The cottages keep their
+-- daub and thatch MaterialVariants: they are peasant buildings and they read
+-- well. The CASTLE is what the art direction names, and stone is what has to
+-- go faceted and flat so it sits in the same world as the ground.
+local CASTLE_STONE = Color3.fromRGB(166, 168, 176)
+local CASTLE_STONE_DARK = Color3.fromRGB(128, 130, 140)
+local CASTLE_ROOF = Color3.fromRGB(138, 62, 66) -- deep tile red, hard against the grey
+local CASTLE_TIMBER = Color3.fromRGB(96, 62, 38)
+
+-- Four angled panels meeting at a point. The brief asks for ANGLED ROOF PANELS,
+-- and a stepped stack of shrinking drums - the cheaper option - is chunky but
+-- it is not a roof.
+--
+-- A WedgePart is full height at its +Z face and tapers to nothing at -Z, so
+-- each panel is turned to aim its TALL side at the centre and its thin edge at
+-- the eave. Four of them overlap on the diagonals; the union is a pyramid.
+local function spireCap(parent: Instance, name: string, span: number, height: number,
+	at: CFrame, color: Color3)
+	for side = 0, 3 do
+		local panel = Instance.new("WedgePart")
+		panel.Name = name
+		panel.Size = Vector3.new(span, height, span / 2)
+		panel.CFrame = at
+			* CFrame.Angles(0, math.rad(90 * side), 0)
+			* CFrame.new(0, height / 2, span / 4)
+			* CFrame.Angles(0, math.rad(180), 0)
+		panel.Anchored = true
+		panel.Material = Enum.Material.SmoothPlastic
+		panel.Color = color
+		panel.TopSurface = Enum.SurfaceType.Smooth
+		panel.BottomSurface = Enum.SurfaceType.Smooth
+		panel.Parent = parent
+	end
 end
 
 -- A gable roof from two wedges meeting at a ridge. A WedgePart is tall at its
@@ -2244,8 +2299,10 @@ local function makePlot(name: string, centre: Vector2)
 	foundation.Size = Vector3.new(PLOT, 1, PLOT)
 	foundation.Position = Vector3.new(centre.X, ground + 0.5, centre.Y)
 	foundation.Anchored = true
-	foundation.Material = Enum.Material.Ground
-	foundation.Color = Color3.fromRGB(122, 106, 84)
+	-- Paved, not tilled. Brown earth on a brown terrace is why an unclaimed plot
+	-- read as a flat schematic square painted on the ground.
+	foundation.Material = Enum.Material.SmoothPlastic
+	foundation.Color = Color3.fromRGB(150, 146, 138)
 	foundation.TopSurface = Enum.SurfaceType.Smooth
 	foundation.BottomSurface = Enum.SurfaceType.Smooth
 	foundation.Parent = site
@@ -2273,6 +2330,58 @@ local function makePlot(name: string, centre: Vector2)
 		at(0, 8, 18) * CFrame.new(0, 2.2, 0), Enum.Material.Rock, Color3.fromRGB(126, 120, 112))
 	sitePart(site, "ClaimStoneCap", Vector3.new(3.8, 0.7, 3.2),
 		cairn.CFrame * CFrame.new(0, 2.5, 0), Enum.Material.Slate, Color3.fromRGB(88, 82, 78))
+
+	-- ---- the curtain wall, present from the start ----
+	-- THIS IS WHAT REPLACES THE FLAT SQUARE. The wall footing, the gatehouse
+	-- piers and the corner tower bases used to arrive at stages 9 and 10, so an
+	-- unclaimed plot was a slab with a cobbled cross on it - a schematic, not a
+	-- place. They are permanent stonework rather than anything the owner pays
+	-- for, so the ladder loses nothing by having them here: stage 9 still hangs
+	-- the gate, stage 10 still raises the towers to full height.
+	--
+	-- What a plot reads as now is a walled site waiting to be restored, which is
+	-- also a better fit for a game about taking somebody else's castle.
+	for side = 0, 3 do
+		local yaw = math.rad(90 * side)
+		local run = floor * CFrame.Angles(0, yaw, 0)
+		-- Two courses, the lower one wider. A batter is what makes a wall base
+		-- read as masonry that carries weight rather than as a kerb.
+		sitePart(site, "WallFooting", Vector3.new(WALL_HALF * 2, 2.2, WALL_BLOCK.Z + 1.8),
+			run * CFrame.new(0, 1.1, WALL_HALF), Enum.Material.SmoothPlastic, CASTLE_STONE_DARK)
+		sitePart(site, "WallCourse", Vector3.new(WALL_HALF * 2 - 3, 1.8, WALL_BLOCK.Z),
+			run * CFrame.new(0, 3.1, WALL_HALF), Enum.Material.SmoothPlastic, CASTLE_STONE)
+	end
+
+	-- Corner tower BASES. Stage 10 stacks the shaft and the spire on these.
+	for corner = 0, 3 do
+		local yaw = math.rad(90 * corner + 45)
+		local reach = WALL_HALF * math.sqrt(2)
+		local towerAt = at(math.sin(yaw) * reach, math.cos(yaw) * reach, 0)
+		siteDrum(site, "TowerBase", 9.5, 6.5, towerAt, Enum.Material.SmoothPlastic,
+			CASTLE_STONE_DARK)
+		siteDrum(site, "TowerPlinth", 8.4, 1.4, towerAt * CFrame.new(0, 6.5, 0),
+			Enum.Material.SmoothPlastic, CASTLE_STONE)
+	end
+
+	-- The gatehouse. Two piers and a lintel: the gate itself is stage 9 and
+	-- hangs between them, so an unbuilt plot has an OPENING rather than a wall
+	-- with a hole in it.
+	local gateAt = foundation.CFrame * RING[GATE_SLOT]
+	for _, hand in { -1, 1 } do
+		local pier = gateAt * CFrame.new(hand * (WALL_BLOCK.X / 2 + 5.5), -0.5, 0)
+		siteDrum(site, "GatePier", 5.6, 19, pier, Enum.Material.SmoothPlastic, CASTLE_STONE)
+		siteDrum(site, "GatePierCap", 6.4, 1.6, pier * CFrame.new(0, 19, 0),
+			Enum.Material.SmoothPlastic, CASTLE_STONE_DARK)
+		spireCap(site, "GatePierRoof", 12.4, 7.0, pier * CFrame.new(0, 20.6, 0), CASTLE_ROOF)
+	end
+	sitePart(site, "GateLintel",
+		Vector3.new(WALL_BLOCK.X + 12, 3.2, WALL_BLOCK.Z + 2.2),
+		gateAt * CFrame.new(0, WALL_BLOCK.Y + 5.6, 0), Enum.Material.SmoothPlastic, CASTLE_STONE)
+	for merlon = -2, 2 do
+		sitePart(site, "GateMerlon", Vector3.new(2.8, 2.6, WALL_BLOCK.Z + 2.2),
+			gateAt * CFrame.new(merlon * 5.2, WALL_BLOCK.Y + 8.5, 0),
+			Enum.Material.SmoothPlastic, CASTLE_STONE_DARK)
+	end
 
 	local sections = Instance.new("Folder")
 	sections.Name = "Sections"
@@ -2350,40 +2459,56 @@ local function makePlot(name: string, centre: Vector2)
 	-- 8: the keep
 	makeKeep(stage(8), at(0, -46, 0))
 
-	-- 9: the palisade - the gate and the footing it stands on. The wall blocks
-	-- themselves are drawn by ResourceService from the wall's HP, so they are not
-	-- in the blueprint; this is the permanent scenery around them.
+	-- 9: the palisade. The FOOTING is permanent stonework and now stands from
+	-- the start; what stage 9 buys is the gate hung between the piers. The wall
+	-- blocks themselves are drawn by ResourceService from the wall's HP, so they
+	-- are not in the blueprint either.
 	local palisade = stage(9)
-	for side = 0, 3 do
-		local yaw = math.rad(90 * side)
-		sitePart(palisade, "WallFooting", Vector3.new(WALL_HALF * 2, 1.6, WALL_BLOCK.Z),
-			floor * CFrame.Angles(0, yaw, 0) * CFrame.new(0, 0.8, WALL_HALF),
-			Enum.Material.Cobblestone, Color3.fromRGB(124, 118, 108))
-	end
 	local gate = sitePart(palisade, "Gate",
 		Vector3.new(WALL_BLOCK.X + 1.4, WALL_BLOCK.Y + 4, WALL_BLOCK.Z),
 		foundation.CFrame * RING[GATE_SLOT] * CFrame.new(0, (WALL_BLOCK.Y + 4) / 2 + 0.5, 0),
-		Enum.Material.WoodPlanks, Color3.fromRGB(104, 72, 44))
+		Enum.Material.SmoothPlastic, CASTLE_TIMBER)
+	for band = -1, 1, 2 do
+		sitePart(palisade, "GateBand", Vector3.new(WALL_BLOCK.X + 2.2, 1.2, WALL_BLOCK.Z + 0.5),
+			gate.CFrame * CFrame.new(0, band * 4.2, 0), Enum.Material.SmoothPlastic,
+			CASTLE_STONE_DARK)
+	end
 	local gateFace = Instance.new("Attachment")
 	gateFace.Name = "GateFace"
 	gateFace.Parent = gate
 
 	-- 10: the rampart - corner towers closing the four gaps the straight runs
 	-- leave, and the last of the wall's strength.
+	-- EXAGGERATED PROPORTIONS, per the art direction. The shaft rises 24 studs
+	-- off a base that already stands 8, so a finished tower is about 32 - call
+	-- it six and a half times a player's height against an 11 stud wall. A tower
+	-- that only just clears its own wall is a buttress; the silhouette is the
+	-- whole reason a castle reads as a castle from across the island.
 	local rampart = stage(10)
 	for corner = 0, 3 do
 		local yaw = math.rad(90 * corner + 45)
 		local reach = WALL_HALF * math.sqrt(2)
 		local tower = at(math.sin(yaw) * reach, math.cos(yaw) * reach, 0)
-		siteDrum(rampart, "CornerTower", 7, 16, tower, Enum.Material.Cobblestone, STONEWORK)
-		siteDrum(rampart, "CornerCap", 8, 1.8, tower * CFrame.new(0, 16, 0),
-			Enum.Material.Slate, Color3.fromRGB(88, 82, 78))
-		for merlon = 0, 7 do
-			local ring = merlon / 8 * math.pi * 2
-			sitePart(rampart, "TowerMerlon", Vector3.new(2.2, 2.4, 2.2),
-				tower * CFrame.new(math.cos(ring) * 6.6, 18.6, math.sin(ring) * 6.6),
-				Enum.Material.Cobblestone, STONEWORK)
+		local shaftAt = tower * CFrame.new(0, 7.9, 0)
+		siteDrum(rampart, "CornerTower", 8.0, 24, shaftAt, Enum.Material.SmoothPlastic,
+			CASTLE_STONE)
+		-- An overhanging parapet, wider than the shaft it sits on.
+		siteDrum(rampart, "CornerCap", 9.6, 2.2, shaftAt * CFrame.new(0, 24, 0),
+			Enum.Material.SmoothPlastic, CASTLE_STONE_DARK)
+		-- Two merlons per side of a SQUARE parapet. Spacing them around a circle
+		-- left them floating off the corners once the tower stopped being round.
+		local reachOut = 9.6 * 1.7 / 2
+		for side = 0, 3 do
+			for slot = 0, 1 do
+				local yawEdge = math.rad(90 * side)
+				local along = (slot * 2 - 1) * reachOut * 0.5
+				sitePart(rampart, "TowerMerlon", Vector3.new(3.0, 3.0, 3.0),
+					shaftAt * CFrame.Angles(0, yawEdge, 0)
+						* CFrame.new(along, 27.7, reachOut - 1.5),
+					Enum.Material.SmoothPlastic, CASTLE_STONE)
+			end
 		end
+		spireCap(rampart, "TowerRoof", 17.5, 13, shaftAt * CFrame.new(0, 26.2, 0), CASTLE_ROOF)
 	end
 
 	site.Parent = buildSites

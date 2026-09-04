@@ -1210,6 +1210,59 @@ Four bundles leaning together break the skyline. At three sheaves and a 0.2
 radian lean they came out as a clump of upright posts, which is precisely what a
 stook is not — the lean *is* the silhouette, so it is 0.46 now and the tops meet.
 
+## The castle stops being a schematic
+
+An unclaimed plot was a flat brown slab with a cobbled cross on it, because the
+wall footing, the gate and the corner towers all arrived at **stages 9 and 10** —
+the last two things an owner pays for. From the air, sixteen of those read as
+sixteen blueprints painted on the ground.
+
+None of that stonework is bought with resources; it is permanent scenery. So it
+now stands from the start: a curtain-wall footing in two courses, four square
+tower bases, and a gatehouse of two piers under a lintel and battlements. Stage
+9 still hangs the gate between the piers and stage 10 still raises the towers,
+so **the build ladder is untouched** — what changed is that an unclaimed plot
+reads as a walled site waiting to be restored rather than as a diagram, which is
+also a better fit for a game about taking somebody else's castle.
+
+Unclaimed went 8 parts to 42. `ResourceService` looks up `Foundation`,
+`Stockpile`, `Goods`, `Sections`, `Gate` and `Keep` by name and none of them
+moved, so no gameplay logic changed.
+
+### Two rotated squares make a star, not an octagon
+
+Towers were `Enum.PartType.Cylinder` — smooth and round, the one thing on the
+plot still shaded like stock Roblox once the ground became flat triangles.
+
+The first replacement tried an octagonal prism from two square prisms at 45
+degrees, which is a real construction and the wrong one: **the intersection of
+two rotated squares is a regular octagon, but two overlapping parts make a
+union, and the union is an eight-pointed star.** The screenshot said so
+immediately — four compass roses where four towers should be.
+
+Parts cannot intersect, so a true octagon needs eight panels, and at nineteen
+drums per plot across sixteen plots that is not a trade worth making for a shape
+nobody stands close enough to count. One square prism: four flat faces, one
+part, unambiguously faceted, and half the cost of the star it replaced. Square
+towers under pyramid caps are the standard low-poly castle read anyway.
+
+Caps are four `WedgePart` panels meeting at a point — *angled roof panels* is
+what the art direction asks for, and a stepped stack of shrinking blocks, the
+cheaper option, is chunky but it is not a roof.
+
+### Proportions
+
+Tower parapet stands **34 studs above the pad against an 11-stud curtain wall**,
+about 6.8x a player. A tower that only just clears its own wall is a buttress;
+the silhouette is the whole reason a castle reads as a castle from across the
+island. Doors stay at 7 for a ~5-stud character — exaggerated in the towers,
+not in the doorways.
+
+**The cottages keep their daub and thatch `MaterialVariant`s.** They are peasant
+buildings, they already read well, and the art direction names *stone* as the
+thing to face and flatten. That line is deliberate and easy to move if the
+textured workshops start to look out of place beside flat stone.
+
 ## Things that bit, so they don't bite twice
 
 **Rojo can leave duplicate scripts after a playtest.** `StarterPlayerScripts`
