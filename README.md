@@ -1045,6 +1045,113 @@ nodes — four per node, when eight trees of four parts each should be 32. A
 screenshot would have shown a thin-looking wood and invited a shrug about tree
 density. **The count was unambiguous where the picture was not.**
 
+## The ground is geometry now
+
+SmoothTerrain resolves a material per voxel and then **blends neighbours at the
+engine level** — it dithers the transition and rounds the surface. Neither is a
+setting, so no amount of material tuning reaches it. The previous pass proved
+that the hard way: the assignment logic was already correct (hard Voronoi
+regions, one material per voxel, no interpolation anywhere in the file) and the
+result still came out soft and rounded.
+
+**Representation: individual `WedgePart`s — a triangulated heightfield.** Each
+48-stud cell is two triangles, each triangle is two wedges (the standard way to
+get an arbitrary triangle out of Roblox primitives), one flat colour per cell.
+**4,620 wedges over 1,155 cells**, plus two parts for the sea and the seabed.
+
+Two alternatives were considered and rejected:
+
+- **One `EditableMesh`** would be the better representation on the merits — one
+  instance, true per-face colour, no part budget at all. It loses on
+  *persistence*: a runtime-built mesh cannot be saved into the place file, so
+  the world would have to be regenerated on every server start, and this project
+  bakes its world in Edit mode. Collision fidelity on a mesh that size is a
+  second unknown on top.
+- **A terrain library** would import somebody else's height and biome model,
+  when the island's shape and its Voronoi regions are the parts of this map
+  worth keeping.
+
+The heightfield is cheaper than the voxels it replaced: **build time went 1.9s →
+0.4s**, because generating 4,620 parts is less work than writing several million
+voxels. Total workspace parts went 2,313 → 6,935.
+
+Corner heights are sampled **once into a grid** and shared between the four
+cells that touch them. Sampling per cell would evaluate every interior corner
+four times, and — worse — could disagree at a shared corner and tear a seam
+open. Verified: 4,000 downward rays over the island, **zero misses**. Walked
+too: fourteen drops from 260 studs, fourteen landings, none fell through the
+1.2-stud shells.
+
+### What changed in plot placement
+
+The user-visible half of this change is the ground. The structural half is that
+**the surface stopped being a thing you raycast and became a pure function.**
+
+1. **`groundHeight` no longer raycasts.** It evaluates `surfaceInfo(x, z)`
+   directly. Exact instead of sampled, correct before any geometry exists, and
+   free of the raycast budget that placing a few hundred props used to spend.
+2. **Terraces are registered, not carved.** A flat village pad used to mean
+   `FillCylinder`-ing a shelf into terrain that had already been written — a
+   second, destructive pass over an existing thing. A terrace is now a *claim*
+   recorded before the ground is generated, and the ground comes out with the
+   claim already in it. `terraceFor` and `terraceForPlaza` are gone entirely.
+3. **Plots are chosen before nodes, and selection is split from construction.**
+   This is the ordering that mattered. A plot is the constrained thing — flat
+   ground, a 250-stud gap from every other plot, clearance from the middle. A
+   resource node needs almost nothing. Letting 48 nodes take first pick and
+   giving plots the leftovers had the scarce thing competing for scraps: when
+   the pads grew, **only 9 of 16 plots still fit**. Plots now pick first and all
+   **16 of 16** place, with every node quota still met. Only the *spot* and the
+   terrace claim are decided early; `makePlot` needs hundreds of lines of
+   building vocabulary that does not exist yet, so the villages are built from
+   that list much further down.
+4. **Every terrace is claimed before anything is positioned** — the plaza
+   included. It used to be registered after the nodes were placed, so a node
+   allowed as close as 165 studs to the middle could sit inside a 198-stud pad
+   and end up under the shelf.
+
+The pad radius has a hard floor: the foundation is 148 square, so its corners
+are 104.6 out and the pad cannot be smaller than that. The margin on top is
+**14 studs, not a whole cell** — at `+ CELL` the pad diameter was 305 against a
+plot spacing of 250, so neighbouring villages shared a shelf and met in a step
+where the two flat heights disagreed.
+
+Water is a flat plane rather than Terrain water, because the brief wants water
+as one of the separated colours. **It costs swimming**: a part cannot be swum
+in, so the seabed underneath is solid and a player who wades out walks along
+the bottom rather than falling out of the world.
+
+### 86% of the island came out one colour
+
+Worth keeping because the eye and the number disagreed, and the number was
+right. The first build looked like sand everywhere. It was not sand — it was
+**86% terrace brown**, from two compounding mistakes:
+
+- **The ramp was marked as worked ground.** A graded approach is a natural
+  slope, not turned earth, and colouring it brown doubled every pad's painted
+  footprint. With seventeen pads on a 1085-radius island, those footprints met.
+- **Cell colour was decided from the corners** — worked if *any* of the four was
+  on a pad — which bled each pad outward by a full cell and grew its painted
+  area about two and a half times. Colour is sampled at the cell **centre** now,
+  where one sample answers it exactly. The corner heights still build the
+  geometry; only the colour moved.
+
+86% → 29%, and 29% is simply what seventeen village pads on this island are.
+Grass 22%, Mud 16%, Sand 13%, Slate 7%, LeafyGrass 7%, Basalt 3%, Rock 3%.
+
+### The same ordering bug, a third time
+
+`PLOT` ended up used at line 1045 and declared at 1364 — an undefined global,
+which parses perfectly and throws at runtime. Same shape as
+`makeMessengerTemplate` before it. It came from a patch that deleted "the
+duplicate" declaration and deleted the *new* one, because a naive
+find-and-replace hits the first occurrence and the first occurrence was the one
+just added.
+
+Caught by a throwaway scan comparing each top-level `local`'s declaration line
+against its first use. **That scan should be a committed tool rather than
+something retyped each time this bites.**
+
 ## Things that bit, so they don't bite twice
 
 **Rojo can leave duplicate scripts after a playtest.** `StarterPlayerScripts`
