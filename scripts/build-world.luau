@@ -2184,6 +2184,28 @@ local function craftPrompt(host: BasePart, recipe: string, label: string)
 	train.Parent = host
 end
 
+-- The alchemist's second product. DESIGN.md gives the role "research", and a
+-- tonic that only feeds a build menu is not that.
+--
+-- Three prompts, three keys, and they sit on the BREW rather than the cauldron
+-- so the vat keeps E and R to itself. ProximityPrompt exclusivity is per button,
+-- and all five are within activation range of each other, so every one needs a
+-- key of its own: E works the vat, R trains the alchemist, F/G/H buy research.
+local function researchPrompt(host: BasePart, subject: string, key: Enum.KeyCode,
+	gamepad: Enum.KeyCode)
+	local prompt = Instance.new("ProximityPrompt")
+	prompt.Name = "ResearchPrompt"
+	prompt.ActionText = subject
+	prompt.ObjectText = "Research"
+	prompt.KeyboardKeyCode = key
+	prompt.GamepadKeyCode = gamepad
+	prompt.HoldDuration = 0.6
+	prompt.MaxActivationDistance = 16
+	prompt.RequiresLineOfSight = false
+	prompt:SetAttribute("Research", subject)
+	prompt.Parent = host
+end
+
 -- The blacksmith's second product, and the only prompt that hands out a TOOL.
 --
 -- Its own key. ProximityPrompt exclusivity is per BUTTON, so three prompts can
@@ -2320,6 +2342,9 @@ local function makeAlchemist(into: Instance, at: CFrame)
 		lit = 0.4,
 	})
 	craftPrompt(vat, "Alchemist", "Alchemist")
+	researchPrompt(brew, "Masonry", Enum.KeyCode.F, Enum.KeyCode.ButtonX)
+	researchPrompt(brew, "Husbandry", Enum.KeyCode.G, Enum.KeyCode.ButtonL1)
+	researchPrompt(brew, "Toolcraft", Enum.KeyCode.H, Enum.KeyCode.ButtonR1)
 end
 
 -- --- the keep -----------------------------------------------------
