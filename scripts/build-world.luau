@@ -324,10 +324,10 @@ for _, toolName in { "Pickaxe", "Axe", "Hoe", "Shears" } do
 end
 -- The blade is NOT a starting tool - it is forged - so its template lives in
 -- ServerStorage and has to be cleared from there instead.
-do
-	local oldBlade = ServerStorage:FindFirstChild("Blade")
-	if oldBlade then
-		oldBlade:Destroy()
+for _, templateName in { "Blade", "SiegeKit", "Trebuchet" } do
+	local old = ServerStorage:FindFirstChild(templateName)
+	if old then
+		old:Destroy()
 	end
 end
 Terrain:Clear()
@@ -2184,6 +2184,22 @@ local function craftPrompt(host: BasePart, recipe: string, label: string)
 	train.Parent = host
 end
 
+-- The carpenter's second product. DESIGN.md gives the role "siege equipment
+-- like trebuchets", and the carpenter's timber currently only feeds a build
+-- menu. Its own key, like the forge and the research bench.
+local function siegePrompt(host: BasePart)
+	local siege = Instance.new("ProximityPrompt")
+	siege.Name = "SiegePrompt"
+	siege.ActionText = "Build a siege kit"
+	siege.ObjectText = "Carpenter"
+	siege.KeyboardKeyCode = Enum.KeyCode.F
+	siege.GamepadKeyCode = Enum.KeyCode.ButtonX
+	siege.HoldDuration = 0.6
+	siege.MaxActivationDistance = 16
+	siege.RequiresLineOfSight = false
+	siege.Parent = host
+end
+
 -- The alchemist's second product. DESIGN.md gives the role "research", and a
 -- tonic that only feeds a build menu is not that.
 --
@@ -2252,6 +2268,7 @@ local function makeCarpenter(into: Instance, at: CFrame)
 	-- studs while the same prompt lowered to head height fired at seven, so
 	-- every interaction here sits at roughly the height of the person using it.
 	craftPrompt(bench, "Carpenter", "Carpenter")
+	siegePrompt(bench)
 end
 
 local function makeBlacksmith(into: Instance, at: CFrame)
@@ -2797,6 +2814,66 @@ do
 				headAt * CFrame.new(0, 0, 2.0), IRON_DARK)
 		end)
 	blade.Parent = ServerStorage
+end
+
+-- The SIEGE KIT: what the carpenter actually hands you. A bundle of timber and
+-- rope you carry to someone else's wall and set up there, because a trebuchet
+-- built inside your own village would be useless.
+do
+	local kit = buildTool("SiegeKit", "Carry to an enemy wall and deploy", 2.6,
+		function(headAt, add)
+			add("Bundle", Vector3.new(0.9, 0.9, 1.8), headAt * CFrame.new(0, 0, -0.6), TIMBER)
+			add("Strap", Vector3.new(1.0, 0.24, 0.5),
+				headAt * CFrame.new(0, 0, -0.4), Color3.fromRGB(96, 74, 52))
+			add("Rope", Vector3.new(0.34, 0.34, 1.5),
+				headAt * CFrame.new(0.32, 0.4, -0.6), Color3.fromRGB(206, 186, 140))
+		end)
+	kit.Parent = ServerStorage
+end
+
+-- The TREBUCHET the kit becomes. Deliberately big: it is a thing you have to
+-- commit to and protect, so it has to be visible from across the field and
+-- obviously not part of the defender's castle.
+do
+	local engine = Instance.new("Model")
+	engine.Name = "Trebuchet"
+
+	local TIMBER_DARK = Color3.fromRGB(92, 58, 34)
+	local function beam(name: string, size: Vector3, cframe: CFrame, colour: Color3): Part
+		local part = newPart(name, size, cframe, engine)
+		part.Material = Enum.Material.SmoothPlastic
+		part.Color = colour
+		return part
+	end
+
+	-- Two skids on the ground, and the A-frame that carries the axle.
+	for _, side in { -1, 1 } do
+		beam(("Skid%s"):format(if side < 0 then "L" else "R"),
+			Vector3.new(1.2, 1.0, 13), CFrame.new(side * 3.2, 0.5, 0), TIMBER_DARK)
+		beam(("Strut%s"):format(if side < 0 then "L" else "R"),
+			Vector3.new(1.0, 13.5, 1.0),
+			CFrame.new(side * 3.2, 6.4, 0) * CFrame.Angles(math.rad(14) * side, 0, 0),
+			TIMBER)
+		beam(("Brace%s"):format(if side < 0 then "L" else "R"),
+			Vector3.new(0.8, 9.0, 0.8),
+			CFrame.new(side * 3.2, 4.2, 3.4) * CFrame.Angles(math.rad(-32), 0, 0),
+			TIMBER)
+	end
+
+	local axle = beam("Axle", Vector3.new(8.0, 0.9, 0.9), CFrame.new(0, 12.6, 0), TIMBER_DARK)
+	engine.PrimaryPart = axle
+
+	-- The arm, caught mid-throw so the silhouette reads as a machine in use
+	-- rather than a pile of lumber.
+	beam("Arm", Vector3.new(0.9, 0.9, 17),
+		CFrame.new(0, 13.6, -1.5) * CFrame.Angles(math.rad(38), 0, 0), TIMBER)
+	beam("Counterweight", Vector3.new(3.4, 3.4, 3.4),
+		CFrame.new(0, 8.4, 5.6), Color3.fromRGB(96, 100, 110))
+	beam("Sling", Vector3.new(0.4, 0.4, 4.2),
+		CFrame.new(0, 19.6, -7.4) * CFrame.Angles(math.rad(70), 0, 0),
+		Color3.fromRGB(206, 186, 140))
+
+	engine.Parent = ServerStorage
 end
 
 -- Shears: two blades crossing at a pivot. Short, because they are held not swung
