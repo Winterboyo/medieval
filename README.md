@@ -1337,6 +1337,103 @@ Clouds needed the same correction: `Cover` 0.74 did not read as fat drawn clouds
 it read as a grey ceiling. Past about 0.6 the individual shapes merge and you
 lose the thing they were for. 0.46 now.
 
+## Specialists that produce
+
+Specialists were never a dead stat — `outputOf` is the yield of a craft, and
+rank and the stolen-efficiency penalty both feed it. But what they produced was
+**build material**: Timber, Ingot, Tonic, consumed by build stages and training
+costs. `DESIGN.md` names something else — blacksmith/**battle weapons**,
+alchemist/**research**, carpenter/**siege equipment** — so nothing a specialist
+made changed how a raid went, and the negotiation system was an elaborate fight
+over an input to a build menu.
+
+Each role now has a second product, bought with its *own* first product. That
+shape is deliberate: a working forge turns ingots into a blade, a working still
+turns tonic into research, a working bench turns timber into a siege engine.
+
+| Role | Second product | Costs | What it changes |
+|---|---|---|---|
+| Blacksmith | **Blade** | 3 Ingot | `24 + outputOf(smith) × 8` damage, and harvests nothing |
+| Alchemist | **Research** ×3 | Tonic, rising | Masonry +150 wall/tier, Husbandry +1 labour/cottage/tier, Toolcraft +1 yield/swing/tier |
+| Carpenter | **Siege kit** | 6 Timber | A trebuchet: 55 wall damage *anywhere on the ring* |
+
+### The blade is a trade-off, not a number
+
+It harvests **nothing** — it matches no entry in `RESOURCES`, so `findNode` can
+never pair it with a node, which falls out of the existing design rather than
+needing a special case. Arriving at someone's wall armed means arriving unable
+to gather, so a raiding party decides what it is carrying before it leaves home.
+
+Damage is baked in at forge time from the smith who made it, so two blades in
+the same match hit differently and neither looks anything up. Re-forging
+*replaces* rather than stacks, so training the smith upgrades the weapon you
+already carry. Measured: B1/B2/B3 → 32/40/48.
+
+`attemptSwing` takes the `Tool` rather than its name now — that is what lets a
+weapon carry its own damage. Bare tools keep the two numbers they always had
+(people are softer than masonry); a blade replaces both with its own.
+
+### Research: two choices about where the effect lands
+
+**Husbandry pays out in the labour loop rather than shortening its interval.**
+One shared loop drives every village, so changing its `wait` would speed up
+everyone's cottages at once.
+
+**Toolcraft depletes the node by the same amount it grants**, so it buys
+extraction *speed* rather than free resources — the pot is the same size, you
+empty it in fewer swings and wait on regen sooner. Yielding more without
+depleting more would be a straight multiplier on the whole economy.
+
+Tier is gated on the alchemist's **rank**, so research and training pull on each
+other: you cannot buy your way to tier 3 with a novice.
+
+### The trebuchet breaks the gate monopoly
+
+`findGateTarget` requires `base.gate`, so one chokepoint was the only way in.
+Deliberate, and `DESIGN.md` wants it — but it also meant **every raid in the
+game was the same raid**.
+
+A trebuchet is a second attack point, not a projectile. Swinging at a deployed
+engine *works* it, and working it damages the wall of the base it was raised
+against wherever it stands. **The same swing means two different things
+depending on who you are**: a raider operates it, the besieged owner smashes it.
+That is what makes it a commitment rather than a free upgrade — it stands in the
+open and the defender can take it away.
+
+v1 has no projectiles and no physics: the engine authorises damage at a
+location. Aiming and splash are a later pass if the mechanic proves out.
+
+### A player with no keep could not be eliminated
+
+Found while auditing the doc against the code, and the worst bug in the game.
+The keep arrives at **stage 8**, and `findKeepTarget` required `base.keep`
+outright — so a player who claimed a plot and built nothing was **immortal**.
+No keep meant they could never be targeted, `Fallen` never fired, and the match
+could not resolve by elimination at all; it fell through to the timer tie-break.
+
+`razeTarget(base)` resolves to `base.keep or base.foundation`. The `Base` type
+comment already said everything touching `keep` must cope with `nil`; this was
+the part that did not. Two more things fell out of it:
+
+- `reviveAt` read `home.keep.Position` guarded only by `keepHealth > 0` — and
+  `keepHealth` is 200 from the moment a plot is claimed. **Every death by a
+  player below stage 8 threw there**, after `LoadCharacter` had already run, so
+  they respawned at a totem pad and the error was the only symptom.
+- The stockpile clause was **vacuous** for these bases. An unwalled base starts
+  breached, so no breach swing ever fired to snapshot its exposed slice, and an
+  empty loot table is indistinguishable from a looted one — a raider could skip
+  straight to razing. Bases carry `opened` now, so DESIGN's ordering (breach,
+  empty, raze) holds even for a base that arrived already breached.
+
+### What tests cannot catch
+
+The trebuchet's first deploy passed **every** measurement — kit consumed, engine
+registered, 55 damage a swing, defender path correct — and looked like a stick
+lying in the grass. `PivotTo` places a model by its `PrimaryPart`, which here is
+the axle twelve studs up, so everything below the axle was buried. Damage does
+not care where the geometry is. **The screenshot caught what the assertions
+could not.**
+
 ## Things that bit, so they don't bite twice
 
 **Rojo can leave duplicate scripts after a playtest.** `StarterPlayerScripts`
