@@ -322,6 +322,14 @@ for _, toolName in { "Pickaxe", "Axe", "Hoe", "Shears" } do
 		old:Destroy()
 	end
 end
+-- The blade is NOT a starting tool - it is forged - so its template lives in
+-- ServerStorage and has to be cleared from there instead.
+do
+	local oldBlade = ServerStorage:FindFirstChild("Blade")
+	if oldBlade then
+		oldBlade:Destroy()
+	end
+end
 Terrain:Clear()
 
 -- ---------------------------------------------------------------- ground
@@ -2176,6 +2184,24 @@ local function craftPrompt(host: BasePart, recipe: string, label: string)
 	train.Parent = host
 end
 
+-- The blacksmith's second product, and the only prompt that hands out a TOOL.
+--
+-- Its own key. ProximityPrompt exclusivity is per BUTTON, so three prompts can
+-- share the anvil as long as they do not share a keycode: E works it, R trains
+-- the smith, F forges a blade.
+local function forgePrompt(host: BasePart)
+	local forge = Instance.new("ProximityPrompt")
+	forge.Name = "ForgePrompt"
+	forge.ActionText = "Forge a blade"
+	forge.ObjectText = "Blacksmith"
+	forge.KeyboardKeyCode = Enum.KeyCode.F
+	forge.GamepadKeyCode = Enum.KeyCode.ButtonX
+	forge.HoldDuration = 0.6
+	forge.MaxActivationDistance = 16
+	forge.RequiresLineOfSight = false
+	forge.Parent = host
+end
+
 local function makeCarpenter(into: Instance, at: CFrame)
 	hollowBuilding(into, at, SHOP.width, SHOP.depth, SHOP.wallHeight, SHOP.door,
 		Color3.fromRGB(168, 132, 84), Color3.fromRGB(122, 96, 58), Enum.Material.WoodPlanks)
@@ -2252,6 +2278,7 @@ local function makeBlacksmith(into: Instance, at: CFrame)
 		at * CFrame.new(SHOP.width / 2 + 4, 2.65, 3), Enum.Material.Metal,
 		Color3.fromRGB(64, 66, 72))
 	craftPrompt(anvil, "Blacksmith", "Blacksmith")
+	forgePrompt(anvil)
 end
 
 local function makeAlchemist(into: Instance, at: CFrame)
@@ -2721,6 +2748,31 @@ buildTool("Hoe", "Harvest grain", 4.1, function(headAt, add)
 		Color3.fromRGB(186, 190, 196)
 	)
 end)
+
+-- The BLADE. Not in StarterPack: nobody starts with a weapon, it has to be
+-- forged at a blacksmith, so the template waits in ServerStorage for
+-- ResourceService to clone it.
+--
+-- Deliberately shaped nothing like the four tools. Every one of those is a haft
+-- with a head on the end; this is a single long edge with a crossguard, so a
+-- player carrying one is identifiable across a courtyard as someone who came to
+-- fight rather than to harvest.
+do
+	local blade = buildTool("Blade", "A forged weapon. Fights, but harvests nothing", 2.4,
+		function(headAt, add)
+			add("Guard", Vector3.new(1.6, 0.26, 0.36), headAt, IRON_DARK)
+			add("Ricasso", Vector3.new(0.44, 0.18, 0.5), headAt * CFrame.new(0, 0, -0.36), IRON)
+			add("Edge", Vector3.new(0.36, 0.14, 2.7),
+				headAt * CFrame.new(0, 0, -1.7), Color3.fromRGB(202, 208, 218))
+			add("Fuller", Vector3.new(0.12, 0.16, 2.3),
+				headAt * CFrame.new(0, 0, -1.6), IRON)
+			add("Point", Vector3.new(0.22, 0.12, 0.6),
+				headAt * CFrame.new(0, 0, -3.28), Color3.fromRGB(224, 230, 238))
+			add("Pommel", Vector3.new(0.42, 0.42, 0.42),
+				headAt * CFrame.new(0, 0, 2.0), IRON_DARK)
+		end)
+	blade.Parent = ServerStorage
+end
 
 -- Shears: two blades crossing at a pivot. Short, because they are held not swung
 -- from the shoulder - though the swing animation does not know that yet.
