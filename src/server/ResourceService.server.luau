@@ -265,6 +265,23 @@ local WALL_MAX_HP = 600
 local PALISADE_FRACTION = 0.5 -- what the ninth stage raises; the tenth finishes it
 
 -- Raiding. The same swing that harvests also fights, batters a gate and loots.
+-- THE BLADE. DESIGN.md gives the blacksmith "battle weapons" as its output, and
+-- until now the blacksmith made an ingot that went into a build menu - nothing a
+-- specialist produced changed how a raid went.
+--
+-- The design point is the TRADE-OFF, not the number. A blade hits far harder
+-- than a bare tool and harvests NOTHING: it matches no entry in RESOURCES, so
+-- findNode can never pair it with a node. Arriving at someone's wall armed means
+-- arriving unable to gather, and a raiding party has to decide what it is
+-- carrying before it leaves home.
+local WEAPON_TOOL = "Blade"
+local BLADE_COST = { Ingot = 3 }
+-- Damage scales with what the forging smith is worth, so an invested blacksmith
+-- is worth defending and one stolen at 0.85 efficiency visibly forges worse
+-- blades. outputOf returns 1..5, so this spans 32..64 against a bare 20/25.
+local BLADE_BASE_DAMAGE = 24
+local BLADE_DAMAGE_PER_OUTPUT = 8
+
 local SWING_DAMAGE = 20 -- five swings to put someone down from full health
 local GATE_DAMAGE = 25 -- one purchase of wall per swing, so a wall is as slow to
 -- break as it was to raise
@@ -1169,8 +1186,67 @@ local function bindTrainPrompts(base: Base)
 	end
 end
 
+-- Forging. Costs ingots - the blacksmith's own product - so a blade is the
+-- second thing a working forge does with what the first thing made.
+local function bindForgePrompts(base: Base)
+	for _, thing in base.model:GetDescendants() do
+		if thing:IsA("ProximityPrompt") and thing.Name == "ForgePrompt" and not craftBound[thing] then
+			craftBound[thing] = true
+			thing.ActionText = ("%s for a blade"):format(describeCost(BLADE_COST))
+			thing.Triggered:Connect(function(player: Player)
+				local owner = baseOwner(base)
+				if owner and owner ~= player.UserId then
+					notifyPlayer(player, "Someone else's forge")
+					return
+				end
+				local smith = rosterOf(player)["Blacksmith"]
+				if not smith then
+					notifyPlayer(player, "No blacksmith to forge it")
+					return
+				end
+				local affordable, missing = canAfford(player, BLADE_COST)
+				if not affordable then
+					notifyPlayer(player, ("Need %d %s"):format(
+						BLADE_COST[missing :: string], tostring(missing)))
+					return
+				end
+
+				local template = ServerStorage:FindFirstChild(WEAPON_TOOL)
+				if not template or not template:IsA("Tool") then
+					warn("[ResourceService] no Blade template in ServerStorage - rebuild the world")
+					notifyPlayer(player, "The forge is cold")
+					return
+				end
+
+				spend(player, BLADE_COST)
+				local damage = BLADE_BASE_DAMAGE + outputOf(smith) * BLADE_DAMAGE_PER_OUTPUT
+
+				-- One blade per player. Re-forging with a better-trained smith
+				-- REPLACES the old one rather than stacking, so training the
+				-- blacksmith upgrades the weapon you already carry instead of
+				-- filling your backpack with obsolete swords.
+				for _, place in { player.Backpack, player.Character } do
+					if place then
+						local existing = place:FindFirstChild(WEAPON_TOOL)
+						if existing then
+							existing:Destroy()
+						end
+					end
+				end
+
+				local blade = template:Clone()
+				blade:SetAttribute("Damage", damage)
+				blade.Parent = player.Backpack
+				notifyPlayer(player, ("%s forged a blade - %d damage"):format(
+					describeSpecialist(smith), damage), 1)
+			end)
+		end
+	end
+end
+
 local function bindCraftPrompts(base: Base)
 	bindTrainPrompts(base)
+	bindForgePrompts(base)
 	for _, thing in base.model:GetDescendants() do
 		if thing:IsA("ProximityPrompt") and thing.Name == "CraftPrompt" and not craftBound[thing] then
 			local recipeName = thing:GetAttribute("Recipe")
@@ -1759,11 +1835,22 @@ local function loadSwingTrack(character: Model): (AnimationTrack?, number)
 	return track, speed
 end
 
-local function attemptSwing(player: Player, toolName: string)
+-- Takes the TOOL rather than its name, because a forged blade carries its damage
+-- on itself: the rank of the smith who made it is baked in at forge time, so two
+-- blades in the same match hit differently and neither has to look anything up.
+local function attemptSwing(player: Player, tool: Tool)
 	local playerState = state[player]
 	if not playerState then
 		return
 	end
+
+	local toolName = tool.Name
+	local forged = tool:GetAttribute("Damage")
+	local weapon = if typeof(forged) == "number" then forged else nil
+	-- A bare tool keeps the two numbers it always had: people are softer than
+	-- masonry. A blade replaces both with its own.
+	local personDamage = weapon or SWING_DAMAGE
+	local structureDamage = weapon or GATE_DAMAGE
 
 	local now = os.clock()
 	if now < playerState.nextSwing then
@@ -1816,7 +1903,7 @@ local function attemptSwing(player: Player, toolName: string)
 		-- 1. someone standing in front of you
 		local victim, victimHumanoid = findVictim(player, liveCharacter)
 		if victim and victimHumanoid then
-			victimHumanoid:TakeDamage(SWING_DAMAGE)
+			victimHumanoid:TakeDamage(personDamage)
 			local killed = victimHumanoid.Health <= 0
 			notifyPlayer(player, if killed
 				then ("You killed %s"):format(victim.Name)
@@ -1833,7 +1920,7 @@ local function attemptSwing(player: Player, toolName: string)
 		local gateTarget = findGateTarget(player, liveCharacter)
 		if gateTarget then
 			local ownerName = tostring(gateTarget.model:GetAttribute("OwnerName") or "someone")
-			gateTarget.wall = math.max(0, gateTarget.wall - GATE_DAMAGE)
+			gateTarget.wall = math.max(0, gateTarget.wall - structureDamage)
 
 			local justBreached = gateTarget.wall <= 0 and not gateTarget.breached
 			if justBreached then
@@ -1990,7 +2077,7 @@ local function attemptSwing(player: Player, toolName: string)
 		local keepTarget = findKeepTarget(player, liveCharacter)
 		if keepTarget then
 			local ownerName = tostring(keepTarget.model:GetAttribute("OwnerName") or "someone")
-			keepTarget.keepHealth = math.max(0, keepTarget.keepHealth - GATE_DAMAGE)
+			keepTarget.keepHealth = math.max(0, keepTarget.keepHealth - structureDamage)
 			keepTarget.refresh()
 
 			local ownerId = baseOwner(keepTarget)
@@ -2191,7 +2278,10 @@ for _, config in RESOURCES do
 end
 
 local function bindTool(player: Player, tool: Tool)
-	if not HARVEST_TOOLS[tool.Name] or bound[tool] then
+	-- The blade is not derived from RESOURCES, so it has to be named here. It
+	-- still goes through the same swing handler; what makes it a weapon is that
+	-- no resource claims it, not a separate code path.
+	if (not HARVEST_TOOLS[tool.Name] and tool.Name ~= WEAPON_TOOL) or bound[tool] then
 		return
 	end
 	bound[tool] = true
@@ -2199,9 +2289,8 @@ local function bindTool(player: Player, tool: Tool)
 	-- Tool.Activated fires on the server too - the engine replicates the
 	-- activation - so harvesting needs no RemoteEvent. The tool that fired is
 	-- what decides which nodes this swing can work.
-	local toolName = tool.Name
 	tool.Activated:Connect(function()
-		attemptSwing(player, toolName)
+		attemptSwing(player, tool)
 	end)
 
 	tool.Destroying:Connect(function()
