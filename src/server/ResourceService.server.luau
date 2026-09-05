@@ -871,6 +871,11 @@ type Base = {
 	-- the snapshot, "20% of what they hold" recomputed per swing converges on
 	-- taking everything, which is the wipe the doc is trying to avoid.
 	loot: { [string]: number },
+	-- Whether that snapshot has ever been taken. NOT the same as "loot is
+	-- empty": a base that was never walled starts breached, so no breach event
+	-- ever fires to take the snapshot, and an empty loot table would otherwise
+	-- be indistinguishable from a fully looted one.
+	opened: boolean,
 	refresh: () -> (),
 }
 
@@ -879,6 +884,23 @@ local bases: { Base } = {}
 local function baseOwner(base: Base): number?
 	local owner = base.model:GetAttribute("Owner")
 	return if typeof(owner) == "number" then owner else nil
+end
+
+-- WHAT RAZING A BASE HITS. The keep arrives at stage 8, so a claimed plot that
+-- never got there has base.keep == nil - and the elimination path used to
+-- require one outright.
+--
+-- That made a player who claimed a plot and built nothing IMMORTAL: no keep
+-- meant findKeepTarget could never select them, so Fallen never fired and
+-- MatchService never eliminated them. A match containing one idle or turtling
+-- player could not resolve by elimination at all and fell through to the timer
+-- tie-break. The type comment above already says everything touching keep must
+-- cope with nil; this is the part that did not.
+--
+-- The foundation exists from the moment a plot is claimed, so it stands in. An
+-- unwalled, unkeeped camp is razed by breaking the ground it sits on.
+local function razeTarget(base: Base): BasePart
+	return base.keep or base.foundation
 end
 
 -- How many blocks should be standing for the current wall value.
@@ -1289,6 +1311,7 @@ local function registerBase(model: Instance)
 		keep = nil,
 		keepHealth = KEEP_HP,
 		loot = {},
+		opened = false,
 		refresh = function() end,
 	}
 
@@ -1412,11 +1435,13 @@ local function registerBase(model: Instance)
 	table.insert(bases, base)
 end
 
--- Take the snapshot. Only ever called on the swing that drops the wall to zero.
+-- Take the snapshot: on the swing that drops the wall to zero, or on the first
+-- loot swing against a base that was never walled in the first place.
 local function openStockpile(base: Base)
 	local ownerId = baseOwner(base)
 	local owner = ownerId and Players:GetPlayerByUserId(ownerId)
 	base.loot = {}
+	base.opened = true
 	if not owner then
 		return
 	end
@@ -1557,14 +1582,20 @@ local function findKeepTarget(raider: Player, character: Model): Base?
 	local bestDistance = math.huge
 	for _, base in bases do
 		local owner = baseOwner(base)
+		-- base.opened rather than "loot is empty": an unwalled base has never
+		-- had its slice snapshotted, and without this clause its stockpile
+		-- clause would be vacuously satisfied and a raider could skip straight
+		-- to razing. DESIGN's ordering is breach THEN empty THEN raze, and it
+		-- has to hold for a base that arrived already breached.
 		if owner and owner ~= raider.UserId
 			and base.breached
+			and base.opened
 			and lootRemaining(base) <= 0
 			and base.keepHealth > 0
-			and base.keep -- no keep bought yet means nothing to raze
 			and specialistsLeft(base) == 0
 		then
-			local aimed, distance = isAimedAt(root, nearestPointOn(base.keep, root.Position), MINE_RANGE)
+			local aimed, distance =
+				isAimedAt(root, nearestPointOn(razeTarget(base), root.Position), MINE_RANGE)
 			if aimed and distance < bestDistance then
 				best = base
 				bestDistance = distance
@@ -1842,6 +1873,13 @@ local function attemptSwing(player: Player, toolName: string)
 			local owner = ownerId and Players:GetPlayerByUserId(ownerId)
 			local ownerName = tostring(lootTarget.model:GetAttribute("OwnerName") or "someone")
 
+			-- A base that was never walled started breached, so no breach swing
+			-- ever fired to take its snapshot. Take it now, on the first swing
+			-- that reaches the stockpile, rather than reporting it empty.
+			if not lootTarget.opened then
+				openStockpile(lootTarget)
+			end
+
 			-- Take from whichever resource has the most left, so a raid empties
 			-- the pot evenly rather than draining one column first.
 			local pick, most = nil, 0
@@ -1973,10 +2011,11 @@ local function attemptSwing(player: Player, toolName: string)
 				end
 			end
 
-			local away = (root.Position - keepTarget.keep.Position)
+			local razed = razeTarget(keepTarget)
+			local away = (root.Position - razed.Position)
 			away = Vector3.new(away.X, 0, away.Z)
 			away = if away.Magnitude > 0.01 then away.Unit else Vector3.new(0, 0, 1)
-			spawnChips(keepTarget.keep.Position + Vector3.new(0, 3, 0), away, 6)
+			spawnChips(razed.Position + Vector3.new(0, 3, 0), away, 6)
 			return
 		end
 
@@ -2123,8 +2162,18 @@ local function reviveAt(player: Player)
 	-- Back at your own keep, unless it has fallen or the closing boundary has
 	-- already abandoned it. Reviving someone outside the zone would put them in a
 	-- loop of dying, respawning outside, and dying again.
-	if home and home.keepHealth > 0 and inZone(home.keep.Position) then
-		root.CFrame = CFrame.new(home.keep.Position + Vector3.new(0, 4, 13))
+	--
+	-- This read home.keep.Position guarded only by keepHealth > 0 - and
+	-- keepHealth is 200 from the moment a plot is claimed, long before stage 8
+	-- builds a keep. So every death by a player who had not reached stage 8
+	-- threw here, after LoadCharacter had already run: they respawned at a totem
+	-- pad and the error was the only sign. razeTarget resolves to the
+	-- foundation, which exists as soon as the plot does.
+	if home and home.keepHealth > 0 then
+		local anchor = razeTarget(home)
+		if inZone(anchor.Position) then
+			root.CFrame = CFrame.new(anchor.Position + Vector3.new(0, 4, 13))
+		end
 	end
 	-- Otherwise they keep the SpawnLocation the engine gave them, which is one of
 	-- the pads ringing the totem plaza at the centre - the point the zone closes
