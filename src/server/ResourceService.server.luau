@@ -290,6 +290,26 @@ local PALISADE_FRACTION = 0.5 -- what the ninth stage raises; the tenth finishes
 -- findNode can never pair it with a node. Arriving at someone's wall armed means
 -- arriving unable to gather, and a raiding party has to decide what it is
 -- carrying before it leaves home.
+-- SIEGE. DESIGN.md gives the carpenter "siege equipment like trebuchets", and
+-- there is a specific thing in this game for it to fix: THE WALL CAN ONLY BE
+-- DAMAGED AT THE GATE. findGateTarget requires base.gate, so one chokepoint is
+-- the only way in - deliberate, and DESIGN wants it, but it also means every
+-- raid in the game is the same raid.
+--
+-- A trebuchet is a second attack point. It is not a projectile: swinging at a
+-- deployed engine WORKS it, and working it damages the wall of the base it was
+-- set up against, wherever that engine happens to stand.
+--
+-- The same swing means two different things depending on who you are. A raider
+-- operates it; the besieged owner smashes it. That is what makes it a
+-- commitment rather than a free upgrade - it stands in the open, it belongs to
+-- whoever is winning the fight around it, and the defender can take it away.
+local SIEGE_TOOL = "SiegeKit"
+local SIEGE_COST = { Timber = 6 }
+local SIEGE_DEPLOY_RANGE = 220 -- how near the target base a kit can be set up
+local TREBUCHET_HP = 150
+local TREBUCHET_DAMAGE = 55 -- against GATE_DAMAGE 25, because it is a machine
+
 local WEAPON_TOOL = "Blade"
 local BLADE_COST = { Ingot = 3 }
 -- Damage scales with what the forging smith is worth, so an invested blacksmith
@@ -914,6 +934,27 @@ type Base = {
 
 local bases: { Base } = {}
 
+type Siege = {
+	model: Model,
+	core: BasePart,
+	target: Base,
+	ownerId: number,
+	health: number,
+}
+local sieges: { Siege } = {}
+
+local function removeSiege(siege: Siege)
+	for index, other in sieges do
+		if other == siege then
+			table.remove(sieges, index)
+			break
+		end
+	end
+	if siege.model.Parent then
+		siege.model:Destroy()
+	end
+end
+
 local function baseOwner(base: Base): number?
 	local owner = base.model:GetAttribute("Owner")
 	return if typeof(owner) == "number" then owner else nil
@@ -1209,6 +1250,43 @@ local function bindTrainPrompts(base: Base)
 	end
 end
 
+-- The carpenter's siege kit. Timber, its own product, same shape as the forge
+-- and the research bench.
+local function bindSiegePrompts(base: Base)
+	for _, thing in base.model:GetDescendants() do
+		if thing:IsA("ProximityPrompt") and thing.Name == "SiegePrompt" and not craftBound[thing] then
+			craftBound[thing] = true
+			thing.ActionText = ("%s for a siege kit"):format(describeCost(SIEGE_COST))
+			thing.Triggered:Connect(function(player: Player)
+				local owner = baseOwner(base)
+				if owner and owner ~= player.UserId then
+					notifyPlayer(player, "Someone else's workshop")
+					return
+				end
+				if not rosterOf(player)["Carpenter"] then
+					notifyPlayer(player, "No carpenter to build it")
+					return
+				end
+				local affordable, missing = canAfford(player, SIEGE_COST)
+				if not affordable then
+					notifyPlayer(player, ("Need %d %s"):format(
+						SIEGE_COST[missing :: string], tostring(missing)))
+					return
+				end
+				local template = ServerStorage:FindFirstChild(SIEGE_TOOL)
+				if not template or not template:IsA("Tool") then
+					warn("[ResourceService] no SiegeKit template - rebuild the world")
+					return
+				end
+				spend(player, SIEGE_COST)
+				local kit = template:Clone()
+				kit.Parent = player.Backpack
+				notifyPlayer(player, "Siege kit built - carry it to an enemy wall", 1)
+			end)
+		end
+	end
+end
+
 -- Research. Masonry has to be pushed into the base when it is bought, because
 -- wallMax is per-base state rather than something read per swing; the other two
 -- are read where they are used and so need nothing here.
@@ -1351,6 +1429,7 @@ local function bindCraftPrompts(base: Base)
 	bindTrainPrompts(base)
 	bindForgePrompts(base)
 	bindResearchPrompts(base)
+	bindSiegePrompts(base)
 	for _, thing in base.model:GetDescendants() do
 		if thing:IsA("ProximityPrompt") and thing.Name == "CraftPrompt" and not craftBound[thing] then
 			local recipeName = thing:GetAttribute("Recipe")
@@ -1785,6 +1864,34 @@ local function findKeepTarget(raider: Player, character: Model): Base?
 	return best
 end
 
+-- Nearest deployed TREBUCHET you are aimed at, and whether you are the base it
+-- is pointed at - which decides whether this swing works it or wrecks it.
+local function findSiegeTarget(player: Player, character: Model): (Siege?, boolean)
+	if not matchRunning() then
+		return nil, false
+	end
+	local root = character:FindFirstChild("HumanoidRootPart")
+	if not root or not root:IsA("BasePart") then
+		return nil, false
+	end
+	local best: Siege? = nil
+	local bestDistance = math.huge
+	for _, siege in sieges do
+		if siege.model.Parent and siege.core.Parent then
+			local aimed, distance =
+				isAimedAt(root, nearestPointOn(siege.core, root.Position), MINE_RANGE)
+			if aimed and distance < bestDistance then
+				best = siege
+				bestDistance = distance
+			end
+		end
+	end
+	if not best then
+		return nil, false
+	end
+	return best, baseOwner(best.target) == player.UserId
+end
+
 -- Nearest enemy STOCKPILE you are aimed at on a base whose wall has fallen.
 local function findStockpileTarget(raider: Player, character: Model): Base?
 	if not matchRunning() then
@@ -2018,9 +2125,62 @@ local function attemptSwing(player: Player, tool: Tool)
 			return
 		end
 
-		-- 2. an enemy gate. The wall can only be hurt here, so a raid is a
-		-- commitment to one approach rather than chipping at whichever face
-		-- happens to be nearest.
+		-- 2. a siege engine. Above the gate on purpose: if you have gone to the
+		-- trouble of dragging a trebuchet into position, standing next to it
+		-- should work it rather than punch whatever is behind it.
+		local siege, besieged = findSiegeTarget(player, liveCharacter)
+		if siege then
+			local targetName = tostring(siege.target.model:GetAttribute("OwnerName") or "someone")
+			local ownerId = baseOwner(siege.target)
+			local defender = ownerId and Players:GetPlayerByUserId(ownerId)
+
+			if besieged then
+				-- You are the one it is pointed at. Break it.
+				siege.health -= structureDamage
+				siege.model:SetAttribute("Health", math.max(0, siege.health))
+				if siege.health <= 0 then
+					removeSiege(siege)
+					notifyPlayer(player, "You smashed the siege engine")
+					local attacker = Players:GetPlayerByUserId(siege.ownerId)
+					if attacker then
+						notifyPlayer(attacker, ("%s destroyed your trebuchet"):format(player.Name), 2)
+					end
+				else
+					notifyPlayer(player, "Breaking the siege engine", 2)
+				end
+				spawnChips(siege.core.Position + Vector3.new(0, 2, 0), Vector3.new(0, 0, 1), 5)
+				return
+			end
+
+			-- Anyone else works it, and working it hits the wall wherever the
+			-- engine stands. This is the whole point: no gate required.
+			if siege.target.wall <= 0 then
+				notifyPlayer(player, ("%s's wall is already down"):format(targetName), 3)
+				return
+			end
+			siege.target.wall = math.max(0, siege.target.wall - TREBUCHET_DAMAGE)
+			local justBreached = siege.target.wall <= 0 and not siege.target.breached
+			if justBreached then
+				siege.target.breached = true
+				openStockpile(siege.target)
+			end
+			redrawWall(siege.target)
+			siege.target.refresh()
+
+			notifyPlayer(player, if justBreached
+				then ("The trebuchet breaks %s's wall open"):format(targetName)
+				else ("Trebuchet strikes %s's wall"):format(targetName))
+			if defender then
+				notifyPlayer(defender, if justBreached
+					then ("%s has breached your wall"):format(player.Name)
+					else ("A trebuchet is battering your wall"):format(), 2)
+			end
+			spawnChips(siege.core.Position + Vector3.new(0, 3, 0), Vector3.new(0, 0, 1), 6)
+			return
+		end
+
+		-- 3. an enemy gate. Without a siege engine the wall can only be hurt
+		-- here, so an unequipped raid is still a commitment to one approach.
 		local gateTarget = findGateTarget(player, liveCharacter)
 		if gateTarget then
 			local ownerName = tostring(gateTarget.model:GetAttribute("OwnerName") or "someone")
@@ -2392,7 +2552,103 @@ for _, config in RESOURCES do
 	HARVEST_TOOLS[config.tool] = true
 end
 
+-- Setting the kit up. It has to go near somebody ELSE's base: a trebuchet in
+-- your own courtyard would be pointing at nothing.
+local function deploySiege(player: Player, kit: Tool)
+	if not matchRunning() then
+		notifyPlayer(player, "Not during the lobby")
+		return
+	end
+	local character = player.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	if not root or not root:IsA("BasePart") then
+		return
+	end
+
+	local target: Base? = nil
+	local bestDistance = math.huge
+	for _, base in bases do
+		local owner = baseOwner(base)
+		if owner and owner ~= player.UserId then
+			local distance = (base.foundation.Position - root.Position).Magnitude
+			if distance < bestDistance then
+				target, bestDistance = base, distance
+			end
+		end
+	end
+
+	if not target or bestDistance > SIEGE_DEPLOY_RANGE then
+		notifyPlayer(player, "Nothing to besiege here - get closer to an enemy village")
+		return
+	end
+	if target.wall <= 0 then
+		notifyPlayer(player, "That wall is already down")
+		return
+	end
+
+	local template = ServerStorage:FindFirstChild("Trebuchet")
+	if not template or not template:IsA("Model") then
+		warn("[ResourceService] no Trebuchet template - rebuild the world")
+		return
+	end
+
+	-- Sit it on the ground where the player stands, turned to face the village.
+	local ground = Workspace:Raycast(root.Position + Vector3.new(0, 20, 0),
+		Vector3.new(0, -140, 0))
+	local footing = if ground then ground.Position else root.Position - Vector3.new(0, 3, 0)
+	local facing = target.foundation.Position - footing
+	facing = Vector3.new(facing.X, 0, facing.Z)
+
+	local engine = template:Clone()
+	engine.Name = ("Trebuchet_%s"):format(player.Name)
+	engine:PivotTo(CFrame.lookAt(footing, footing + (if facing.Magnitude > 0.01
+		then facing.Unit
+		else Vector3.new(0, 0, 1))))
+	-- SEAT IT. The model pivots on its PrimaryPart, which is the axle twelve
+	-- studs up, so placing the pivot at ground level buries everything below the
+	-- axle and leaves a stick poking out of the grass. Lift by however far the
+	-- bounding box still hangs under the footing.
+	local bottom = engine:GetBoundingBox().Position.Y - engine:GetExtentsSize().Y / 2
+	engine:PivotTo(engine:GetPivot() + Vector3.new(0, footing.Y - bottom, 0))
+	engine:SetAttribute("Owner", player.UserId)
+	engine:SetAttribute("Health", TREBUCHET_HP)
+	engine.Parent = Workspace
+
+	local core = engine.PrimaryPart or engine:FindFirstChildWhichIsA("BasePart", true)
+	sieges[#sieges + 1] = {
+		model = engine,
+		core = core :: BasePart,
+		target = target,
+		ownerId = player.UserId,
+		health = TREBUCHET_HP,
+	}
+
+	kit:Destroy()
+	local targetName = tostring(target.model:GetAttribute("OwnerName") or "someone")
+	notifyPlayer(player, ("Trebuchet raised against %s"):format(targetName), 1)
+	local ownerId = baseOwner(target)
+	local defender = ownerId and Players:GetPlayerByUserId(ownerId)
+	if defender then
+		notifyPlayer(defender, ("%s has raised a trebuchet against your wall"):format(player.Name), 2)
+	end
+end
+
 local function bindTool(player: Player, tool: Tool)
+	-- The kit is not a swing at all: it builds something and consumes itself,
+	-- so it goes nowhere near attemptSwing.
+	if tool.Name == SIEGE_TOOL then
+		if bound[tool] then
+			return
+		end
+		bound[tool] = true
+		tool.Activated:Connect(function()
+			deploySiege(player, tool)
+		end)
+		tool.Destroying:Connect(function()
+			bound[tool] = nil
+		end)
+		return
+	end
 	-- The blade is not derived from RESOURCES, so it has to be named here. It
 	-- still goes through the same swing handler; what makes it a weapon is that
 	-- no resource claims it, not a separate code path.
