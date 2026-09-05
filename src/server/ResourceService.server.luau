@@ -248,6 +248,22 @@ local SKILL_COST: { [number]: { [string]: number } } = {
 -- The doc lists "farmer/miner NPCs (classic resource gathering)" as a role; this
 -- is that, kept abstract - a slow trickle into the owner's stock rather than an
 -- NPC with pathfinding, which is a project of its own.
+-- RESEARCH. DESIGN.md gives the alchemist "research", and until now it made a
+-- tonic that went into a build menu. Three lines, three tiers each, bought with
+-- the alchemist's own product - so research is the second thing a working still
+-- does with what the first thing made.
+--
+-- Each is stored as a plain attribute on the PLAYER. Attributes replicate to
+-- clients for free, so the HUD can show them later with no remote, and the
+-- consuming systems read a number rather than reaching into a table.
+local RESEARCH_MAX_TIER = 3
+local RESEARCH: { [string]: { blurb: string, base: number, step: number } } = {
+	Masonry = { blurb = "thicker walls", base = 4, step = 3 },
+	Husbandry = { blurb = "cottages yield more", base = 3, step = 3 },
+	Toolcraft = { blurb = "tools bite deeper", base = 3, step = 3 },
+}
+local MASONRY_PER_TIER = 150 -- extra wall HP per tier, against a 600 base
+
 local LABOUR_INTERVAL = 12 -- seconds between a village's labour tick
 local LABOUR_PER_COTTAGE = 1
 local COTTAGE_STAGES = 4
@@ -987,6 +1003,13 @@ end
 -- What a specialist actually produces per job. Flat rank, docked to 85% if they
 -- are working for the person who took them - a stolen rank 5 out-produces an
 -- honest rank 4, which is the point of stealing one.
+-- Research a player has bought. Zero when unset, which is every player at the
+-- start of a match - reputation-style within-match state, nothing persisted.
+local function researchTier(player: Player, subject: string): number
+	local tier = player:GetAttribute("Research" .. subject)
+	return if typeof(tier) == "number" then tier else 0
+end
+
 local function outputOf(specialist: Specialist): number
 	local efficiency = if specialist.stolen then STOLEN_EFFICIENCY else 1
 	return math.max(1, math.floor(specialist.rank * efficiency))
@@ -1186,6 +1209,86 @@ local function bindTrainPrompts(base: Base)
 	end
 end
 
+-- Research. Masonry has to be pushed into the base when it is bought, because
+-- wallMax is per-base state rather than something read per swing; the other two
+-- are read where they are used and so need nothing here.
+local function applyMasonry(player: Player)
+	local tier = researchTier(player, "Masonry")
+	for _, base in bases do
+		if baseOwner(base) == player.UserId then
+			base.wallMax = WALL_MAX_HP + tier * MASONRY_PER_TIER
+			redrawWall(base)
+			base.refresh()
+		end
+	end
+end
+
+local function bindResearchPrompts(base: Base)
+	for _, thing in base.model:GetDescendants() do
+		if thing:IsA("ProximityPrompt") and thing.Name == "ResearchPrompt" and not craftBound[thing] then
+			local subjectName = thing:GetAttribute("Research")
+			local subject = if typeof(subjectName) == "string" then RESEARCH[subjectName] else nil
+			if subject then
+				craftBound[thing] = true
+				local name = subjectName :: string
+
+				local function label(player: Player?)
+					local tier = if player then researchTier(player, name) else 0
+					if tier >= RESEARCH_MAX_TIER then
+						return ("%s maxed"):format(name)
+					end
+					local cost = subject.base + subject.step * tier
+					return ("%d Tonic: %s %d/%d"):format(cost, name, tier + 1, RESEARCH_MAX_TIER)
+				end
+				thing.ActionText = label(nil)
+
+				thing.Triggered:Connect(function(player: Player)
+					local owner = baseOwner(base)
+					if owner and owner ~= player.UserId then
+						notifyPlayer(player, "Someone else's laboratory")
+						return
+					end
+					local alchemist = rosterOf(player)["Alchemist"]
+					if not alchemist then
+						notifyPlayer(player, "No alchemist to research it")
+						return
+					end
+
+					local tier = researchTier(player, name)
+					if tier >= RESEARCH_MAX_TIER then
+						notifyPlayer(player, ("%s is fully researched"):format(name))
+						return
+					end
+					-- Tier is gated on the alchemist's RANK, so research and
+					-- training pull on each other: you cannot buy your way to
+					-- tier 3 with a novice.
+					if alchemist.rank <= tier then
+						notifyPlayer(player, ("Your alchemist is too junior for %s %d"):format(
+							name, tier + 1))
+						return
+					end
+
+					local cost = { Tonic = subject.base + subject.step * tier }
+					local affordable = canAfford(player, cost)
+					if not affordable then
+						notifyPlayer(player, ("Need %d Tonic"):format(cost.Tonic))
+						return
+					end
+
+					spend(player, cost)
+					player:SetAttribute("Research" .. name, tier + 1)
+					if name == "Masonry" then
+						applyMasonry(player)
+					end
+					thing.ActionText = label(player)
+					notifyPlayer(player, ("%s %d researched - %s"):format(
+						name, tier + 1, subject.blurb), 1)
+				end)
+			end
+		end
+	end
+end
+
 -- Forging. Costs ingots - the blacksmith's own product - so a blade is the
 -- second thing a working forge does with what the first thing made.
 local function bindForgePrompts(base: Base)
@@ -1247,6 +1350,7 @@ end
 local function bindCraftPrompts(base: Base)
 	bindTrainPrompts(base)
 	bindForgePrompts(base)
+	bindResearchPrompts(base)
 	for _, thing in base.model:GetDescendants() do
 		if thing:IsA("ProximityPrompt") and thing.Name == "CraftPrompt" and not craftBound[thing] then
 			local recipeName = thing:GetAttribute("Recipe")
@@ -2151,12 +2255,19 @@ local function attemptSwing(player: Player, tool: Tool)
 			return
 		end
 
-		node.amount -= YIELD_PER_SWING
+		-- Toolcraft takes MORE PER SWING and depletes the node by the same
+		-- amount, so it buys extraction speed rather than free resources: the
+		-- pot is the same size, you empty it in fewer swings and wait on regen
+		-- sooner. A version that yielded more without depleting more would be a
+		-- straight multiplier on the whole economy.
+		local bite = YIELD_PER_SWING + researchTier(player, "Toolcraft")
+		local taken = math.min(bite, node.amount)
+		node.amount -= taken
 		refreshNode(node)
 
 		local counter = counterFor(player, node.resource)
 		if counter then
-			counter.Value += YIELD_PER_SWING
+			counter.Value += taken
 		end
 
 		spawnChips(impactPoint, away, 7, node.config.debris)
@@ -2212,10 +2323,14 @@ task.spawn(function()
 			local paused = typeof(pausedUntil) == "number" and os.clock() < pausedUntil
 			if owner and not paused and base.keepHealth > 0 and inZone(base.foundation.Position) then
 				local cottages = math.min(base.stage, COTTAGE_STAGES)
+				-- Husbandry pays out here rather than shortening the interval:
+				-- one shared loop drives every village, so changing its wait
+				-- would speed up everyone's cottages at once.
+				local perCottage = LABOUR_PER_COTTAGE + researchTier(owner, "Husbandry")
 				for i = 1, cottages do
 					local counter = counterFor(owner, LABOUR_YIELD[i])
 					if counter then
-						counter.Value += LABOUR_PER_COTTAGE
+						counter.Value += perCottage
 					end
 				end
 			end
