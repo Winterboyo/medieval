@@ -1,13 +1,14 @@
 """Stone resource node: a jagged low-poly rock outcrop.
 
 Run inside Blender (Text Editor > Run Script, or exec() over the MCP bridge).
-It builds or rebuilds the `StoneNode` object and writes `stone_node.obj` and
-`stone_node.mtl` next to this file. The seed is fixed, so the output is the
-same on every run.
+It builds or rebuilds the `StoneNode` object and writes `stone_node.obj`,
+`stone_node.mtl` and `stone_node.fbx` next to this file. The seed is fixed, so
+the geometry is the same on every run (the FBX also stamps a creation time, so
+its bytes differ run to run).
 
 1 Blender unit = 1 stud. The base sits on z=0, and the peak is TARGET_H studs
-tall (waist-to-shoulder on a 5-stud avatar). Blender is Z-up; the OBJ is
-written Y-up so it imports into Roblox upright.
+tall (waist-to-shoulder on a 5-stud avatar). Blender is Z-up; both exports are
+written Y-up so they import into Roblox upright.
 """
 
 import math
@@ -140,12 +141,50 @@ def write_obj(mesh, directory):
     return obj_path
 
 
+def write_fbx(obj, directory):
+    """Export only `obj`, at the origin, Y-up with the axis change baked into
+    the mesh (no -90 degree root rotation). Selection, active object and the
+    object's location are restored afterwards."""
+    path = os.path.join(directory, "stone_node.fbx")
+    view_layer = bpy.context.view_layer
+    selected = [o for o in view_layer.objects if o.select_get()]
+    active = view_layer.objects.active
+    location = obj.location.copy()
+    try:
+        for o in selected:
+            o.select_set(False)
+        obj.select_set(True)
+        view_layer.objects.active = obj
+        obj.location = (0.0, 0.0, 0.0)
+        bpy.ops.export_scene.fbx(
+            filepath=path,
+            use_selection=True,
+            object_types={"MESH"},
+            axis_forward="-Z",
+            axis_up="Y",
+            bake_space_transform=True,
+            apply_scale_options="FBX_SCALE_ALL",
+            mesh_smooth_type="FACE",  # keep facets hard-edged
+            use_mesh_modifiers=True,
+            add_leaf_bones=False,
+            bake_anim=False,
+            path_mode="STRIP",
+        )
+    finally:
+        obj.location = location
+        obj.select_set(False)
+        for o in selected:
+            o.select_set(True)
+        view_layer.objects.active = active
+    return path
+
+
 def main(out_dir=None):
     out_dir = out_dir or os.path.dirname(os.path.abspath(__file__))
     obj = build_object()
-    path = write_obj(obj.data, out_dir)
+    paths = [write_obj(obj.data, out_dir), write_fbx(obj, out_dir)]
     tris = sum(len(p.vertices) - 2 for p in obj.data.polygons)
-    print("StoneNode: %d tris, dims %s -> %s" % (tris, tuple(round(d, 2) for d in obj.dimensions), path))
+    print("StoneNode: %d tris, dims %s -> %s" % (tris, tuple(round(d, 2) for d in obj.dimensions), ", ".join(paths)))
     return obj
 
 
