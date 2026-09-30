@@ -1,0 +1,525 @@
+{
+  "meta": {
+    "status": "APPROVED 2026-09-30 (proposal in LAYOUT-PROPOSAL.md). Single source of truth for map work (CLAUDE.md §6).",
+    "version": "1.0",
+    "date": "2026-09-30",
+    "units": "studs",
+    "coords": "Roblox: ground plane (x, z), height y. Blender: (x, y, z) -> (x, -z, y).",
+    "compass": "-Z = north, +X = east. Team A west, team B east.",
+    "replaces": "layout.old-island.json (old 16-plot island export, reference only)"
+  },
+  "map_bounds": {
+    "min_x": -520,
+    "max_x": 520,
+    "min_z": -340,
+    "max_z": 340,
+    "note": "Playable area. Everything inside is land; no water inside."
+  },
+  "mirror_axis": {
+    "type": "plane",
+    "x": 0,
+    "note": "Team B = team A with x negated. Slots on x = 0 mirror onto themselves."
+  },
+  "boundary": {
+    "type": "invisible_wall",
+    "offset_outside_bounds": 30,
+    "corner_radius": 120,
+    "height": 60,
+    "placement": "Rounded rectangle 30 studs outside map_bounds, on the beach. Coast must lie beyond it. Plus a kill volume at y = -30 as a safety net."
+  },
+  "teams": [
+    {
+      "id": "A",
+      "side": "west",
+      "castle": "Castle_A",
+      "banner_color_placeholder": "#B8413A"
+    },
+    {
+      "id": "B",
+      "side": "east",
+      "castle": "Castle_B",
+      "banner_color_placeholder": "#3A5FB8"
+    }
+  ],
+  "castles": [
+    {
+      "id": "Castle_A",
+      "team": "A",
+      "center": {
+        "x": -370,
+        "y": 10,
+        "z": 0
+      },
+      "ring_size": {
+        "x": 102,
+        "z": 102
+      },
+      "wall_blocks_per_side": 5,
+      "pad": {
+        "shape": "square",
+        "size": 118,
+        "y": 10
+      },
+      "gate": {
+        "x": -319,
+        "y": 10,
+        "z": 0
+      },
+      "gate_facing": {
+        "x": 1,
+        "z": 0
+      },
+      "stockpile": {
+        "x": -395,
+        "y": 10,
+        "z": 0
+      },
+      "spawn_points": [
+        {
+          "id": "A_Spawn_1",
+          "x": -365,
+          "y": 10,
+          "z": -24
+        },
+        {
+          "id": "A_Spawn_2",
+          "x": -365,
+          "y": 10,
+          "z": 0
+        },
+        {
+          "id": "A_Spawn_3",
+          "x": -365,
+          "y": 10,
+          "z": 24
+        },
+        {
+          "id": "A_Spawn_4",
+          "x": -350,
+          "y": 10,
+          "z": -24
+        },
+        {
+          "id": "A_Spawn_5",
+          "x": -350,
+          "y": 10,
+          "z": 0
+        },
+        {
+          "id": "A_Spawn_6",
+          "x": -350,
+          "y": 10,
+          "z": 24
+        }
+      ]
+    },
+    {
+      "id": "Castle_B",
+      "team": "B",
+      "center": {
+        "x": 370,
+        "y": 10,
+        "z": 0
+      },
+      "ring_size": {
+        "x": 102,
+        "z": 102
+      },
+      "wall_blocks_per_side": 5,
+      "pad": {
+        "shape": "square",
+        "size": 118,
+        "y": 10
+      },
+      "gate": {
+        "x": 319,
+        "y": 10,
+        "z": 0
+      },
+      "gate_facing": {
+        "x": -1,
+        "z": 0
+      },
+      "stockpile": {
+        "x": 395,
+        "y": 10,
+        "z": 0
+      },
+      "spawn_points": [
+        {
+          "id": "B_Spawn_1",
+          "x": 365,
+          "y": 10,
+          "z": -24
+        },
+        {
+          "id": "B_Spawn_2",
+          "x": 365,
+          "y": 10,
+          "z": 0
+        },
+        {
+          "id": "B_Spawn_3",
+          "x": 365,
+          "y": 10,
+          "z": 24
+        },
+        {
+          "id": "B_Spawn_4",
+          "x": 350,
+          "y": 10,
+          "z": -24
+        },
+        {
+          "id": "B_Spawn_5",
+          "x": 350,
+          "y": 10,
+          "z": 0
+        },
+        {
+          "id": "B_Spawn_6",
+          "x": 350,
+          "y": 10,
+          "z": 24
+        }
+      ]
+    }
+  ],
+  "resource_node_slots": [
+    {
+      "id": "Node_A1",
+      "side": "A",
+      "mirror_pair": "Node_B1",
+      "position": {
+        "x": -420,
+        "y": 9,
+        "z": -190
+      },
+      "ring": "home",
+      "allowed_types": [
+        "Wood",
+        "Grain"
+      ],
+      "pad_radius": 58
+    },
+    {
+      "id": "Node_B1",
+      "side": "B",
+      "mirror_pair": "Node_A1",
+      "position": {
+        "x": 420,
+        "y": 9,
+        "z": -190
+      },
+      "ring": "home",
+      "allowed_types": [
+        "Wood",
+        "Grain"
+      ],
+      "pad_radius": 58
+    },
+    {
+      "id": "Node_A2",
+      "side": "A",
+      "mirror_pair": "Node_B2",
+      "position": {
+        "x": -420,
+        "y": 9,
+        "z": 195
+      },
+      "ring": "home",
+      "allowed_types": [
+        "Wool",
+        "Grain"
+      ],
+      "pad_radius": 66.5
+    },
+    {
+      "id": "Node_B2",
+      "side": "B",
+      "mirror_pair": "Node_A2",
+      "position": {
+        "x": 420,
+        "y": 9,
+        "z": 195
+      },
+      "ring": "home",
+      "allowed_types": [
+        "Wool",
+        "Grain"
+      ],
+      "pad_radius": 66.5
+    },
+    {
+      "id": "Node_A3",
+      "side": "A",
+      "mirror_pair": "Node_B3",
+      "position": {
+        "x": -250,
+        "y": 8,
+        "z": -190
+      },
+      "ring": "mid",
+      "allowed_types": [
+        "Stone",
+        "Wood"
+      ],
+      "pad_radius": 58
+    },
+    {
+      "id": "Node_B3",
+      "side": "B",
+      "mirror_pair": "Node_A3",
+      "position": {
+        "x": 250,
+        "y": 8,
+        "z": -190
+      },
+      "ring": "mid",
+      "allowed_types": [
+        "Stone",
+        "Wood"
+      ],
+      "pad_radius": 58
+    },
+    {
+      "id": "Node_A4",
+      "side": "A",
+      "mirror_pair": "Node_B4",
+      "position": {
+        "x": -260,
+        "y": 8,
+        "z": 185
+      },
+      "ring": "mid",
+      "allowed_types": [
+        "Stone",
+        "Wool"
+      ],
+      "pad_radius": 66.5
+    },
+    {
+      "id": "Node_B4",
+      "side": "B",
+      "mirror_pair": "Node_A4",
+      "position": {
+        "x": 260,
+        "y": 8,
+        "z": 185
+      },
+      "ring": "mid",
+      "allowed_types": [
+        "Stone",
+        "Wool"
+      ],
+      "pad_radius": 66.5
+    },
+    {
+      "id": "Node_A5",
+      "side": "A",
+      "mirror_pair": "Node_B5",
+      "position": {
+        "x": -170,
+        "y": 6,
+        "z": 0
+      },
+      "ring": "mid",
+      "allowed_types": [
+        "Stone",
+        "Grain"
+      ],
+      "pad_radius": 50.5
+    },
+    {
+      "id": "Node_B5",
+      "side": "B",
+      "mirror_pair": "Node_A5",
+      "position": {
+        "x": 170,
+        "y": 6,
+        "z": 0
+      },
+      "ring": "mid",
+      "allowed_types": [
+        "Stone",
+        "Grain"
+      ],
+      "pad_radius": 50.5
+    },
+    {
+      "id": "Node_A6",
+      "side": "A",
+      "mirror_pair": "Node_B6",
+      "position": {
+        "x": -120,
+        "y": 6,
+        "z": -235
+      },
+      "ring": "forward",
+      "allowed_types": [
+        "Ore",
+        "Stone"
+      ],
+      "pad_radius": 50.5
+    },
+    {
+      "id": "Node_B6",
+      "side": "B",
+      "mirror_pair": "Node_A6",
+      "position": {
+        "x": 120,
+        "y": 6,
+        "z": -235
+      },
+      "ring": "forward",
+      "allowed_types": [
+        "Ore",
+        "Stone"
+      ],
+      "pad_radius": 50.5
+    },
+    {
+      "id": "Node_A7",
+      "side": "A",
+      "mirror_pair": "Node_B7",
+      "position": {
+        "x": -115,
+        "y": 6,
+        "z": 245
+      },
+      "ring": "forward",
+      "allowed_types": [
+        "Ore",
+        "Wood"
+      ],
+      "pad_radius": 58
+    },
+    {
+      "id": "Node_B7",
+      "side": "B",
+      "mirror_pair": "Node_A7",
+      "position": {
+        "x": 115,
+        "y": 6,
+        "z": 245
+      },
+      "ring": "forward",
+      "allowed_types": [
+        "Ore",
+        "Wood"
+      ],
+      "pad_radius": 58
+    },
+    {
+      "id": "Node_C1",
+      "side": "shared",
+      "mirror_pair": "Node_C1",
+      "position": {
+        "x": 0,
+        "y": 4,
+        "z": -110
+      },
+      "ring": "center",
+      "allowed_types": [
+        "Ore"
+      ],
+      "pad_radius": 44
+    },
+    {
+      "id": "Node_C2",
+      "side": "shared",
+      "mirror_pair": "Node_C2",
+      "position": {
+        "x": 0,
+        "y": 4,
+        "z": 110
+      },
+      "ring": "center",
+      "allowed_types": [
+        "Ore"
+      ],
+      "pad_radius": 44
+    }
+  ],
+  "node_footprints": {
+    "Wood": 100,
+    "Wool": 117,
+    "Grain": 65,
+    "Stone": 85,
+    "Ore": 72
+  },
+  "gate_approach_lanes": [
+    {
+      "id": "A_Lane",
+      "castle": "Castle_A",
+      "from": {
+        "x": -319,
+        "z": 0
+      },
+      "direction": {
+        "x": 1,
+        "z": 0
+      },
+      "width": 30,
+      "length": 80
+    },
+    {
+      "id": "B_Lane",
+      "castle": "Castle_B",
+      "from": {
+        "x": 319,
+        "z": 0
+      },
+      "direction": {
+        "x": -1,
+        "z": 0
+      },
+      "width": 30,
+      "length": 80
+    }
+  ],
+  "cover_zones": [
+    {
+      "id": "A_Cover_N",
+      "beside_lane": "A_Lane",
+      "min_x": -299,
+      "max_x": -259,
+      "min_z": -45,
+      "max_z": -21
+    },
+    {
+      "id": "A_Cover_S",
+      "beside_lane": "A_Lane",
+      "min_x": -299,
+      "max_x": -259,
+      "min_z": 21,
+      "max_z": 45
+    },
+    {
+      "id": "B_Cover_N",
+      "beside_lane": "B_Lane",
+      "min_x": 259,
+      "max_x": 299,
+      "min_z": -45,
+      "max_z": -21
+    },
+    {
+      "id": "B_Cover_S",
+      "beside_lane": "B_Lane",
+      "min_x": 259,
+      "max_x": 299,
+      "min_z": 21,
+      "max_z": 45
+    }
+  ],
+  "decoration_rules": {
+    "edge_belt_depth": 60,
+    "pines_only_in": [
+      "edge belt",
+      "cover_zones"
+    ],
+    "round_canopy_trees": "Wood node pads only"
+  },
+  "zone": null,
+  "zone_note": "No shrinking zone: CLAUDE.md §15 lists it as likely cut for two fixed castles. Add back only if approved."
+}

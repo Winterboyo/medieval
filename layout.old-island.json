@@ -1,0 +1,1835 @@
+{
+  "meta": {
+    "source_place": "medieval game (placeId 137753630303454), Edit datamodel",
+    "world_shape": "Island",
+    "coords": "x,z ground plane; y = height",
+    "compass": "-Z = north, +X = east",
+    "units": "studs",
+    "exported": "2026-09-28",
+    "method": "Read-only: Studio Edit datamodel via Roblox MCP (property reads + downward raycasts). Nothing in Studio was modified.",
+    "notes": [
+      "Castle center = Foundation position; castle y = Foundation top.",
+      "Gate = GateLintel position (the gap between the two GatePiers); facing = unit vector from castle center through the gate.",
+      "Resource node position = model pivot; y = ground height under it by downward raycast onto MedievalLand_Ground.",
+      "The gate door itself (stage 9) and the castle walls (drawn from wall HP) do not exist until runtime."
+    ]
+  },
+  "map_bounds": {
+    "min_x": -960.4,
+    "max_x": 960.4,
+    "min_z": -1008.4,
+    "max_z": 912.5,
+    "basis": "land = ground wedges whose top is above sea level",
+    "land_top_y": {
+      "min": 0.5,
+      "max": 93.4
+    },
+    "ground_mesh": {
+      "min_x": -984,
+      "max_x": 984,
+      "wedge_count": 4620,
+      "max_z": 936,
+      "min_z": -1077.9
+    },
+    "sea": {
+      "x": 0,
+      "size_x": 2048,
+      "z": 0,
+      "surface_y": 0,
+      "can_collide": false,
+      "size_z": 2048,
+      "note": "Part, not Terrain water; CanCollide false"
+    },
+    "seabed": {
+      "surface_y": -20,
+      "size_x": 2048,
+      "size_z": 2048
+    },
+    "board_half_attribute": 1085
+  },
+  "castles": [
+    {
+      "id": "Base_01",
+      "center": {
+        "y": 12.8,
+        "x": -117.4,
+        "z": 701.3
+      },
+      "plot_size": {
+        "z": 148,
+        "x": 148
+      },
+      "gate": {
+        "x": -117.4,
+        "z": 771.3,
+        "y": 12.8
+      },
+      "gate_ground_y_outside": 12.4,
+      "gate_facing": {
+        "x": 0,
+        "z": 1,
+        "compass": "S",
+        "yaw_deg": 180
+      },
+      "gate_faces_center": -0.986,
+      "gate_opening_width": 21.9,
+      "static_wall_height_above_plot": 4
+    },
+    {
+      "id": "Base_02",
+      "center": {
+        "y": 17.7,
+        "x": -277.5,
+        "z": -600.2
+      },
+      "plot_size": {
+        "z": 148,
+        "x": 148
+      },
+      "gate": {
+        "x": -277.5,
+        "z": -530.2,
+        "y": 17.7
+      },
+      "gate_ground_y_outside": 17.4,
+      "gate_facing": {
+        "x": 0,
+        "z": 1,
+        "compass": "S",
+        "yaw_deg": 180
+      },
+      "gate_faces_center": 0.908,
+      "gate_opening_width": 21.9,
+      "static_wall_height_above_plot": 4
+    },
+    {
+      "id": "Base_03",
+      "center": {
+        "y": 57,
+        "x": 153.2,
+        "z": 391.2
+      },
+      "plot_size": {
+        "z": 148,
+        "x": 148
+      },
+      "gate": {
+        "x": 153.2,
+        "z": 461.2,
+        "y": 57
+      },
+      "gate_ground_y_outside": 56.6,
+      "gate_facing": {
+        "x": 0,
+        "z": 1,
+        "compass": "S",
+        "yaw_deg": 180
+      },
+      "gate_faces_center": -0.931,
+      "gate_opening_width": 21.9,
+      "static_wall_height_above_plot": 4
+    },
+    {
+      "id": "Base_04",
+      "center": {
+        "y": 41.8,
+        "x": 449.9,
+        "z": -179.8
+      },
+      "plot_size": {
+        "z": 148,
+        "x": 148
+      },
+      "gate": {
+        "x": 449.9,
+        "z": -109.8,
+        "y": 41.8
+      },
+      "gate_ground_y_outside": 41.4,
+      "gate_facing": {
+        "x": 0,
+        "z": 1,
+        "compass": "S",
+        "yaw_deg": 180
+      },
+      "gate_faces_center": 0.371,
+      "gate_opening_width": 21.9,
+      "static_wall_height_above_plot": 4
+    },
+    {
+      "id": "Base_05",
+      "center": {
+        "y": 22.1,
+        "x": 576.3,
+        "z": 385.1
+      },
+      "plot_size": {
+        "z": 148,
+        "x": 148
+      },
+      "gate": {
+        "x": 576.3,
+        "z": 455.1,
+        "y": 22.1
+      },
+      "gate_ground_y_outside": 21.7,
+      "gate_facing": {
+        "x": 0,
+        "z": 1,
+        "compass": "S",
+        "yaw_deg": 180
+      },
+      "gate_faces_center": -0.556,
+      "gate_opening_width": 21.9,
+      "static_wall_height_above_plot": 4
+    },
+    {
+      "id": "Base_06",
+      "center": {
+        "y": 8.3,
+        "x": -50.7,
+        "z": -871.9
+      },
+      "plot_size": {
+        "z": 148,
+        "x": 148
+      },
+      "gate": {
+        "x": -50.7,
+        "z": -801.9,
+        "y": 8.3
+      },
+      "gate_ground_y_outside": 7.9,
+      "gate_facing": {
+        "x": 0,
+        "z": 1,
+        "compass": "S",
+        "yaw_deg": 180
+      },
+      "gate_faces_center": 0.998,
+      "gate_opening_width": 21.9,
+      "static_wall_height_above_plot": 4
+    },
+    {
+      "id": "Base_07",
+      "center": {
+        "y": 34.3,
+        "x": -649.3,
+        "z": 71.2
+      },
+      "plot_size": {
+        "z": 148,
+        "x": 148
+      },
+      "gate": {
+        "x": -649.3,
+        "z": 141.2,
+        "y": 34.3
+      },
+      "gate_ground_y_outside": 33.9,
+      "gate_facing": {
+        "x": 0,
+        "z": 1,
+        "compass": "S",
+        "yaw_deg": 180
+      },
+      "gate_faces_center": -0.109,
+      "gate_opening_width": 21.9,
+      "static_wall_height_above_plot": 4
+    },
+    {
+      "id": "Base_08",
+      "center": {
+        "y": 46.6,
+        "x": 74.1,
+        "z": -400.9
+      },
+      "plot_size": {
+        "z": 148,
+        "x": 148
+      },
+      "gate": {
+        "x": 74.1,
+        "z": -330.9,
+        "y": 46.6
+      },
+      "gate_ground_y_outside": 46.2,
+      "gate_facing": {
+        "x": 0,
+        "z": 1,
+        "compass": "S",
+        "yaw_deg": 180
+      },
+      "gate_faces_center": 0.983,
+      "gate_opening_width": 21.9,
+      "static_wall_height_above_plot": 4
+    },
+    {
+      "id": "Base_09",
+      "center": {
+        "y": 14,
+        "x": 540.8,
+        "z": -515.8
+      },
+      "plot_size": {
+        "z": 148,
+        "x": 148
+      },
+      "gate": {
+        "x": 540.8,
+        "z": -445.8,
+        "y": 14
+      },
+      "gate_ground_y_outside": 13.6,
+      "gate_facing": {
+        "x": 0,
+        "z": 1,
+        "compass": "S",
+        "yaw_deg": 180
+      },
+      "gate_faces_center": 0.69,
+      "gate_opening_width": 21.9,
+      "static_wall_height_above_plot": 4
+    },
+    {
+      "id": "Base_10",
+      "center": {
+        "y": 52.8,
+        "x": -349.7,
+        "z": -128.2
+      },
+      "plot_size": {
+        "z": 148,
+        "x": 148
+      },
+      "gate": {
+        "x": -349.7,
+        "z": -58.2,
+        "y": 52.8
+      },
+      "gate_ground_y_outside": 52.4,
+      "gate_facing": {
+        "x": 0,
+        "z": 1,
+        "compass": "S",
+        "yaw_deg": 180
+      },
+      "gate_faces_center": 0.344,
+      "gate_opening_width": 21.9,
+      "static_wall_height_above_plot": 4
+    },
+    {
+      "id": "Base_11",
+      "center": {
+        "y": 17,
+        "x": -711.5,
+        "z": 397.1
+      },
+      "plot_size": {
+        "z": 148,
+        "x": 148
+      },
+      "gate": {
+        "x": -711.5,
+        "z": 467.1,
+        "y": 17
+      },
+      "gate_ground_y_outside": 16.6,
+      "gate_facing": {
+        "x": 0,
+        "z": 1,
+        "compass": "S",
+        "yaw_deg": 180
+      },
+      "gate_faces_center": -0.487,
+      "gate_opening_width": 21.9,
+      "static_wall_height_above_plot": 4
+    },
+    {
+      "id": "Base_12",
+      "center": {
+        "y": 21.5,
+        "x": -240.6,
+        "z": 481.3
+      },
+      "plot_size": {
+        "z": 148,
+        "x": 148
+      },
+      "gate": {
+        "x": -240.6,
+        "z": 551.3,
+        "y": 21.5
+      },
+      "gate_ground_y_outside": 21.1,
+      "gate_facing": {
+        "x": 0,
+        "z": 1,
+        "compass": "S",
+        "yaw_deg": 180
+      },
+      "gate_faces_center": -0.895,
+      "gate_opening_width": 21.9,
+      "static_wall_height_above_plot": 4
+    },
+    {
+      "id": "Base_13",
+      "center": {
+        "y": 31,
+        "x": 191.4,
+        "z": -649.1
+      },
+      "plot_size": {
+        "z": 148,
+        "x": 148
+      },
+      "gate": {
+        "x": 191.4,
+        "z": -579.1,
+        "y": 31
+      },
+      "gate_ground_y_outside": 30.6,
+      "gate_facing": {
+        "x": 0,
+        "z": 1,
+        "compass": "S",
+        "yaw_deg": 180
+      },
+      "gate_faces_center": 0.959,
+      "gate_opening_width": 21.9,
+      "static_wall_height_above_plot": 4
+    },
+    {
+      "id": "Base_14",
+      "center": {
+        "y": 19.5,
+        "x": -459.2,
+        "z": -415.4
+      },
+      "plot_size": {
+        "z": 148,
+        "x": 148
+      },
+      "gate": {
+        "x": -459.2,
+        "z": -345.4,
+        "y": 19.5
+      },
+      "gate_ground_y_outside": 19.1,
+      "gate_facing": {
+        "x": 0,
+        "z": 1,
+        "compass": "S",
+        "yaw_deg": 180
+      },
+      "gate_faces_center": 0.671,
+      "gate_opening_width": 21.9,
+      "static_wall_height_above_plot": 4
+    },
+    {
+      "id": "Base_15",
+      "center": {
+        "y": 19.3,
+        "x": 126.6,
+        "z": 758.4
+      },
+      "plot_size": {
+        "z": 148,
+        "x": 148
+      },
+      "gate": {
+        "x": 126.6,
+        "z": 828.4,
+        "y": 19.3
+      },
+      "gate_ground_y_outside": 18.9,
+      "gate_facing": {
+        "x": 0,
+        "z": 1,
+        "compass": "S",
+        "yaw_deg": 180
+      },
+      "gate_faces_center": -0.986,
+      "gate_opening_width": 21.9,
+      "static_wall_height_above_plot": 4
+    },
+    {
+      "id": "Base_16",
+      "center": {
+        "y": 19.8,
+        "x": 683.1,
+        "z": -80.3
+      },
+      "plot_size": {
+        "z": 148,
+        "x": 148
+      },
+      "gate": {
+        "x": 683.1,
+        "z": -10.3,
+        "y": 19.8
+      },
+      "gate_ground_y_outside": 19.4,
+      "gate_facing": {
+        "x": 0,
+        "z": 1,
+        "compass": "S",
+        "yaw_deg": 180
+      },
+      "gate_faces_center": 0.117,
+      "gate_opening_width": 21.9,
+      "static_wall_height_above_plot": 4
+    }
+  ],
+  "resource_nodes": [
+    {
+      "id": "Grain_12",
+      "type": "Grain",
+      "position": {
+        "x": 9.6,
+        "z": -740.5,
+        "y": 15.8
+      },
+      "footprint": {
+        "z": 64.8,
+        "x": 64.9
+      }
+    },
+    {
+      "id": "Grain_13",
+      "type": "Grain",
+      "position": {
+        "x": 816.8,
+        "z": 229.5,
+        "y": 11.5
+      },
+      "footprint": {
+        "z": 65.9,
+        "x": 65.5
+      }
+    },
+    {
+      "id": "Grain_14",
+      "type": "Grain",
+      "position": {
+        "x": 352.8,
+        "z": 573.5,
+        "y": 17.7
+      },
+      "footprint": {
+        "z": 64.9,
+        "x": 65.3
+      }
+    },
+    {
+      "id": "Grain_15",
+      "type": "Grain",
+      "position": {
+        "x": -856.8,
+        "z": -177.4,
+        "y": 7.8
+      },
+      "footprint": {
+        "z": 65.1,
+        "x": 64.3
+      }
+    },
+    {
+      "id": "Grain_16",
+      "type": "Grain",
+      "position": {
+        "x": -442.4,
+        "z": 729.1,
+        "y": 5.6
+      },
+      "footprint": {
+        "z": 65.4,
+        "x": 64.9
+      }
+    },
+    {
+      "id": "Grain_17",
+      "type": "Grain",
+      "position": {
+        "x": -166.9,
+        "z": -699.4,
+        "y": 23.8
+      },
+      "footprint": {
+        "z": 63.7,
+        "x": 64.5
+      }
+    },
+    {
+      "id": "Grain_18",
+      "type": "Grain",
+      "position": {
+        "x": -284.6,
+        "z": 742.8,
+        "y": 5.9
+      },
+      "footprint": {
+        "z": 64.1,
+        "x": 65.5
+      }
+    },
+    {
+      "id": "Grain_19",
+      "type": "Grain",
+      "position": {
+        "x": -289.7,
+        "z": -786.1,
+        "y": 5.1
+      },
+      "footprint": {
+        "z": 65.2,
+        "x": 65.3
+      }
+    },
+    {
+      "id": "Grain_20",
+      "type": "Grain",
+      "position": {
+        "x": 676.6,
+        "z": 254.3,
+        "y": 18.3
+      },
+      "footprint": {
+        "z": 64.3,
+        "x": 64.6
+      }
+    },
+    {
+      "id": "Grain_21",
+      "type": "Grain",
+      "position": {
+        "x": 413.7,
+        "z": 670.8,
+        "y": 9.3
+      },
+      "footprint": {
+        "z": 65.7,
+        "x": 65.3
+      }
+    },
+    {
+      "id": "Ore_41",
+      "type": "Ore",
+      "position": {
+        "x": -130,
+        "z": -436.9,
+        "y": 46.3
+      },
+      "footprint": {
+        "z": 39.9,
+        "x": 68.3
+      }
+    },
+    {
+      "id": "Ore_42",
+      "type": "Ore",
+      "position": {
+        "x": 272.2,
+        "z": 213.6,
+        "y": 69
+      },
+      "footprint": {
+        "z": 55.1,
+        "x": 71.7
+      }
+    },
+    {
+      "id": "Ore_43",
+      "type": "Ore",
+      "position": {
+        "x": 114.4,
+        "z": 225.5,
+        "y": 70.5
+      },
+      "footprint": {
+        "z": 64.4,
+        "x": 52.4
+      }
+    },
+    {
+      "id": "Ore_44",
+      "type": "Ore",
+      "position": {
+        "x": -506.5,
+        "z": 121.2,
+        "y": 42.9
+      },
+      "footprint": {
+        "z": 66.4,
+        "x": 62
+      }
+    },
+    {
+      "id": "Ore_45",
+      "type": "Ore",
+      "position": {
+        "x": 182,
+        "z": 124.8,
+        "y": 74.3
+      },
+      "footprint": {
+        "z": 69.4,
+        "x": 44.7
+      }
+    },
+    {
+      "id": "Ore_46",
+      "type": "Ore",
+      "position": {
+        "x": -286.9,
+        "z": -452.8,
+        "y": 30.8
+      },
+      "footprint": {
+        "z": 51.4,
+        "x": 71.7
+      }
+    },
+    {
+      "id": "Ore_47",
+      "type": "Ore",
+      "position": {
+        "x": -413.1,
+        "z": 331.6,
+        "y": 44.5
+      },
+      "footprint": {
+        "z": 70.1,
+        "x": 35.9
+      }
+    },
+    {
+      "id": "Ore_48",
+      "type": "Ore",
+      "position": {
+        "x": -255.6,
+        "z": 273.6,
+        "y": 59.8
+      },
+      "footprint": {
+        "z": 74,
+        "x": 58.8
+      }
+    },
+    {
+      "id": "Stone_32",
+      "type": "Stone",
+      "position": {
+        "x": 262.6,
+        "z": -101.5,
+        "y": 48.2
+      },
+      "footprint": {
+        "z": 90.5,
+        "x": 78.7
+      }
+    },
+    {
+      "id": "Stone_33",
+      "type": "Stone",
+      "position": {
+        "x": -321.7,
+        "z": 128.2,
+        "y": 58.1
+      },
+      "footprint": {
+        "z": 76.1,
+        "x": 77.5
+      }
+    },
+    {
+      "id": "Stone_34",
+      "type": "Stone",
+      "position": {
+        "x": 113.5,
+        "z": -159.9,
+        "y": 70.7
+      },
+      "footprint": {
+        "z": 74.9,
+        "x": 70
+      }
+    },
+    {
+      "id": "Stone_35",
+      "type": "Stone",
+      "position": {
+        "x": 0.9,
+        "z": 265.9,
+        "y": 57.9
+      },
+      "footprint": {
+        "z": 84.3,
+        "x": 77.3
+      }
+    },
+    {
+      "id": "Stone_36",
+      "type": "Stone",
+      "position": {
+        "x": 338.8,
+        "z": 98,
+        "y": 65.2
+      },
+      "footprint": {
+        "z": 77.2,
+        "x": 84.6
+      }
+    },
+    {
+      "id": "Stone_37",
+      "type": "Stone",
+      "position": {
+        "x": -155.3,
+        "z": -267.7,
+        "y": 52.2
+      },
+      "footprint": {
+        "z": 81,
+        "x": 75.5
+      }
+    },
+    {
+      "id": "Stone_38",
+      "type": "Stone",
+      "position": {
+        "x": -145.3,
+        "z": 124.5,
+        "y": 63.7
+      },
+      "footprint": {
+        "z": 85.9,
+        "x": 75.6
+      }
+    },
+    {
+      "id": "Stone_39",
+      "type": "Stone",
+      "position": {
+        "x": 315.4,
+        "z": 299.9,
+        "y": 57.5
+      },
+      "footprint": {
+        "z": 67.7,
+        "x": 75.6
+      }
+    },
+    {
+      "id": "Stone_40",
+      "type": "Stone",
+      "position": {
+        "x": 231.2,
+        "z": -4.6,
+        "y": 54.3
+      },
+      "footprint": {
+        "z": 75.1,
+        "x": 83.6
+      }
+    },
+    {
+      "id": "Wood_01",
+      "type": "Wood",
+      "position": {
+        "x": -89,
+        "z": 345.8,
+        "y": 44.7
+      },
+      "footprint": {
+        "z": 92.7,
+        "x": 95.6
+      }
+    },
+    {
+      "id": "Wood_02",
+      "type": "Wood",
+      "position": {
+        "x": -567.1,
+        "z": 212.4,
+        "y": 37.9
+      },
+      "footprint": {
+        "z": 77.7,
+        "x": 94.3
+      }
+    },
+    {
+      "id": "Wood_03",
+      "type": "Wood",
+      "position": {
+        "x": -472.6,
+        "z": -38.7,
+        "y": 48.3
+      },
+      "footprint": {
+        "z": 111.1,
+        "x": 102.3
+      }
+    },
+    {
+      "id": "Wood_04",
+      "type": "Wood",
+      "position": {
+        "x": 594.7,
+        "z": 135.5,
+        "y": 32.6
+      },
+      "footprint": {
+        "z": 106.6,
+        "x": 78.5
+      }
+    },
+    {
+      "id": "Wood_05",
+      "type": "Wood",
+      "position": {
+        "x": -442.6,
+        "z": 588.5,
+        "y": 12.6
+      },
+      "footprint": {
+        "z": 87,
+        "x": 93.7
+      }
+    },
+    {
+      "id": "Wood_06",
+      "type": "Wood",
+      "position": {
+        "x": 277.2,
+        "z": -444.5,
+        "y": 33.5
+      },
+      "footprint": {
+        "z": 76.7,
+        "x": 110.6
+      }
+    },
+    {
+      "id": "Wood_07",
+      "type": "Wood",
+      "position": {
+        "x": 7.5,
+        "z": -555.1,
+        "y": 43.4
+      },
+      "footprint": {
+        "z": 87.5,
+        "x": 117.2
+      }
+    },
+    {
+      "id": "Wood_08",
+      "type": "Wood",
+      "position": {
+        "x": 166.8,
+        "z": 581.7,
+        "y": 28
+      },
+      "footprint": {
+        "z": 93.9,
+        "x": 79.4
+      }
+    },
+    {
+      "id": "Wood_09",
+      "type": "Wood",
+      "position": {
+        "x": 377,
+        "z": -328.6,
+        "y": 36
+      },
+      "footprint": {
+        "z": 70.5,
+        "x": 114.7
+      }
+    },
+    {
+      "id": "Wood_10",
+      "type": "Wood",
+      "position": {
+        "x": 599.6,
+        "z": -218.6,
+        "y": 27.2
+      },
+      "footprint": {
+        "z": 50.2,
+        "x": 90
+      }
+    },
+    {
+      "id": "Wood_11",
+      "type": "Wood",
+      "position": {
+        "x": -660.3,
+        "z": -146.4,
+        "y": 20.1
+      },
+      "footprint": {
+        "z": 71.5,
+        "x": 73.7
+      }
+    },
+    {
+      "id": "Wool_22",
+      "type": "Wool",
+      "position": {
+        "x": -762.6,
+        "z": -96.1,
+        "y": 13.6
+      },
+      "footprint": {
+        "z": 115.7,
+        "x": 116.7
+      }
+    },
+    {
+      "id": "Wool_23",
+      "type": "Wool",
+      "position": {
+        "x": 795.7,
+        "z": 83.9,
+        "y": 7.1
+      },
+      "footprint": {
+        "z": 116.1,
+        "x": 116.5
+      }
+    },
+    {
+      "id": "Wool_24",
+      "type": "Wool",
+      "position": {
+        "x": -346.5,
+        "z": -311.7,
+        "y": 36.8
+      },
+      "footprint": {
+        "z": 114.9,
+        "x": 117
+      }
+    },
+    {
+      "id": "Wool_25",
+      "type": "Wool",
+      "position": {
+        "x": -606.2,
+        "z": -345,
+        "y": 10
+      },
+      "footprint": {
+        "z": 114.9,
+        "x": 117.1
+      }
+    },
+    {
+      "id": "Wool_26",
+      "type": "Wool",
+      "position": {
+        "x": 521.6,
+        "z": 237.1,
+        "y": 35.8
+      },
+      "footprint": {
+        "z": 114.3,
+        "x": 117.1
+      }
+    },
+    {
+      "id": "Wool_27",
+      "type": "Wool",
+      "position": {
+        "x": -861.1,
+        "z": 129.8,
+        "y": 7.9
+      },
+      "footprint": {
+        "z": 116.9,
+        "x": 114.6
+      }
+    },
+    {
+      "id": "Wool_28",
+      "type": "Wool",
+      "position": {
+        "x": -523.4,
+        "z": -183.8,
+        "y": 38.7
+      },
+      "footprint": {
+        "z": 116.4,
+        "x": 115.8
+      }
+    },
+    {
+      "id": "Wool_29",
+      "type": "Wool",
+      "position": {
+        "x": -410.4,
+        "z": 459.3,
+        "y": 24.3
+      },
+      "footprint": {
+        "z": 114.6,
+        "x": 117.1
+      }
+    },
+    {
+      "id": "Wool_30",
+      "type": "Wool",
+      "position": {
+        "x": -250.7,
+        "z": 636.2,
+        "y": 18.2
+      },
+      "footprint": {
+        "z": 116.7,
+        "x": 116
+      }
+    },
+    {
+      "id": "Wool_31",
+      "type": "Wool",
+      "position": {
+        "x": 407.1,
+        "z": -43.2,
+        "y": 42.2
+      },
+      "footprint": {
+        "z": 117,
+        "x": 115
+      }
+    }
+  ],
+  "spawn_points": [
+    {
+      "id": "SpawnPad1",
+      "parent": "VillageSquare",
+      "position": {
+        "x": 13,
+        "z": 31.4,
+        "y": 80.9
+      },
+      "enabled": true,
+      "neutral": true
+    },
+    {
+      "id": "SpawnPad2",
+      "parent": "VillageSquare",
+      "position": {
+        "x": -13,
+        "z": 31.4,
+        "y": 80.9
+      },
+      "enabled": true,
+      "neutral": true
+    },
+    {
+      "id": "SpawnPad3",
+      "parent": "VillageSquare",
+      "position": {
+        "x": -31.4,
+        "z": 13,
+        "y": 80.9
+      },
+      "enabled": true,
+      "neutral": true
+    },
+    {
+      "id": "SpawnPad4",
+      "parent": "VillageSquare",
+      "position": {
+        "x": -31.4,
+        "z": -13,
+        "y": 80.9
+      },
+      "enabled": true,
+      "neutral": true
+    },
+    {
+      "id": "SpawnPad5",
+      "parent": "VillageSquare",
+      "position": {
+        "x": -13,
+        "z": -31.4,
+        "y": 80.9
+      },
+      "enabled": true,
+      "neutral": true
+    },
+    {
+      "id": "SpawnPad6",
+      "parent": "VillageSquare",
+      "position": {
+        "x": 13,
+        "z": -31.4,
+        "y": 80.9
+      },
+      "enabled": true,
+      "neutral": true
+    },
+    {
+      "id": "SpawnPad7",
+      "parent": "VillageSquare",
+      "position": {
+        "x": 31.4,
+        "z": -13,
+        "y": 80.9
+      },
+      "enabled": true,
+      "neutral": true
+    },
+    {
+      "id": "SpawnPad8",
+      "parent": "VillageSquare",
+      "position": {
+        "x": 31.4,
+        "z": 13,
+        "y": 80.9
+      },
+      "enabled": true,
+      "neutral": true
+    }
+  ],
+  "spawn_rules": {
+    "source": "src/server/ResourceService.server.luau reviveAt()",
+    "first_spawn": "SpawnLocation pads ringing the totem plaza (CharacterAutoLoads = false; spawns go through reviveAt)",
+    "respawn": "13 studs off the home base's foundation if the player owns a base with keep health > 0 AND it is inside the zone; otherwise a totem pad"
+  },
+  "zone": {
+    "source": "src/server/MatchService.server.luau",
+    "shape": "circle (outsideBy uses flat distance from origin)",
+    "center": {
+      "x": 0,
+      "z": 0
+    },
+    "starting_radius": 1085,
+    "starting_radius_source": "Workspace.BoardHalf attribute (fallback 700)",
+    "final_radius": 130,
+    "shrink_schedule": {
+      "match_length_min": 45,
+      "match_length_source": "Workspace.MatchLength attribute, default 45 * 60 s",
+      "hold_until_fraction": 0.2,
+      "closed_by_fraction": 0.9,
+      "interpolation": "linear",
+      "keyframes_min": [
+        {
+          "t": 0,
+          "radius": 1085
+        },
+        {
+          "t": 9,
+          "radius": 1085
+        },
+        {
+          "t": 40.5,
+          "radius": 130
+        },
+        {
+          "t": 45,
+          "radius": 130
+        }
+      ],
+      "shrink_rate_studs_per_min": 30.3
+    },
+    "damage_outside": {
+      "per_tick": 4,
+      "tick_s": 1
+    },
+    "boundary_wall": {
+      "segments": 48,
+      "height": 70,
+      "runtime_only": true,
+      "folder": "Workspace.MatchZone"
+    }
+  },
+  "chokepoints_walls_blockers": {
+    "castle_walls": {
+      "static_in_edit": "Per plot: 4 WallFooting + 4 WallCourse ring, 4 studs above the plot, gap at the gate (21.9 wide between GatePiers), 4 TowerBase",
+      "runtime": "Wall blocks drawn by ResourceService from wall HP (WALL_BLOCK 20.4 x 11 x 3.6); gate door hung at stage 9; corner towers raised at stage 10"
+    },
+    "zone_wall": "Runtime ring, see zone.boundary_wall",
+    "invisible_blockers": [
+      {
+        "y": 127.5,
+        "x": 196.2,
+        "name": "Workspace.Rig.HumanoidRootPart",
+        "z": 117,
+        "can_collide": true,
+        "transparency": 1,
+        "size": [
+          2,
+          2,
+          1
+        ]
+      }
+    ],
+    "map_edge": "None. Sea part is non-collidable; seabed at y -20 spans +/-1024; past that there is nothing to stand on.",
+    "terrain_chokepoints": "None detected in Edit data (no named barriers, no invisible walls besides the Rig's root part)"
+  },
+  "village_square": {
+    "totem": {
+      "y": 82.6,
+      "x": 0,
+      "z": 0
+    },
+    "note": "Raised plaza; final zone closes onto it"
+  },
+  "stray_objects": [
+    {
+      "x": 89.3,
+      "name": "Workspace.stone_node",
+      "z": 64.2,
+      "note": "Imported mesh (RBX_ReimportId) in the plaza, no Resource attribute: not a gatherable node",
+      "size": "24.603410720825195, 14.799991607666016, 20.659435272216797"
+    },
+    {
+      "x": 196.2,
+      "name": "Workspace.Rig",
+      "z": 117,
+      "note": "Avatar rig left in Workspace; its HumanoidRootPart is an invisible collidable part"
+    }
+  ],
+  "workspace_attributes": {
+    "BoardHalf": 1085,
+    "WorldShape": "Island",
+    "TwoPlayerCheck": true
+  },
+  "derived_access": {
+    "note": "Derived, not stored in the place: straight-line distances from castle center to node pivots.",
+    "by_type": {
+      "Wood": {
+        "min": 357,
+        "max": 736,
+        "count": 11,
+        "mean_dist_center": 571
+      },
+      "Grain": {
+        "min": 673,
+        "max": 875,
+        "count": 10,
+        "mean_dist_center": 785
+      },
+      "Ore": {
+        "min": 221,
+        "max": 536,
+        "count": 8,
+        "mean_dist_center": 405
+      },
+      "Wool": {
+        "min": 409,
+        "max": 871,
+        "count": 10,
+        "mean_dist_center": 644
+      },
+      "Stone": {
+        "min": 191,
+        "max": 435,
+        "count": 9,
+        "mean_dist_center": 290
+      }
+    },
+    "castles": [
+      {
+        "dist_center": 711,
+        "within_350": {
+          "Wood": 2,
+          "Grain": 2,
+          "Ore": 0,
+          "Wool": 1,
+          "Stone": 0
+        },
+        "farthest_type_dist": 451,
+        "id": "Base_01",
+        "nearest": {
+          "Wood": 308,
+          "Grain": 172,
+          "Ore": 449,
+          "Wool": 148,
+          "Stone": 451
+        },
+        "castles_within_350": 2,
+        "types_missing_within_350": [
+          "Stone",
+          "Ore"
+        ],
+        "nearest_sum": 1528,
+        "nearest_castle": {
+          "id": "Base_15",
+          "dist": 251
+        },
+        "zone_leaves_plot_edge_min": 18.9,
+        "zone_leaves_center_min": 21.3
+      },
+      {
+        "dist_center": 661,
+        "within_350": {
+          "Wood": 1,
+          "Grain": 3,
+          "Ore": 2,
+          "Wool": 1,
+          "Stone": 0
+        },
+        "farthest_type_dist": 354,
+        "id": "Base_02",
+        "nearest": {
+          "Wood": 289,
+          "Grain": 149,
+          "Ore": 148,
+          "Wool": 297,
+          "Stone": 354
+        },
+        "castles_within_350": 1,
+        "types_missing_within_350": [
+          "Stone"
+        ],
+        "nearest_sum": 1237,
+        "nearest_castle": {
+          "id": "Base_14",
+          "dist": 259
+        },
+        "zone_leaves_plot_edge_min": 20.5,
+        "zone_leaves_center_min": 23
+      },
+      {
+        "dist_center": 420,
+        "within_350": {
+          "Wood": 2,
+          "Grain": 1,
+          "Ore": 3,
+          "Wool": 0,
+          "Stone": 3
+        },
+        "farthest_type_dist": 399,
+        "id": "Base_03",
+        "nearest": {
+          "Wood": 191,
+          "Grain": 270,
+          "Ore": 170,
+          "Wool": 399,
+          "Stone": 186
+        },
+        "castles_within_350": 0,
+        "types_missing_within_350": [
+          "Wool"
+        ],
+        "nearest_sum": 1216,
+        "nearest_castle": {
+          "id": "Base_15",
+          "dist": 368
+        },
+        "zone_leaves_plot_edge_min": 28.5,
+        "zone_leaves_center_min": 30.9
+      },
+      {
+        "dist_center": 484,
+        "within_350": {
+          "Wood": 4,
+          "Grain": 0,
+          "Ore": 0,
+          "Wool": 1,
+          "Stone": 4
+        },
+        "farthest_type_dist": 490,
+        "id": "Base_04",
+        "nearest": {
+          "Wood": 155,
+          "Grain": 490,
+          "Ore": 406,
+          "Wool": 143,
+          "Stone": 203
+        },
+        "castles_within_350": 2,
+        "types_missing_within_350": [
+          "Grain",
+          "Ore"
+        ],
+        "nearest_sum": 1397,
+        "nearest_castle": {
+          "id": "Base_16",
+          "dist": 254
+        },
+        "zone_leaves_plot_edge_min": 26.4,
+        "zone_leaves_center_min": 28.8
+      },
+      {
+        "dist_center": 693,
+        "within_350": {
+          "Wood": 1,
+          "Grain": 4,
+          "Ore": 1,
+          "Wool": 1,
+          "Stone": 1
+        },
+        "farthest_type_dist": 349,
+        "id": "Base_05",
+        "nearest": {
+          "Wood": 250,
+          "Grain": 165,
+          "Ore": 349,
+          "Wool": 158,
+          "Stone": 274
+        },
+        "castles_within_350": 0,
+        "types_missing_within_350": [],
+        "nearest_sum": 1196,
+        "nearest_castle": {
+          "id": "Base_03",
+          "dist": 423
+        },
+        "zone_leaves_plot_edge_min": 19.5,
+        "zone_leaves_center_min": 21.9
+      },
+      {
+        "dist_center": 873,
+        "within_350": {
+          "Wood": 1,
+          "Grain": 3,
+          "Ore": 0,
+          "Wool": 0,
+          "Stone": 0
+        },
+        "farthest_type_dist": 633,
+        "id": "Base_06",
+        "nearest": {
+          "Wood": 322,
+          "Grain": 145,
+          "Ore": 442,
+          "Wool": 633,
+          "Stone": 613
+        },
+        "castles_within_350": 1,
+        "types_missing_within_350": [
+          "Stone",
+          "Ore",
+          "Wool"
+        ],
+        "nearest_sum": 2155,
+        "nearest_castle": {
+          "id": "Base_13",
+          "dist": 329
+        },
+        "zone_leaves_plot_edge_min": 13.5,
+        "zone_leaves_center_min": 16
+      },
+      {
+        "dist_center": 653,
+        "within_350": {
+          "Wood": 3,
+          "Grain": 1,
+          "Ore": 1,
+          "Wool": 3,
+          "Stone": 1
+        },
+        "farthest_type_dist": 332,
+        "id": "Base_07",
+        "nearest": {
+          "Wood": 163,
+          "Grain": 324,
+          "Ore": 151,
+          "Wool": 202,
+          "Stone": 332
+        },
+        "castles_within_350": 1,
+        "types_missing_within_350": [],
+        "nearest_sum": 1172,
+        "nearest_castle": {
+          "id": "Base_11",
+          "dist": 332
+        },
+        "zone_leaves_plot_edge_min": 20.8,
+        "zone_leaves_center_min": 23.2
+      },
+      {
+        "dist_center": 408,
+        "within_350": {
+          "Wood": 3,
+          "Grain": 1,
+          "Ore": 1,
+          "Wool": 0,
+          "Stone": 2
+        },
+        "farthest_type_dist": 430,
+        "id": "Base_08",
+        "nearest": {
+          "Wood": 168,
+          "Grain": 346,
+          "Ore": 207,
+          "Wool": 430,
+          "Stone": 244
+        },
+        "castles_within_350": 1,
+        "types_missing_within_350": [
+          "Wool"
+        ],
+        "nearest_sum": 1395,
+        "nearest_castle": {
+          "id": "Base_13",
+          "dist": 275
+        },
+        "zone_leaves_plot_edge_min": 28.9,
+        "zone_leaves_center_min": 31.3
+      },
+      {
+        "dist_center": 747,
+        "within_350": {
+          "Wood": 3,
+          "Grain": 0,
+          "Ore": 0,
+          "Wool": 0,
+          "Stone": 0
+        },
+        "farthest_type_dist": 675,
+        "id": "Base_09",
+        "nearest": {
+          "Wood": 249,
+          "Grain": 577,
+          "Ore": 675,
+          "Wool": 491,
+          "Stone": 499
+        },
+        "castles_within_350": 1,
+        "types_missing_within_350": [
+          "Stone",
+          "Grain",
+          "Ore",
+          "Wool"
+        ],
+        "nearest_sum": 2491,
+        "nearest_castle": {
+          "id": "Base_04",
+          "dist": 348
+        },
+        "zone_leaves_plot_edge_min": 17.7,
+        "zone_leaves_center_min": 20.1
+      },
+      {
+        "dist_center": 373,
+        "within_350": {
+          "Wood": 2,
+          "Grain": 0,
+          "Ore": 2,
+          "Wool": 3,
+          "Stone": 3
+        },
+        "farthest_type_dist": 509,
+        "id": "Base_10",
+        "nearest": {
+          "Wood": 152,
+          "Grain": 509,
+          "Ore": 295,
+          "Wool": 182,
+          "Stone": 239
+        },
+        "castles_within_350": 1,
+        "types_missing_within_350": [
+          "Grain"
+        ],
+        "nearest_sum": 1377,
+        "nearest_castle": {
+          "id": "Base_14",
+          "dist": 307
+        },
+        "zone_leaves_plot_edge_min": 30.1,
+        "zone_leaves_center_min": 32.5
+      },
+      {
+        "dist_center": 815,
+        "within_350": {
+          "Wood": 2,
+          "Grain": 0,
+          "Ore": 2,
+          "Wool": 2,
+          "Stone": 0
+        },
+        "farthest_type_dist": 474,
+        "id": "Base_11",
+        "nearest": {
+          "Wood": 234,
+          "Grain": 427,
+          "Ore": 306,
+          "Wool": 306,
+          "Stone": 474
+        },
+        "castles_within_350": 1,
+        "types_missing_within_350": [
+          "Stone",
+          "Grain"
+        ],
+        "nearest_sum": 1747,
+        "nearest_castle": {
+          "id": "Base_07",
+          "dist": 332
+        },
+        "zone_leaves_plot_edge_min": 15.5,
+        "zone_leaves_center_min": 17.9
+      },
+      {
+        "dist_center": 538,
+        "within_350": {
+          "Wood": 2,
+          "Grain": 2,
+          "Ore": 2,
+          "Wool": 2,
+          "Stone": 1
+        },
+        "farthest_type_dist": 324,
+        "id": "Base_12",
+        "nearest": {
+          "Wood": 203,
+          "Grain": 265,
+          "Ore": 208,
+          "Wool": 155,
+          "Stone": 324
+        },
+        "castles_within_350": 1,
+        "types_missing_within_350": [],
+        "nearest_sum": 1155,
+        "nearest_castle": {
+          "id": "Base_01",
+          "dist": 252
+        },
+        "zone_leaves_plot_edge_min": 24.6,
+        "zone_leaves_center_min": 27
+      },
+      {
+        "dist_center": 677,
+        "within_350": {
+          "Wood": 2,
+          "Grain": 1,
+          "Ore": 0,
+          "Wool": 0,
+          "Stone": 0
+        },
+        "farthest_type_dist": 635,
+        "id": "Base_13",
+        "nearest": {
+          "Wood": 207,
+          "Grain": 203,
+          "Ore": 385,
+          "Wool": 635,
+          "Stone": 495
+        },
+        "castles_within_350": 2,
+        "types_missing_within_350": [
+          "Stone",
+          "Ore",
+          "Wool"
+        ],
+        "nearest_sum": 1925,
+        "nearest_castle": {
+          "id": "Base_08",
+          "dist": 275
+        },
+        "zone_leaves_plot_edge_min": 20,
+        "zone_leaves_center_min": 22.5
+      },
+      {
+        "dist_center": 619,
+        "within_350": {
+          "Wood": 1,
+          "Grain": 0,
+          "Ore": 2,
+          "Wool": 3,
+          "Stone": 1
+        },
+        "farthest_type_dist": 408,
+        "id": "Base_14",
+        "nearest": {
+          "Wood": 336,
+          "Grain": 408,
+          "Ore": 176,
+          "Wool": 153,
+          "Stone": 338
+        },
+        "castles_within_350": 2,
+        "types_missing_within_350": [
+          "Grain"
+        ],
+        "nearest_sum": 1411,
+        "nearest_castle": {
+          "id": "Base_02",
+          "dist": 259
+        },
+        "zone_leaves_plot_edge_min": 21.9,
+        "zone_leaves_center_min": 24.4
+      },
+      {
+        "dist_center": 769,
+        "within_350": {
+          "Wood": 1,
+          "Grain": 2,
+          "Ore": 0,
+          "Wool": 0,
+          "Stone": 0
+        },
+        "farthest_type_dist": 533,
+        "id": "Base_15",
+        "nearest": {
+          "Wood": 181,
+          "Grain": 292,
+          "Ore": 533,
+          "Wool": 397,
+          "Stone": 496
+        },
+        "castles_within_350": 1,
+        "types_missing_within_350": [
+          "Stone",
+          "Ore",
+          "Wool"
+        ],
+        "nearest_sum": 1899,
+        "nearest_castle": {
+          "id": "Base_01",
+          "dist": 251
+        },
+        "zone_leaves_plot_edge_min": 17,
+        "zone_leaves_center_min": 19.4
+      },
+      {
+        "dist_center": 688,
+        "within_350": {
+          "Wood": 2,
+          "Grain": 2,
+          "Ore": 0,
+          "Wool": 2,
+          "Stone": 0
+        },
+        "farthest_type_dist": 505,
+        "id": "Base_16",
+        "nearest": {
+          "Wood": 162,
+          "Grain": 335,
+          "Ore": 505,
+          "Wool": 199,
+          "Stone": 388
+        },
+        "castles_within_350": 1,
+        "types_missing_within_350": [
+          "Stone",
+          "Ore"
+        ],
+        "nearest_sum": 1589,
+        "nearest_castle": {
+          "id": "Base_04",
+          "dist": 254
+        },
+        "zone_leaves_plot_edge_min": 19.7,
+        "zone_leaves_center_min": 22.1
+      }
+    ],
+    "node_plot_clashes": [
+      {
+        "castle": "Base_02",
+        "node": "Grain_17",
+        "gap_to_plot_edge": 44
+      }
+    ]
+  }
+}
