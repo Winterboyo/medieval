@@ -1,3 +1,5 @@
+Working rules and the 2026-09-28 pivot live in CLAUDE.md. On conflicts over map, match format, win condition or scope, CLAUDE.md wins until this file is updated.
+
 # Medieval Land
 
 Roblox game, built in tiers. See the tier order in

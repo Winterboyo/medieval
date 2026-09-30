@@ -18,3 +18,7 @@ AutoSaves/
 # worse than not having it. Rebuild it: run scripts/build-world.luau once for the
 # terrain and scenery, and let Rojo sync src/.
 medieval-land.rbxl
+
+# Private art references (CLAUDE.md section 9): never import, copy or reproduce them,
+# so they stay out of the repo.
+references/
