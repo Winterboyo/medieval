@@ -38,7 +38,8 @@ LAYOUT = os.path.normpath(os.path.join(_HERE, "..", "..", "layout.json"))
 SRGB = {
     "STONE": (193, 185, 166),       # lit tower body: warm light grey
     "STONE_DARK": (129, 126, 117),  # shaded curtain wall: plinths, corbels, arch frame, rubble
-    "SLATE": (106, 111, 117),       # big tower roof
+    "SLATE": (106, 111, 117),       # big tower roof (median of the shingles)
+    "SLATE_LIGHT": (128, 135, 141), # the lit shingles (80th percentile of the same roof)
     "TIMBER": (159, 137, 114),      # drawbridge planks
     "IRON": (61, 61, 61),           # the dark of the gate opening: windows, bands, guns
     "CLOTH": (178, 178, 178),       # banner cloth, neutral so the team colour tints it
@@ -131,6 +132,59 @@ class Piece:
         sx, sy, sz = s * rng.uniform(0.7, 1.3), s * rng.uniform(0.6, 1.1), s * rng.uniform(0.4, 0.8)
         self.box(-sx / 2, sx / 2, -sy / 2, sy / 2, -sz / 2, sz / 2, col, m)
 
+    def shingle_cone(self, cx, cy, z0, r0, apex, seed, tile_w=2.8, tile_h=3.0, step=1.9, kick=0.45,
+                     thick=0.22, top=0.94, pointed=True, light_share=0.3):
+        """A slate roof the way castle-1 builds it: rows of overlapping fish-scale tiles
+        laid on a cone from the eave up, each row staggered by half a tile and kicked out
+        at its lower edge, over a dark core cone so no gap shows the sky. Seeded jitter in
+        size and angle keeps it hand-laid rather than machined."""
+        rng = random.Random(seed)
+        height = apex - z0
+        slant = math.hypot(r0, height)
+        if top >= 0.9:
+            self.cone(cx, cy, z0, r0 * 0.97, apex - 0.2, 12, "SLATE")       # core
+        else:                                                               # a roof with its top shot off
+            self.frustum(cx, cy, z0, r0 * 0.97, z0 + height * top, r0 * (1 - top) * 0.97, 12, "SLATE")
+        t, row = 0.0, 0
+        while t < top:
+            r = r0 * (1 - t)
+            if r < 0.25:
+                break
+            n = max(5, int(round(2 * math.pi * r / tile_w)))
+            w = 2 * math.pi * r / n * 1.16                                    # overlap side to side
+            h = min(tile_h, slant * (1 - t))
+            off = 0.5 if row % 2 else 0.0
+            for k in range(n):
+                phi = 2 * math.pi * (k + off + rng.uniform(-0.08, 0.08)) / n
+                ux, uy = -math.sin(phi), math.cos(phi)                         # along the row
+                dx, dy, dz = math.cos(phi) * r0, math.sin(phi) * r0, -height   # down the slope
+                dl = math.sqrt(dx * dx + dy * dy + dz * dz)
+                dx, dy, dz = dx / dl, dy / dl, dz / dl
+                nx, ny, nz = uy * dz - 0 * dy, 0 * dx - ux * dz, ux * dy - uy * dx   # outward normal = u x d
+                if nx * math.cos(phi) + ny * math.sin(phi) < 0:
+                    nx, ny, nz = -nx, -ny, -nz
+                bx = cx + math.cos(phi) * r
+                by = cy + math.sin(phi) * r
+                bz = z0 + height * t
+                ww = w * rng.uniform(0.9, 1.08)
+                hh = h * rng.uniform(0.9, 1.05)
+                k_out = kick * rng.uniform(0.7, 1.3)
+                outline = ([(-ww / 2, hh), (ww / 2, hh), (ww / 2, hh * 0.32), (0.0, 0.0), (-ww / 2, hh * 0.32)] if pointed
+                           else [(-ww / 2, hh), (ww / 2, hh), (ww / 2, 0.0), (-ww / 2, 0.0)])
+                vs = []
+                for layer in (0.0, thick):
+                    for (x, yv) in outline:
+                        lift = layer + 0.04 + k_out * (1 - yv / hh)              # bottom edge stands proud
+                        vs.append((bx + ux * x - dx * yv + nx * lift,
+                                   by + uy * x - dy * yv + ny * lift,
+                                   bz - dz * yv + nz * lift))
+                m = len(outline)
+                faces = [tuple(range(m)), tuple(reversed(range(m, 2 * m)))]
+                faces += [(i, (i + 1) % m, m + (i + 1) % m, m + i) for i in range(m)]
+                self._add(vs, faces, "SLATE_LIGHT" if rng.random() < light_share else "SLATE")
+            t += step / slant
+            row += 1
+
     def rubble(self, x0, x1, y0, y1, count, size, height, seed, cols=("STONE", "STONE_DARK")):
         """A heap: blocks scattered over a rectangle, piled higher toward its middle."""
         rng = random.Random(seed)
@@ -201,15 +255,28 @@ def build_wall(mat, state="intact"):
         p.rubble(-8.5, 8.5, -5.5, 5.5, 26, 1.7, 1.6, seed=11)
         keep_bays = ()
     if state != "rubble":
-        for x, z, w, h in ((-6.5, 3.6, 3.0, 1.5), (1.6, 7.2, 3.6, 1.3), (7.2, 2.4, 2.4, 1.2)):   # offset stones
+        rng = random.Random(5)
+        # castle-1's wall faces: a scatter of proud, irregular blocks low down
+        stones = [(-7.8, 3.0, 2.6, 1.3), (-4.6, 2.2, 3.2, 1.2), (-1.4, 3.4, 2.4, 1.1), (1.9, 2.4, 3.0, 1.3),
+                  (5.2, 3.2, 2.2, 1.2), (8.0, 2.0, 2.4, 1.1), (-6.0, 6.6, 2.6, 1.2), (3.4, 7.4, 3.0, 1.2)]
+        for x, z, w, h in stones:
             if state == "intact" or abs(x) > 6:
-                p.box(x - w / 2, x + w / 2, -t - 0.3, -t, z, z + h, "STONE")
+                p.box(x - w / 2, x + w / 2, -t - rng.uniform(0.2, 0.45), -t, z, z + h, "STONE")
         for k in keep_bays:
             x = -L + period * (k + 0.5)
-            p.box(x - 0.5, x + 0.5, -t - 0.75, -t, WALL_H - 1.4, WALL_H, "STONE_DARK")            # corbel
-            p.box(x - period / 2, x + period / 2, -t - 0.8, -t + 1.2, WALL_H, WALL_H + 1.6, "STONE")   # parapet bay
-            p.box(x - 1.1, x + 1.1, -t - 0.8, -t + 1.2, WALL_H + 1.6, WALL_H + 3.4, "STONE")         # merlon
-            p.box(x - period / 2, x + period / 2, t - 0.6, t, WALL_H, WALL_H + 0.7, "STONE")         # inner lip
+            x0, x1 = x - period / 2, x + period / 2
+            # THE PROJECTING BAND under the parapet, as castle-1 builds it: rough blocks
+            # of uneven width and drop, standing out over a dark recess
+            p.box(x0, x1, -t - 0.35, -t, WALL_H - 2.3, WALL_H - 0.4, "IRON")                       # the dark behind
+            edges = [x0, x - rng.uniform(0.3, 1.0), x1]
+            for a, b in zip(edges, edges[1:]):
+                drop = rng.uniform(1.6, 2.4)
+                p.box(a + 0.08, b - 0.08, -t - rng.uniform(0.9, 1.25), -t, WALL_H - drop, WALL_H + 0.2, "STONE")
+            p.box(x0, x1, -t - 1.0, -t + 1.2, WALL_H + 0.2, WALL_H + 1.4, "STONE")                 # parapet course
+            mw = rng.uniform(0.95, 1.2)
+            p.box(x - mw, x + mw, -t - 1.0, -t + 0.3, WALL_H + 1.4, WALL_H + 3.2, "STONE")           # merlon
+            p.box(x - mw - 0.15, x + mw + 0.15, -t - 1.15, -t + 0.45, WALL_H + 3.2, WALL_H + 3.55, "STONE_DARK")   # its cap
+            p.box(x0, x1, t - 0.6, t, WALL_H, WALL_H + 0.7, "STONE")                                 # inner lip
     if state == "damaged":
         p.rubble(-6.0, 6.0, -6.5, -2.6, 10, 1.4, 1.0, seed=7)                     # fallen stone at the foot
     return p.finish("Wall_Segment" + suffix(state), mat)
@@ -221,7 +288,7 @@ def build_tower(mat, state="intact", gun=False):
     a roof: castle-1 has both kinds, and the front towers carry cannons."""
     p, n, r = Piece(), TOWER_SIDES, TOWER_R
     top = TOWER_TOP
-    drum0, ru = top - 7.0, r + 0.6
+    drum0, ru = top - 7.0, r + 1.1   # castle-1's upper drum overhangs the shaft clearly
     floor = top + 2.6
     p.frustum(0, 0, 0, r + 0.9, 2.6, r, n, "STONE_DARK")                        # flared base (all states)
     if state == "rubble":
@@ -234,20 +301,51 @@ def build_tower(mat, state="intact", gun=False):
                 p.box(-0.8, 0.8, -1.2, 1.2, 0, rng.uniform(0.8, 3.0), "STONE", m)
         p.rubble(-r - 4, r + 4, -r - 4, r + 4, 34, 2.0, 3.0, seed=29)
         return p.finish("Wall_Corner_Tower" + ("_Gun" if gun else "") + suffix(state), mat)
+    rng = random.Random(77 + (1 if gun else 0))
     p.frustum(0, 0, 2.6, r, drum0, r - 0.2, n, "STONE")                         # lower body
-    p.frustum(0, 0, 9.0, r + 0.35, 9.8, r + 0.3, n, "STONE_DARK")               # band
     p.frustum(0, 0, drum0, ru, top, ru, n, "STONE")                             # upper drum
+
+    # castle-1's mid band: a course of irregular blocks standing proud of the shaft
+    for k in range(18):
+        a = 2 * math.pi * (k + rng.uniform(-0.2, 0.2)) / 18
+        w, hgt, out = rng.uniform(1.6, 2.6), rng.uniform(1.0, 1.7), rng.uniform(0.25, 0.6)
+        m = Matrix.Translation((math.cos(a) * (r - 0.3), math.sin(a) * (r - 0.3), 0)) @ Matrix.Rotation(a, 4, "Z")
+        z0 = 9.0 + rng.uniform(-0.3, 0.3)
+        p.box(0.0, 0.3 + out, -w / 2, w / 2, z0, z0 + hgt, "STONE", m)
+    # a few loose stones hanging under the band, as on castle-1's big tower
+    for k in range(6):
+        a = math.radians(180 + k * 18 + rng.uniform(-6, 6))
+        m = Matrix.Translation((math.cos(a) * (r - 0.3), math.sin(a) * (r - 0.3), 0)) @ Matrix.Rotation(a, 4, "Z")
+        z0 = rng.uniform(6.2, 8.3)
+        p.box(0.0, 0.35, -0.7, 0.7, z0, z0 + 0.9, "STONE", m)
+
+    # MACHICOLATION under the upper drum: corbel brackets with dark gaps between them,
+    # and a ragged sloped lip on top (the overhang the drum sits on)
+    p.frustum(0, 0, drum0 - 2.6, r + 0.05, drum0, r + 0.05, n, "IRON")         # the dark between the corbels
+    for k in range(n):
+        a = 2 * math.pi * (k + 0.5) / n
+        m = Matrix.Translation((math.cos(a) * r, math.sin(a) * r, 0)) @ Matrix.Rotation(a, 4, "Z")
+        p.box(-0.3, ru - r + 0.35, -0.66, 0.66, drum0 - 2.6, drum0, "STONE", m)   # chunky, narrow dark gaps between
+        p.box(-0.3, 0.4, -0.6, 0.6, drum0 - 3.1, drum0 - 2.6, "STONE", m)    # the bracket's foot
+    p.frustum(0, 0, drum0 - 0.1, ru + 0.45, drum0 + 0.9, ru + 0.1, n, "STONE_DARK")   # sloped lip
+    if state == "intact":
+        for k in range(10):                                                   # a few chipped blocks on the lip
+            a = 2 * math.pi * (k + rng.uniform(0, 0.5)) / 10
+            m = Matrix.Translation((math.cos(a) * (ru + 0.1), math.sin(a) * (ru + 0.1), 0)) @ Matrix.Rotation(a, 4, "Z")
+            p.box(0.0, 0.45, -0.8, 0.8, drum0 + 0.2, drum0 + 1.1, "STONE", m)
 
     def corbels(radius, z0, z1, every=1):
         for k in range(0, n, every):
             a = 2 * math.pi * (k + 0.5) / n
             m = Matrix.Translation((math.cos(a) * (radius + 0.1), math.sin(a) * (radius + 0.1), 0)) @ Matrix.Rotation(a, 4, "Z")
             p.box(-0.6, 0.9, -0.45, 0.45, z0, z1, "STONE_DARK", m)
-    corbels(r - 0.2, drum0 - 1.4, drum0)
-    corbels(ru, top - 1.5, top, every=1 if state == "intact" else 2)
+    if gun:   # the gun platform's battlement overhangs on its own corbels; a roofed drum runs straight up to the eave
+        corbels(ru, top - 1.5, top, every=1 if state == "intact" else 2)
     # damaged: a bite out of the band facing outward (windows side, local 200-250 deg)
     GAP = {12, 13, 14} if state == "damaged" else set()
-    if not GAP:
+    if not gun:
+        p.frustum(0, 0, top, ru, floor, ru, n, "STONE")                         # the drum continues to the eave
+    elif not GAP:
         p.frustum(0, 0, top, ru + 1.3, floor, ru + 1.3, n, "STONE")             # battlement band; its top is the gun floor
     else:
         p.frustum(0, 0, top, ru - 0.2, floor - 0.2, ru - 0.2, n, "STONE")       # inner core so the floor stays whole
@@ -275,13 +373,33 @@ def build_tower(mat, state="intact", gun=False):
             if k % 2 == 0:
                 p.box(-0.5, 0.5, -1.0, 1.0, 1.0, 2.8, "STONE", m)
     else:
+        # castle-1's roof: a thick rolled eave overhanging the drum, then the shingled
+        # cone, a dormer facing out, and a thin iron finial.
         eave = floor
-        p.frustum(0, 0, eave, ru + 2.7, eave + 1.0, ru + 1.9, n, "SLATE")       # flared eave (witch's-hat brim)
+        rr = ru + 2.9
+        p.frustum(0, 0, eave - 0.3, ru + 1.4, eave + 0.3, rr, n, "SLATE")         # underside of the brim
+        p.frustum(0, 0, eave + 0.3, rr, eave + 1.1, rr - 0.15, n, "SLATE")        # rolled lip
+        roof_top = eave + 1.1 + 15.0
         if state == "intact":
-            p.cone(0, 0, eave + 1.0, ru + 1.9, eave + 16.0, n, "SLATE")         # tall cone
-            p.cone(0, 0, eave + 15.9, 0.35, eave + 18.5, 6, "IRON")             # spike
+            p.shingle_cone(0, 0, eave + 1.0, rr - 0.2, roof_top, seed=101, tile_w=3.4, tile_h=3.5, step=2.2)
+            p.cone(0, 0, roof_top - 0.4, 0.3, roof_top + 3.0, 6, "IRON")         # finial
+            p.frustum(0, 0, roof_top + 0.6, 0.5, roof_top + 1.2, 0.5, 6, "IRON")  # its knop
+            # dormer on the outward face, a third of the way up the roof
+            a = math.radians(225)
+            t = 0.3
+            dr = (rr - 0.2) * (1 - t) + 0.4
+            dz = eave + 1.0 + 15.0 * t
+            m = Matrix.Translation((math.cos(a) * dr, math.sin(a) * dr, dz)) @ Matrix.Rotation(a, 4, "Z")
+            p.box(-1.2, 0.9, -1.1, 1.1, -0.4, 1.9, "STONE", m)                   # cheeks
+            p.box(0.9, 0.95, -0.7, 0.7, 0.0, 1.4, "IRON", m)                     # window
+            gm = m @ Matrix.Rotation(math.pi / 2, 4, "Z")
+            prev = p.m
+            p.m = gm if prev is None else prev @ gm
+            p.gable(-1.25, 1.25, -1.4, 1.1, 1.9, 2.9, "SLATE")                   # its little roof
+            p.m = prev
         else:
-            p.frustum(0, 0, eave + 1.0, ru + 1.9, eave + 6.5, ru * 0.45, n, "SLATE")   # the cone's stub, top shot away
+            p.shingle_cone(0, 0, eave + 1.0, rr - 0.2, roof_top, seed=101, tile_w=3.4, tile_h=3.5, step=2.2,
+                           top=0.42)   # top shot away
             for k in range(5):                                                  # broken rafters through the hole
                 a = 2 * math.pi * k / 5 + 0.3
                 m = Matrix.Translation((math.cos(a) * ru * 0.3, math.sin(a) * ru * 0.3, eave + 6.0)) @ Matrix.Rotation(a, 4, "Z") @ Matrix.Rotation(0.5, 4, "Y")
@@ -304,19 +422,52 @@ def build_gate(mat):
     for s in (-1, 1):                                                           # plinths beside the opening
         x0, x1 = sorted((s * ARCH_HW, s * (GATE_HW + 0.4)))
         p.box(x0, x1, -GATE_D - 0.4, GATE_D + 0.4, 0, 1.2, "STONE_DARK")
-    segs = 9                                                                    # stone frame round the arch
+    rng = random.Random(17)
+    # VOUSSOIRS: castle-1's arch is ringed in rough, uneven blocks, each its own depth
+    segs = 9
     for k in range(segs):
-        a0, a1 = math.pi - math.pi * k / segs, math.pi - math.pi * (k + 1) / segs
-        r0, r1 = ARCH_HW, ARCH_HW + 1.5
+        a0, a1 = math.pi - math.pi * k / segs + 0.02, math.pi - math.pi * (k + 1) / segs - 0.02
+        r0, r1 = ARCH_HW, ARCH_HW + rng.uniform(1.3, 1.9)
         q = [(math.cos(a0) * r0, ARCH_SPRING + math.sin(a0) * r0), (math.cos(a0) * r1, ARCH_SPRING + math.sin(a0) * r1),
              (math.cos(a1) * r1, ARCH_SPRING + math.sin(a1) * r1), (math.cos(a1) * r0, ARCH_SPRING + math.sin(a1) * r0)]
-        p.profile(list(reversed(q)), -GATE_D - 0.5, -GATE_D, "STONE_DARK")
-    for s in (-1, 1):                                                           # jamb stones
-        x0, x1 = sorted((s * ARCH_HW, s * (ARCH_HW + 1.5)))
-        p.box(x0, x1, -GATE_D - 0.5, -GATE_D, 1.2, ARCH_SPRING, "STONE_DARK")
-    for x in (-10, -6, -2, 2, 6, 10):                                           # corbels
-        p.box(x - 0.55, x + 0.55, -GATE_D - 0.8, -GATE_D, GATE_H - 1.6, GATE_H, "STONE_DARK")
-    p.box(-GATE_HW - 0.8, GATE_HW + 0.8, -GATE_D - 0.8, GATE_D + 0.8, GATE_H, GATE_H + 1.4, "STONE")   # roof walk (cannons stand here)
+        p.profile(list(reversed(q)), -GATE_D - rng.uniform(0.45, 0.85), -GATE_D, "STONE")
+    # QUOINS: alternating long and short blocks up the jambs and up the outer corners
+    def quoins(x_edge, sign, z0, z1, long_w, short_w):
+        z, k = z0, 0
+        while z < z1 - 0.4:
+            hgt = min(rng.uniform(1.2, 1.7), z1 - z)
+            w = long_w if k % 2 == 0 else short_w
+            xa, xb = sorted((x_edge, x_edge + sign * w))
+            p.box(xa, xb, -GATE_D - rng.uniform(0.35, 0.6), -GATE_D, z + 0.06, z + hgt - 0.06, "STONE")
+            z += hgt
+            k += 1
+    for s in (-1, 1):
+        quoins(s * ARCH_HW, s, 1.2, ARCH_SPRING, 1.9, 1.1)                       # door jambs
+        quoins(s * GATE_HW, -s, 1.2, GATE_H - 2.6, 2.4, 1.4)                     # gatehouse corners
+    # a row of small, high windows, as on castle-1's gatehouse face
+    for x in (-8.0, -4.8, 4.8, 8.0):
+        p.box(x - 0.45, x + 0.45, -GATE_D - 0.08, -GATE_D, GATE_H - 5.4, GATE_H - 4.0, "IRON")
+    # THE PROJECTING BAND along the top, the same construction as the curtain walls
+    p.box(-GATE_HW, GATE_HW, -GATE_D - 0.35, -GATE_D, GATE_H - 2.6, GATE_H - 0.4, "IRON")
+    x = -GATE_HW
+    while x < GATE_HW - 0.5:
+        w = min(rng.uniform(1.8, 2.8), GATE_HW - x)
+        p.box(x + 0.08, x + w - 0.08, -GATE_D - rng.uniform(0.95, 1.3), -GATE_D, GATE_H - rng.uniform(1.8, 2.6), GATE_H + 0.1, "STONE")
+        x += w
+    p.box(-GATE_HW - 0.8, GATE_HW + 0.8, -GATE_D - 1.2, GATE_D + 0.8, GATE_H, GATE_H + 1.4, "STONE")   # roof walk (cannons stand here)
+    # the lowered drawbridge, planked, with its two chains up to the wall over the arch
+    bridge_y0, bridge_y1 = -GATE_D - 0.4, -GATE_D - 9.0
+    for i in range(7):
+        x0 = -ARCH_HW + 0.2 + i * (2 * ARCH_HW - 0.4) / 7
+        p.box(x0 + 0.05, x0 + (2 * ARCH_HW - 0.4) / 7 - 0.05, bridge_y1, bridge_y0, 0.0, 0.45, "TIMBER")
+    for yy in (bridge_y0 - 1.2, bridge_y1 + 1.2):
+        p.box(-ARCH_HW - 0.2, ARCH_HW + 0.2, yy - 0.3, yy + 0.3, 0.45, 0.75, "TIMBER")   # battens
+    for s in (-1, 1):
+        a = Vector((s * (ARCH_HW - 0.3), bridge_y1 + 0.6, 0.6))
+        b = Vector((s * (ARCH_HW + 1.6), -GATE_D - 0.3, ARCH_SPRING + ARCH_HW + 2.4))
+        d = b - a
+        m = Matrix.Translation(a) @ d.to_track_quat("Z", "Y").to_matrix().to_4x4()
+        p.box(-0.12, 0.12, -0.12, 0.12, 0, d.length, "IRON", m)
     for x in (-10.4, -6.25, -2.1, 2.1, 6.25, 10.4):                             # merlons, outer and inner edge
         for y0 in (-GATE_D - 0.8, GATE_D - 0.4):
             p.box(x - 1.1, x + 1.1, y0, y0 + 1.2, GATE_H + 1.4, GATE_H + 3.2, "STONE")
@@ -324,9 +475,10 @@ def build_gate(mat):
         cx, cy = s * (GATE_HW - 0.6), -GATE_D + 0.4
         p.cone(cx, cy, GATE_H - 1.4, 2.4, GATE_H - 4.8, 8, "STONE_DARK", rot=math.pi / 8)
         p.frustum(cx, cy, GATE_H - 1.4, 2.4, GATE_H + 4.2, 2.3, 8, "STONE", rot=math.pi / 8)
-        p.frustum(cx, cy, GATE_H + 4.2, 3.0, GATE_H + 4.6, 2.9, 8, "SLATE", rot=math.pi / 8)
-        p.cone(cx, cy, GATE_H + 4.6, 2.9, GATE_H + 11.0, 8, "SLATE", rot=math.pi / 8)
-        p.cone(cx, cy, GATE_H + 10.9, 0.2, GATE_H + 12.4, 4, "IRON")
+        # castle-1's turret caps: steep "pine-cone" stacks of big slates, jagged at every row
+        p.shingle_cone(cx, cy, GATE_H + 4.2, 3.1, GATE_H + 12.0, seed=200 + s,
+                       tile_w=1.9, tile_h=2.2, step=1.25, kick=0.6, thick=0.18)
+        p.cone(cx, cy, GATE_H + 11.6, 0.2, GATE_H + 13.6, 4, "IRON")
     return p.finish("Gate", mat)
 
 
@@ -404,32 +556,69 @@ def build_keep(mat):
     p.m = prev
     p.box(-hx + wt, hx - wt, -hy + wt, hy - wt, h - 1.0, h - 0.4, "STONE_DARK")    # ceiling
     p.box(-hx - 0.7, hx + 0.7, -hy - 0.7, hy + 0.7, h - 0.4, h + 1.0, "STONE")   # roof walk, overhanging
-    for k in range(int(2 * hx // 4)):                                           # corbels and merlons, long sides
+    for k in range(int(2 * hx // 4)):                                           # corbels under the roof walk, long sides
         x = -hx + 2 + k * 4
         for s in (-1, 1):
             y0, y1 = sorted((s * hy, s * (hy + 0.7)))
             p.box(x - 0.5, x + 0.5, y0, y1, h - 1.8, h - 0.4, "STONE_DARK")
-            y0, y1 = sorted((s * (hy + 0.7), s * (hy - 0.5)))
-            p.box(x - 1.0, x + 1.0, y0, y1, h + 1.0, h + 2.6, "STONE")
-    for k in range(int(2 * hy // 4)):                                           # merlons, short sides
-        y = -hy + 2 + k * 4
+    # castle-1's keep is a stepped stack of crenellated blocks with tall square towers
+    # rising off it, not a box with cones: a second tier set toward the back, a tall
+    # tower on one rear corner and a shorter one on the other.
+    def crenellate(x0, x1, y0, y1, z, step=3.2, w=1.0):
+        for y in (y0, y1):                                                      # long edges
+            n_m = max(2, int((x1 - x0) // step))
+            for k in range(n_m):
+                x = x0 + (k + 0.5) * (x1 - x0) / n_m
+                ya, yb = sorted((y, y - math.copysign(0.9, y - (y0 + y1) / 2)))
+                p.box(x - w, x + w, ya, yb, z, z + 1.7, "STONE")
+        for x in (x0, x1):                                                      # short edges
+            n_m = max(2, int((y1 - y0) // step))
+            for k in range(n_m):
+                y = y0 + (k + 0.5) * (y1 - y0) / n_m
+                xa, xb = sorted((x, x - math.copysign(0.9, x - (x0 + x1) / 2)))
+                p.box(xa, xb, y - w, y + w, z, z + 1.7, "STONE")
+
+    def arched_window(x, y, z, axis, sign, w=0.55, hgt=2.6):
+        """A tall window with a stepped arch head, cut in a face normal to `axis`."""
+        for (dz0, dz1, ww) in ((0.0, hgt, w), (hgt, hgt + 0.45, w * 0.62), (hgt + 0.45, hgt + 0.75, w * 0.28)):
+            if axis == "x":
+                xa, xb = sorted((x, x + sign * 0.14))
+                p.box(xa, xb, y - ww, y + ww, z + dz0, z + dz1, "IRON")
+            else:
+                ya, yb = sorted((y, y + sign * 0.14))
+                p.box(x - ww, x + ww, ya, yb, z + dz0, z + dz1, "IRON")
+
+    crenellate(-hx - 0.7, hx + 0.7, -hy - 0.7, hy + 0.7, h + 1.0)                # tier 1 battlements
+    # tier 2: set back toward the rear, with its own corbelled roof walk
+    t2x0, t2x1, t2y0, t2y1, t2h = -hx + 1.0, hx - 7.0, -hy + 3.5, hy - 3.5, h + 9.5
+    p.box(t2x0, t2x1, t2y0, t2y1, h + 1.0, t2h, "STONE")
+    p.box(t2x0 - 0.6, t2x1 + 0.6, t2y0 - 0.6, t2y1 + 0.6, t2h, t2h + 0.9, "STONE")
+    crenellate(t2x0 - 0.6, t2x1 + 0.6, t2y0 - 0.6, t2y1 + 0.6, t2h + 0.9, step=3.0, w=0.9)
+    for y in (-5.0, 0.0, 5.0):
+        arched_window(t2x1, y, h + 3.5, "x", 1, w=0.5, hgt=2.4)
+    # the tall rear tower and its shorter partner, both square and crenellated
+    for (sy, side, top_h) in ((-1, 4.4, h + 30.0), (1, 3.4, h + 17.0)):   # castle-1: the keep tower tops the skyline
+        cx = -hx + side - 0.4                       # stands 0.4 proud of the keep's back face
+        cy = sy * (hy - side + 0.4)                 # ...and of its side face
+        x0, x1, y0, y1 = cx - side, cx + side, cy - side, cy + side
+        p.box(x0, x1, y0, y1, 1.2, top_h, "STONE")
+        p.box(x0 - 0.6, x1 + 0.6, y0 - 0.6, y1 + 0.6, top_h, top_h + 0.9, "STONE")       # corbelled walk
+        outer_y = y0 if sy < 0 else y1
+        for k in range(4):                                                      # corbels under it, outer face
+            xx = x0 + 0.8 + k * (2 * side - 1.6) / 3
+            ya, yb = sorted((outer_y, outer_y + sy * 0.6))
+            p.box(xx - 0.35, xx + 0.35, ya, yb, top_h - 1.2, top_h, "STONE_DARK")
+        crenellate(x0 - 0.6, x1 + 0.6, y0 - 0.6, y1 + 0.6, top_h + 0.9, step=2.6, w=0.8)
+        for z in (h + 4.0, h + 11.0, h + 18.0, h + 24.0):
+            if z + 3 < top_h:
+                arched_window(x1, cy, z, "x", 1, w=0.45, hgt=2.2)
+                arched_window(cx, outer_y, z, "y", sy, w=0.45, hgt=2.2)
+    # windows on the main block: tall arched lights on the long sides and over the door
+    for x in (-6.0, 0.0, 6.0):
         for s in (-1, 1):
-            x0, x1 = sorted((s * (hx + 0.7), s * (hx - 0.5)))
-            p.box(x0, x1, y - 1.0, y + 1.0, h + 1.0, h + 2.6, "STONE")
-    for sx in (-1, 1):                                                          # corner turrets with slate cones
-        for sy in (-1, 1):
-            cx, cy = sx * hx, sy * hy
-            p.frustum(cx, cy, 0, 3.0, 1.2, 2.7, 12, "STONE_DARK")
-            p.frustum(cx, cy, 1.2, 2.7, h + 5.0, 2.6, 12, "STONE")
-            p.frustum(cx, cy, h + 5.0, 3.4, h + 5.6, 3.2, 12, "SLATE")
-            p.cone(cx, cy, h + 5.6, 3.2, h + 13.0, 12, "SLATE")
-            p.cone(cx, cy, h + 12.9, 0.25, h + 14.6, 4, "IRON")
-    for x in (-6.0, 0.0, 6.0):                                                  # window slits, long sides
-        for s in (-1, 1):
-            y0, y1 = sorted((s * hy, s * (hy + 0.12)))
-            p.box(x - 0.45, x + 0.45, y0, y1, 11.0, 14.0, "IRON")
-    for y in (-8.0, 8.0):                                                       # and over the door
-        p.box(hx, hx + 0.12, y - 0.45, y + 0.45, 11.0, 14.0, "IRON")
+            arched_window(x, s * hy, 10.0, "y", s)
+    for y in (-8.0, 8.0):
+        arched_window(hx, y, 10.0, "x", 1)
     return p.finish("Keep", mat)
 
 
@@ -700,7 +889,34 @@ def banner_material():
 
 
 def preview_world():
-    """Lit by Blender's bundled studio HDRI; the camera sees a plain sky colour."""
+    """Neutral daylight for judging colour: a soft grey-blue sky as the ambient fill, plus
+    the Preview_Sun built in build(). The bundled HDRIs are warm (courtyard turned the stone
+    pink, sunrise turned it orange), which made the sampled colours impossible to judge."""
+    world = bpy.data.worlds.get("Castle_World") or bpy.data.worlds.new("Castle_World")
+    try:
+        world.use_nodes = True
+    except Exception:
+        pass
+    nt = world.node_tree
+    for n in list(nt.nodes):
+        nt.nodes.remove(n)
+    out = nt.nodes.new("ShaderNodeOutputWorld")
+    mix = nt.nodes.new("ShaderNodeMixShader")
+    cam = nt.nodes.new("ShaderNodeLightPath")
+    sky = nt.nodes.new("ShaderNodeBackground")
+    sky.inputs[0].default_value = (lin(103), lin(127), lin(174), 1.0)
+    fill = nt.nodes.new("ShaderNodeBackground")
+    fill.inputs[0].default_value = (0.62, 0.66, 0.74, 1.0)
+    fill.inputs[1].default_value = 0.32
+    nt.links.new(cam.outputs["Is Camera Ray"], mix.inputs[0])
+    nt.links.new(fill.outputs[0], mix.inputs[1])
+    nt.links.new(sky.outputs[0], mix.inputs[2])
+    nt.links.new(mix.outputs[0], out.inputs[0])
+    return world
+
+
+def preview_world_hdri():
+    """(Unused) lit by Blender's bundled studio HDRI; the camera sees a plain sky colour."""
     world = bpy.data.worlds.get("Castle_World") or bpy.data.worlds.new("Castle_World")
     try:
         world.use_nodes = True
@@ -829,6 +1045,14 @@ def build():
 
     # preview only: ground, a 5-stud avatar, and an attacker's ram and siege cannon in the lane
     P = colls["Castle_Preview"]
+    sun_data = bpy.data.lights.get("Preview_Sun") or bpy.data.lights.new("Preview_Sun", "SUN")
+    sun_data.energy = 3.2
+    sun_data.color = (1.0, 0.98, 0.95)
+    sun_data.angle = math.radians(2.5)
+    sun = bpy.data.objects.new("Preview_Sun", sun_data)
+    # light from the gate side (+x) and a little south, high: castle-1 is lit from the front
+    sun.rotation_euler = Vector((-0.8, 0.45, -1.0)).normalized().to_track_quat("-Z", "Y").to_euler()
+    P.objects.link(sun)
     gp = Piece()
     gp.box(-130, 130, -110, 290, -0.5, 0.0, "STONE_DARK")
     gm = gp.finish("Preview_Ground", mat)
