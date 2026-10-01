@@ -96,3 +96,55 @@ exactly mirrored.
 3. Gates facing each other across the middle.
 4. The 16 slots and where Ore lives.
 5. The boundary: invisible wall on the beach plus a kill volume.
+
+---
+
+# Addendum — castle interior (APPROVED 2026-09-30)
+
+The data is now in `layout.json` (version 1.1), generated and checked by `assets/map/propose_layout.js`.
+Everything outside the castles is byte-for-byte the approved layout; only the castle entries
+gain fields.
+
+Team A shown (gate east). Team B is the exact mirror. Local studs from the castle centre;
+"f" points toward the gate.
+
+```
+            north wall (N1..N5)
+   ┌RN●──────────────────────────────●FN┐   ● towers: F = front (gun platform, cannon on top)
+   │          [ BARRACKS  32x14 ]        │             R = rear (slate cone)
+   │           6 spawns inside           │
+ R │ ┌─────────┐                          │ F   ┌ gate (one bay, F3) + 2 cannons on its roof
+ e │ │  KEEP   │◄──── 16-wide clear ──────┤═▶  │
+ a │ │[STORAGE]│      passage, 65 long    │ g  └ gate door
+ r │ └─────────┘                          │ a
+   │          [ WORKSHOP  30x14 ]        │ t
+   │                                      │ e
+   └RS●──────────────────────────────●FS┘
+            south wall (S1..S5)
+```
+
+| Item | Where (local f, z) | Size | Notes |
+|---|---|---|---|
+| King's keep | f −45..−21, z −14..14 | 24 × 28, ~26 tall | Door on its gate side at f −21. Cannot be destroyed. |
+| King's storage | f −41..−27, z −10..10 | 14 × 20, inside the keep | The pooled team stockpile; `stockpile` now points at its centre (f −34). Loot is taken here after a breach. |
+| Barracks | f −10..22, z −44..−30 | 32 × 14, ~12 tall | Door faces the courtyard. All 6 spawns are inside; the gate is ~3 s away. |
+| Workshop / forge | f −10..20, z 30..44 | 30 × 14, ~11 tall | Door faces the courtyard; rams and siege cannons roll out through the gate. |
+| Cannons | front towers (f 49, z ±49) at 27.6 up; gatehouse roof (f 49, z ±6) at 21.4 up | 4 per castle | All aim at the enemy side. |
+| Towers | 4 corners | | **Front two become open gun platforms** (crenellated, no cone); rear two keep their slate cones. |
+| Wall sections | 19 per castle, ids `A_Wall_F1,F2,F4,F5` (gate side), `R1–R5`, `N1–N5`, `S1–S5` | one 20.4 bay each | Each has its own HP; any one destroyed = breached. |
+
+**Checked by script:** buildings inside the walls and clear of the corner towers; closest
+buildings 19.4 apart; storage inside the keep; a 16-wide passage from the gate to the keep
+door with nothing in it; every spawn inside the barracks; 19 sections, 4 towers and 4
+cannons per castle; 72 unique ids; team B an exact mirror of A.
+
+**One change from the approved plan:** the plan put cannons on all four tower tops, but the
+approved tower art has tall slate cones on top. castle-1 has both kinds of tower, so the two
+front towers (facing the enemy) become open gun platforms and the rear two keep their cones;
+the other two cannons go on the gatehouse roof.
+
+## Approve, or change
+1. Keep at the back with the storage inside, door facing the gate.
+2. Barracks on the north side, workshop on the south side.
+3. Cannons: 2 on the front towers (which lose their cones) + 2 on the gatehouse.
+4. Wall-section ids and the 19-section count.

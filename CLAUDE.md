@@ -23,6 +23,7 @@ What the pivot replaces: the 16-plot free-for-all island, player-built villages,
 - Stone: imported as Workspace.stone_node (80 tris) in the plaza. Not wired up as a resource node.
 - Testing: only a scripted two-player test (15 checks). Never played by real people.
 - Not built: two-team match flow, crossbow, tutorial, matchmaking/party queue, audio.
+- Art built (2026-09-30): the two-castle terrain (assets/map, exported as map.fbx and imported into the place as Workspace.map; the old island is parked in ServerStorage.OldIsland, so the old scripts error in Play), and the castle kit in Blender (assets/castle/build_castle.py: Wall_Segment, Wall_Corner_Tower, Gate, Gate_Door, Stockpile, Banner on the 102 ring; not exported).
 - Known mismatches with the HUD spec: resource counts live in leaderstats (all 8 goods), and messages show usernames.
 - Known mismatch with the win condition (section 4): the stockpile is per player (the base owner's own counters); the 20% slice is re-snapshotted on every breach, so one repair plus one gate swing refills it; it reads as emptied at once for an owner holding under 5 of each good; and looting pays the raider the full slice even if the owner has since spent it, which creates resources. To be replaced by a later Track A task.
 
@@ -37,19 +38,23 @@ Code that is out of scope for the pivot is DORMANT: do not delete it, do not ext
 - Map = two mirrored castles on one static island, sea around it. No individual plots or islands.
 - Resources: Wood, Stone, Grain, Ore, Wool/Cloth (working default, not final; the code currently has 8 goods, 5 raw and 3 refined). Gathered resources are spent in-match on repairs, upgrades, and siege weapons.
 - Resource nodes: finite supply that depletes as gathered; regenerates on a curve (faster when moderately depleted, slower near full or near empty).
-- Weapons come from in-match resources only, never from purchase. Crossbow is the next weapon to build. The existing trebuchet stays dormant until the crossbow feels good.
-- Base v1: single wall ring, one gate (the only chokepoint), one stockpile. Only 15-25% of stored resources are exposed to raiders (code: 20%).
-- Stockpile: one pooled team stockpile per castle. Everything a team gathers goes into its castle's pot; the exposed share is taken from the pot. (Decided 2026-09-29.)
-- Win condition: a castle falls when its walls are breached AND its stockpile is emptied. No keep stage, no specialists clause. (Decided 2026-09-29.)
+- Weapons come from in-match resources only, never from purchase. Crossbow is the next hand weapon. Siege tools are built at the castle's workshop: a battering ram (hits the gate door only) and a movable siege cannon (bombards wall sections and towers). These replace the old trebuchet, which stays dormant. (Decided 2026-09-30.)
+- Castle: a single wall ring of 19 wall sections, 4 corner towers and one gate. The gate is the only way in until a wall section is destroyed. Inside: the king's keep (holding the king's storage), barracks, workshop/forge, and defensive cannons. Only 15-25% of stored resources are exposed to raiders (code: 20%). (Structures decided 2026-09-30.)
+- Structures: every gate door, wall section, tower, cannon, workshop and barracks has its own HP and three looks (intact, damaged, rubble), plus timber scaffolding while defenders rebuild it. Repairs cost team resources. The keep cannot be destroyed. (Decided 2026-09-30.)
+- Cannons: fixed defensive cannons, manned by a defender, firing at attackers and siege engines. Destructible and rebuildable. (Decided 2026-09-30.)
+- Stockpile: one pooled team stockpile per castle, kept in the king's storage inside the keep. Everything a team gathers goes into its castle's pot; the exposed share is taken from the pot. (Decided 2026-09-29; location 2026-09-30.)
+- Breach: a castle is breached while its gate door or any wall section is destroyed. (Decided 2026-09-30.)
+- Win condition: a castle falls when it is breached AND its stockpile is emptied. No keep stage, no specialists clause. A fallen castle ends the match; the match then resets to the lobby. (Decided 2026-09-29; end and reset 2026-09-30.)
 - "Emptied" is stable: the exposed slice is snapshotted ONCE per match, at the castle's first breach. Repairs can close the wall again but never refill the slice. (Decided 2026-09-29.)
-- Individual players respawn.
+- Individual players respawn, at their own castle's barracks. No friendly fire.
 - Team names replace usernames in any feed or message.
 - Static FBX import, not EditableMesh.
 
 ## 5. Numbers
 
 From the code (truth for gameplay): wall 600 HP, sword swing 20 damage (five hits to knock someone down), gate swing 25, 20% stockpile exposure, 8-second knockdown, 15-second lobby.
-Placeholders: match cap 12-15 min with tiebreaker (highest total wall HP, then largest stockpile); raid timer 2-3 min; team size 6v6.
+Placeholders: match cap 12-15 min with tiebreaker (highest total structure HP, then largest stockpile); raid timer 2-3 min; team size 6v6.
+Structure placeholders (2026-09-30; tune in playtest): gate door 600 HP, wall section 300, tower 500, cannon 150, workshop 300, barracks 400; repair 25 HP for Wood 4 + Stone 4 (the code's current repair); battering ram 60 per hit on the gate door; siege cannon 55 per shot on walls and towers (the old trebuchet's number).
 Castle and map dimensions: from layout.json (approved 2026-09-30): playable area 1,040 x 680, castle wall ring 102 x 102 (5 wall blocks of 20.4 per side), castle pad 118 x 118. The code still uses the old 148x148 plot and 140x140 ring (WALL_HALF = 70 is a half-width) until a Track A task changes it. Always read the numbers from layout.json, not from this file.
 
 ## 6. Map spec (layout-first)
@@ -138,7 +143,9 @@ Default budget: props at or under 1,500 triangles unless noted. Flat shading. Pe
 | Ore | Dark rock or mine mouth with glinting chunks; clearly different from Stone | Redo wanted (currently a dark box) |
 | Wood | Faceted round-canopy tree cluster (the only round-canopy tree) | Fine for now |
 | Wool | Fenced pasture with sheep | Fine for now |
-| Castle | SEPARATE named pieces so walls can have HP and breach: Wall_Segment, Wall_Corner_Tower, Gate, Gate door (own object), Stockpile, Banner (own object, recolorable per team). Assemble as a square wall ring, 4 corner towers, ONE gate, stockpile inside. Ring size comes from the approved layout.json. Walls ~12 tall, towers ~18 tall (placeholders). Towers up to ~3,000 tris, wall pieces at or under 1,500, reuse meshes. Gate wide enough for a 5-stud avatar. | To test (layout approved: 102 x 102 ring) |
+| Castle | SEPARATE named pieces so walls can have HP and breach: Wall_Segment, Wall_Corner_Tower, Gate, Gate door (own object), Stockpile, Banner (own object, recolorable per team). Assemble as a square wall ring, 4 corner towers, ONE gate, stockpile inside. Ring size comes from the approved layout.json. Walls ~12 tall, towers ~18 tall (placeholders). Towers up to ~3,000 tris, wall pieces at or under 1,500, reuse meshes. Gate wide enough for a 5-stud avatar. | Built in Blender after castle-1 (towers 27.6 to the battlement, 43.6 to the roof tip; walls 14.4); not exported |
+| Castle interior | Keep (with the King_Storage room and a door), Barracks (team spawn inside), Workshop (forge + bench), Cannon (gun on a timber carriage, defensive), Battering_Ram, Siege_Cannon (movable), Scaffold. Positions come from layout.json. Same style, palette rules and budgets as the castle. | Phase 1, after the interior layout is approved |
+| Damage states | `<Piece>_Damaged` and `<Piece>_Rubble` for Wall_Segment, Wall_Corner_Tower, Gate_Door, Cannon, Workshop, Barracks; Scaffold shown during repair. Same footprint as the intact piece so they swap in place. | Phase 1 |
 | Terrain | Mirrored island built from layout.json (section 6). Tile chunks each under 15,000 tris. | To rebuild |
 | Later | Cart, barrel, fence, well, half-timbered houses | After playtest |
 
@@ -168,12 +175,12 @@ Default budget: props at or under 1,500 triangles unless noted. Flat shading. Pe
 ## 15. OPEN (ask before building on these)
 
 - Existing out-of-scope code: section 3 default is dormant. User may choose strip instead.
-- Tiebreaker at the match cap: highest total wall HP, then largest stockpile. Still a placeholder (section 5). The win condition itself is decided (section 4).
+- Tiebreaker at the match cap: highest total structure HP, then largest stockpile. Still a placeholder (section 5). The win condition itself is decided (section 4).
+- Siege tool and cannon costs, cannon reload and ammo: not decided. Placeholders go in section 5 when they are first built.
 - Team size (6v6 placeholder).
 - Farming as a distinct opening phase, or continuous during the siege.
 - Zone shrink: built for the free-for-all, likely obsolete with two fixed castles. Confirm cut.
 - Final resource list (8 goods in code vs 5 here).
-- Which "normal structures" beyond Base v1 are in scope.
 - Combat feel: the specific complaint.
 - Tutorial (after playtest), audio, lobby/matchmaking/party queue, anti-cheat, game name/icon/thumbnail, weekly update plan.
 

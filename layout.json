@@ -1,7 +1,8 @@
 {
   "meta": {
     "status": "APPROVED 2026-09-30 (proposal in LAYOUT-PROPOSAL.md). Single source of truth for map work (CLAUDE.md §6).",
-    "version": "1.0",
+    "interior_status": "APPROVED 2026-09-30: castle interior (keep + king's storage, barracks, workshop, cannon mounts, wall sections, towers); proposal in the LAYOUT-PROPOSAL.md addendum.",
+    "version": "1.1",
     "date": "2026-09-30",
     "units": "studs",
     "coords": "Roblox: ground plane (x, z), height y. Blender: (x, y, z) -> (x, -z, y).",
@@ -63,53 +64,385 @@
       "gate": {
         "x": -319,
         "y": 10,
-        "z": 0
+        "z": 0,
+        "id": "A_Gate",
+        "door_id": "A_Gate_Door"
       },
       "gate_facing": {
         "x": 1,
         "z": 0
       },
       "stockpile": {
-        "x": -395,
+        "x": -404,
         "y": 10,
         "z": 0
       },
       "spawn_points": [
         {
           "id": "A_Spawn_1",
-          "x": -365,
+          "x": -374,
           "y": 10,
-          "z": -24
+          "z": -40
         },
         {
           "id": "A_Spawn_2",
-          "x": -365,
+          "x": -374,
           "y": 10,
-          "z": 0
+          "z": -35
         },
         {
           "id": "A_Spawn_3",
-          "x": -365,
+          "x": -364,
           "y": 10,
-          "z": 24
+          "z": -40
         },
         {
           "id": "A_Spawn_4",
-          "x": -350,
+          "x": -364,
           "y": 10,
-          "z": -24
+          "z": -35
         },
         {
           "id": "A_Spawn_5",
-          "x": -350,
+          "x": -354,
           "y": 10,
-          "z": 0
+          "z": -40
         },
         {
           "id": "A_Spawn_6",
-          "x": -350,
+          "x": -354,
           "y": 10,
-          "z": 24
+          "z": -35
+        }
+      ],
+      "keep": {
+        "id": "A_Keep",
+        "min_x": -415,
+        "max_x": -391,
+        "min_z": -14,
+        "max_z": 14,
+        "height": 26,
+        "door": {
+          "x": -391,
+          "y": 10,
+          "z": 0
+        },
+        "door_facing": {
+          "x": 1,
+          "z": 0
+        },
+        "storage": {
+          "id": "A_King_Storage",
+          "min_x": -411,
+          "max_x": -397,
+          "min_z": -10,
+          "max_z": 10
+        }
+      },
+      "barracks": {
+        "id": "A_Barracks",
+        "min_x": -380,
+        "max_x": -348,
+        "min_z": -44,
+        "max_z": -30,
+        "height": 12,
+        "door": {
+          "x": -366,
+          "y": 10,
+          "z": -30
+        },
+        "door_facing": {
+          "x": 0,
+          "z": 1
+        }
+      },
+      "workshop": {
+        "id": "A_Workshop",
+        "min_x": -380,
+        "max_x": -350,
+        "min_z": 30,
+        "max_z": 44,
+        "height": 11,
+        "door": {
+          "x": -366,
+          "y": 10,
+          "z": 30
+        },
+        "door_facing": {
+          "x": 0,
+          "z": -1
+        }
+      },
+      "towers": [
+        {
+          "id": "A_Tower_FN",
+          "kind": "gun",
+          "x": -321,
+          "y": 10,
+          "z": -49
+        },
+        {
+          "id": "A_Tower_FS",
+          "kind": "gun",
+          "x": -321,
+          "y": 10,
+          "z": 49
+        },
+        {
+          "id": "A_Tower_RN",
+          "kind": "roofed",
+          "x": -419,
+          "y": 10,
+          "z": -49
+        },
+        {
+          "id": "A_Tower_RS",
+          "kind": "roofed",
+          "x": -419,
+          "y": 10,
+          "z": 49
+        }
+      ],
+      "wall_sections": [
+        {
+          "id": "A_Wall_F1",
+          "x": -321,
+          "y": 10,
+          "z": -40.8,
+          "facing": {
+            "x": 1,
+            "z": 0
+          }
+        },
+        {
+          "id": "A_Wall_F2",
+          "x": -321,
+          "y": 10,
+          "z": -20.4,
+          "facing": {
+            "x": 1,
+            "z": 0
+          }
+        },
+        {
+          "id": "A_Wall_F4",
+          "x": -321,
+          "y": 10,
+          "z": 20.4,
+          "facing": {
+            "x": 1,
+            "z": 0
+          }
+        },
+        {
+          "id": "A_Wall_F5",
+          "x": -321,
+          "y": 10,
+          "z": 40.8,
+          "facing": {
+            "x": 1,
+            "z": 0
+          }
+        },
+        {
+          "id": "A_Wall_R1",
+          "x": -419,
+          "y": 10,
+          "z": -40.8,
+          "facing": {
+            "x": -1,
+            "z": 0
+          }
+        },
+        {
+          "id": "A_Wall_R2",
+          "x": -419,
+          "y": 10,
+          "z": -20.4,
+          "facing": {
+            "x": -1,
+            "z": 0
+          }
+        },
+        {
+          "id": "A_Wall_R3",
+          "x": -419,
+          "y": 10,
+          "z": 0,
+          "facing": {
+            "x": -1,
+            "z": 0
+          }
+        },
+        {
+          "id": "A_Wall_R4",
+          "x": -419,
+          "y": 10,
+          "z": 20.4,
+          "facing": {
+            "x": -1,
+            "z": 0
+          }
+        },
+        {
+          "id": "A_Wall_R5",
+          "x": -419,
+          "y": 10,
+          "z": 40.8,
+          "facing": {
+            "x": -1,
+            "z": 0
+          }
+        },
+        {
+          "id": "A_Wall_N1",
+          "x": -410.8,
+          "y": 10,
+          "z": -49,
+          "facing": {
+            "x": 0,
+            "z": -1
+          }
+        },
+        {
+          "id": "A_Wall_N2",
+          "x": -390.4,
+          "y": 10,
+          "z": -49,
+          "facing": {
+            "x": 0,
+            "z": -1
+          }
+        },
+        {
+          "id": "A_Wall_N3",
+          "x": -370,
+          "y": 10,
+          "z": -49,
+          "facing": {
+            "x": 0,
+            "z": -1
+          }
+        },
+        {
+          "id": "A_Wall_N4",
+          "x": -349.6,
+          "y": 10,
+          "z": -49,
+          "facing": {
+            "x": 0,
+            "z": -1
+          }
+        },
+        {
+          "id": "A_Wall_N5",
+          "x": -329.2,
+          "y": 10,
+          "z": -49,
+          "facing": {
+            "x": 0,
+            "z": -1
+          }
+        },
+        {
+          "id": "A_Wall_S1",
+          "x": -410.8,
+          "y": 10,
+          "z": 49,
+          "facing": {
+            "x": 0,
+            "z": 1
+          }
+        },
+        {
+          "id": "A_Wall_S2",
+          "x": -390.4,
+          "y": 10,
+          "z": 49,
+          "facing": {
+            "x": 0,
+            "z": 1
+          }
+        },
+        {
+          "id": "A_Wall_S3",
+          "x": -370,
+          "y": 10,
+          "z": 49,
+          "facing": {
+            "x": 0,
+            "z": 1
+          }
+        },
+        {
+          "id": "A_Wall_S4",
+          "x": -349.6,
+          "y": 10,
+          "z": 49,
+          "facing": {
+            "x": 0,
+            "z": 1
+          }
+        },
+        {
+          "id": "A_Wall_S5",
+          "x": -329.2,
+          "y": 10,
+          "z": 49,
+          "facing": {
+            "x": 0,
+            "z": 1
+          }
+        }
+      ],
+      "cannon_mounts": [
+        {
+          "id": "A_Cannon_TowerN",
+          "on": "A_Tower_FN",
+          "x": -321,
+          "y": 10,
+          "z": -49,
+          "height": 27.6,
+          "aim": {
+            "x": 1,
+            "z": 0
+          }
+        },
+        {
+          "id": "A_Cannon_TowerS",
+          "on": "A_Tower_FS",
+          "x": -321,
+          "y": 10,
+          "z": 49,
+          "height": 27.6,
+          "aim": {
+            "x": 1,
+            "z": 0
+          }
+        },
+        {
+          "id": "A_Cannon_GateN",
+          "on": "A_Gate",
+          "x": -321,
+          "y": 10,
+          "z": -6,
+          "height": 21.4,
+          "aim": {
+            "x": 1,
+            "z": 0
+          }
+        },
+        {
+          "id": "A_Cannon_GateS",
+          "on": "A_Gate",
+          "x": -321,
+          "y": 10,
+          "z": 6,
+          "height": 21.4,
+          "aim": {
+            "x": 1,
+            "z": 0
+          }
         }
       ]
     },
@@ -134,53 +467,385 @@
       "gate": {
         "x": 319,
         "y": 10,
-        "z": 0
+        "z": 0,
+        "id": "B_Gate",
+        "door_id": "B_Gate_Door"
       },
       "gate_facing": {
         "x": -1,
         "z": 0
       },
       "stockpile": {
-        "x": 395,
+        "x": 404,
         "y": 10,
         "z": 0
       },
       "spawn_points": [
         {
           "id": "B_Spawn_1",
-          "x": 365,
+          "x": 374,
           "y": 10,
-          "z": -24
+          "z": -40
         },
         {
           "id": "B_Spawn_2",
-          "x": 365,
+          "x": 374,
           "y": 10,
-          "z": 0
+          "z": -35
         },
         {
           "id": "B_Spawn_3",
-          "x": 365,
+          "x": 364,
           "y": 10,
-          "z": 24
+          "z": -40
         },
         {
           "id": "B_Spawn_4",
-          "x": 350,
+          "x": 364,
           "y": 10,
-          "z": -24
+          "z": -35
         },
         {
           "id": "B_Spawn_5",
-          "x": 350,
+          "x": 354,
           "y": 10,
-          "z": 0
+          "z": -40
         },
         {
           "id": "B_Spawn_6",
-          "x": 350,
+          "x": 354,
           "y": 10,
-          "z": 24
+          "z": -35
+        }
+      ],
+      "keep": {
+        "id": "B_Keep",
+        "min_x": 391,
+        "max_x": 415,
+        "min_z": -14,
+        "max_z": 14,
+        "height": 26,
+        "door": {
+          "x": 391,
+          "y": 10,
+          "z": 0
+        },
+        "door_facing": {
+          "x": -1,
+          "z": 0
+        },
+        "storage": {
+          "id": "B_King_Storage",
+          "min_x": 397,
+          "max_x": 411,
+          "min_z": -10,
+          "max_z": 10
+        }
+      },
+      "barracks": {
+        "id": "B_Barracks",
+        "min_x": 348,
+        "max_x": 380,
+        "min_z": -44,
+        "max_z": -30,
+        "height": 12,
+        "door": {
+          "x": 366,
+          "y": 10,
+          "z": -30
+        },
+        "door_facing": {
+          "x": 0,
+          "z": 1
+        }
+      },
+      "workshop": {
+        "id": "B_Workshop",
+        "min_x": 350,
+        "max_x": 380,
+        "min_z": 30,
+        "max_z": 44,
+        "height": 11,
+        "door": {
+          "x": 366,
+          "y": 10,
+          "z": 30
+        },
+        "door_facing": {
+          "x": 0,
+          "z": -1
+        }
+      },
+      "towers": [
+        {
+          "id": "B_Tower_FN",
+          "kind": "gun",
+          "x": 321,
+          "y": 10,
+          "z": -49
+        },
+        {
+          "id": "B_Tower_FS",
+          "kind": "gun",
+          "x": 321,
+          "y": 10,
+          "z": 49
+        },
+        {
+          "id": "B_Tower_RN",
+          "kind": "roofed",
+          "x": 419,
+          "y": 10,
+          "z": -49
+        },
+        {
+          "id": "B_Tower_RS",
+          "kind": "roofed",
+          "x": 419,
+          "y": 10,
+          "z": 49
+        }
+      ],
+      "wall_sections": [
+        {
+          "id": "B_Wall_F1",
+          "x": 321,
+          "y": 10,
+          "z": -40.8,
+          "facing": {
+            "x": -1,
+            "z": 0
+          }
+        },
+        {
+          "id": "B_Wall_F2",
+          "x": 321,
+          "y": 10,
+          "z": -20.4,
+          "facing": {
+            "x": -1,
+            "z": 0
+          }
+        },
+        {
+          "id": "B_Wall_F4",
+          "x": 321,
+          "y": 10,
+          "z": 20.4,
+          "facing": {
+            "x": -1,
+            "z": 0
+          }
+        },
+        {
+          "id": "B_Wall_F5",
+          "x": 321,
+          "y": 10,
+          "z": 40.8,
+          "facing": {
+            "x": -1,
+            "z": 0
+          }
+        },
+        {
+          "id": "B_Wall_R1",
+          "x": 419,
+          "y": 10,
+          "z": -40.8,
+          "facing": {
+            "x": 1,
+            "z": 0
+          }
+        },
+        {
+          "id": "B_Wall_R2",
+          "x": 419,
+          "y": 10,
+          "z": -20.4,
+          "facing": {
+            "x": 1,
+            "z": 0
+          }
+        },
+        {
+          "id": "B_Wall_R3",
+          "x": 419,
+          "y": 10,
+          "z": 0,
+          "facing": {
+            "x": 1,
+            "z": 0
+          }
+        },
+        {
+          "id": "B_Wall_R4",
+          "x": 419,
+          "y": 10,
+          "z": 20.4,
+          "facing": {
+            "x": 1,
+            "z": 0
+          }
+        },
+        {
+          "id": "B_Wall_R5",
+          "x": 419,
+          "y": 10,
+          "z": 40.8,
+          "facing": {
+            "x": 1,
+            "z": 0
+          }
+        },
+        {
+          "id": "B_Wall_N1",
+          "x": 410.8,
+          "y": 10,
+          "z": -49,
+          "facing": {
+            "x": 0,
+            "z": -1
+          }
+        },
+        {
+          "id": "B_Wall_N2",
+          "x": 390.4,
+          "y": 10,
+          "z": -49,
+          "facing": {
+            "x": 0,
+            "z": -1
+          }
+        },
+        {
+          "id": "B_Wall_N3",
+          "x": 370,
+          "y": 10,
+          "z": -49,
+          "facing": {
+            "x": 0,
+            "z": -1
+          }
+        },
+        {
+          "id": "B_Wall_N4",
+          "x": 349.6,
+          "y": 10,
+          "z": -49,
+          "facing": {
+            "x": 0,
+            "z": -1
+          }
+        },
+        {
+          "id": "B_Wall_N5",
+          "x": 329.2,
+          "y": 10,
+          "z": -49,
+          "facing": {
+            "x": 0,
+            "z": -1
+          }
+        },
+        {
+          "id": "B_Wall_S1",
+          "x": 410.8,
+          "y": 10,
+          "z": 49,
+          "facing": {
+            "x": 0,
+            "z": 1
+          }
+        },
+        {
+          "id": "B_Wall_S2",
+          "x": 390.4,
+          "y": 10,
+          "z": 49,
+          "facing": {
+            "x": 0,
+            "z": 1
+          }
+        },
+        {
+          "id": "B_Wall_S3",
+          "x": 370,
+          "y": 10,
+          "z": 49,
+          "facing": {
+            "x": 0,
+            "z": 1
+          }
+        },
+        {
+          "id": "B_Wall_S4",
+          "x": 349.6,
+          "y": 10,
+          "z": 49,
+          "facing": {
+            "x": 0,
+            "z": 1
+          }
+        },
+        {
+          "id": "B_Wall_S5",
+          "x": 329.2,
+          "y": 10,
+          "z": 49,
+          "facing": {
+            "x": 0,
+            "z": 1
+          }
+        }
+      ],
+      "cannon_mounts": [
+        {
+          "id": "B_Cannon_TowerN",
+          "on": "B_Tower_FN",
+          "x": 321,
+          "y": 10,
+          "z": -49,
+          "height": 27.6,
+          "aim": {
+            "x": -1,
+            "z": 0
+          }
+        },
+        {
+          "id": "B_Cannon_TowerS",
+          "on": "B_Tower_FS",
+          "x": 321,
+          "y": 10,
+          "z": 49,
+          "height": 27.6,
+          "aim": {
+            "x": -1,
+            "z": 0
+          }
+        },
+        {
+          "id": "B_Cannon_GateN",
+          "on": "B_Gate",
+          "x": 321,
+          "y": 10,
+          "z": -6,
+          "height": 21.4,
+          "aim": {
+            "x": -1,
+            "z": 0
+          }
+        },
+        {
+          "id": "B_Cannon_GateS",
+          "on": "B_Gate",
+          "x": 321,
+          "y": 10,
+          "z": 6,
+          "height": 21.4,
+          "aim": {
+            "x": -1,
+            "z": 0
+          }
         }
       ]
     }
