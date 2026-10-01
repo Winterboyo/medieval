@@ -38,6 +38,10 @@ local Debris = game:GetService("Debris")
 local TweenService = game:GetService("TweenService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
+-- TwoTeam (CLAUDE.md §4): goods are the TEAM's pooled stockpile, held on the Team
+-- by CastleService, not per-player leaderstats; and nobody can hit a teammate.
+local TWO_TEAM = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("GameMode")).TwoTeam
+
 -- Declared in default.project.json rather than created here, so the remote is
 -- version-controlled instead of appearing at runtime.
 local notifyRemote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("Notify")
@@ -387,7 +391,9 @@ local nodeByPart: { [BasePart]: Node } = {}
 -- exactly this name on a Player and renders its IntValues in the player list.
 -- Free HUD, zero GUI work.
 local function setupPlayer(player: Player)
-	if player:FindFirstChild("leaderstats") then
+	-- TwoTeam keeps goods off the scoreboard on purpose (CLAUDE.md §8): they are
+	-- the team's, and a public column would tell raiders who is rich.
+	if TWO_TEAM or player:FindFirstChild("leaderstats") then
 		return
 	end
 
@@ -436,6 +442,17 @@ local function notifyPlayer(player: Player, text: string, throttleSeconds: numbe
 end
 
 local function counterFor(player: Player, resource: string): IntValue?
+	-- The one accessor every gather, spend and loot goes through, so pointing it at
+	-- the team's Goods is the whole of the pooled stockpile on this side.
+	if TWO_TEAM then
+		local team = player.Team
+		local goods = team and team:FindFirstChild("Goods")
+		local counter = goods and goods:FindFirstChild(resource)
+		if counter and counter:IsA("IntValue") then
+			return counter
+		end
+		return nil
+	end
 	local leaderstats = player:FindFirstChild("leaderstats")
 	local counter = leaderstats and leaderstats:FindFirstChild(resource)
 	if counter and counter:IsA("IntValue") then
@@ -812,7 +829,8 @@ local function findVictim(attacker: Player, character: Model): (Player?, Humanoi
 	local bestDistance = math.huge
 
 	for _, other in Players:GetPlayers() do
-		if other ~= attacker then
+		local teammate = TWO_TEAM and other.Team ~= nil and other.Team == attacker.Team
+		if other ~= attacker and not teammate then
 			local otherCharacter = other.Character
 			local otherRoot = otherCharacter and otherCharacter:FindFirstChild("HumanoidRootPart")
 			local otherHumanoid = otherCharacter and otherCharacter:FindFirstChildOfClass("Humanoid")

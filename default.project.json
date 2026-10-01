@@ -15,6 +15,10 @@
         "$path": "scripts/build-world.luau"
       },
 
+      "Layout": {
+        "$path": "layout.json"
+      },
+
       "Events": {
         "$className": "Folder",
         "SpecialistStolen": {

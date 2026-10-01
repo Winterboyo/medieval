@@ -25,6 +25,9 @@ local Workspace = game:GetService("Workspace")
 local TweenService = game:GetService("TweenService")
 
 local Palette = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Palette"))
+-- TwoTeam: goods are the TEAM's (a Goods folder on your Team), and the bottom-right
+-- panel is your castle rather than a village. Conquest drawing stays as it was.
+local TWO_TEAM = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("GameMode")).TwoTeam
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
@@ -296,7 +299,9 @@ local function drawMatch()
 
 	local half = attr("ZoneHalf")
 	local board = attr("BoardHalf")
-	if typeof(half) == "number" and typeof(board) == "number" and board > 0 then
+	if TWO_TEAM then
+		zoneText.Text = ""
+	elseif typeof(half) == "number" and typeof(board) == "number" and board > 0 then
 		local closed = math.clamp(1 - (half / board), 0, 1)
 		zoneText.Text = if closed <= 0.001
 			then "the whole island is open"
@@ -306,8 +311,52 @@ local function drawMatch()
 	end
 end
 
+local function goodsSource(): Instance?
+	if TWO_TEAM then
+		return player.Team and player.Team:FindFirstChild("Goods")
+	end
+	return player:FindFirstChild("leaderstats")
+end
+
+local function myCastle(): Instance?
+	local castles = Workspace:FindFirstChild("Castles")
+	local id = player.Team and player.Team:GetAttribute("Castle")
+	return if castles and typeof(id) == "string" then castles:FindFirstChild(id) else nil
+end
+
+local function drawCastle()
+	local team = player.Team
+	local castle = myCastle()
+	villageTitle.Text = if team then ("%s castle"):format(team.Name) else "No side yet"
+	keepLabel.Visible = false
+	keepFill.Parent.Visible = false
+	if not castle then
+		villageNext.Text = "Waiting for the castles"
+		wallLabel.Visible = false
+		wallFill.Parent.Visible = false
+		peopleText.Text = ""
+		return
+	end
+	local breached = castle:GetAttribute("Breached") == true
+	villageNext.Text = if castle:GetAttribute("Fallen") == true then "Fallen"
+		elseif breached then "Breached - defend the keep"
+		else "Walls holding"
+	local hp, max = castle:GetAttribute("StructureHP"), castle:GetAttribute("StructureMax")
+	wallLabel.Visible = true
+	wallFill.Parent.Visible = true
+	if typeof(hp) == "number" and typeof(max) == "number" and max > 0 then
+		wallLabel.Text = ("Castle  %d / %d"):format(hp, max)
+		wallFill.Size = UDim2.fromScale(math.clamp(hp / max, 0, 1), 1)
+		wallFill.BackgroundColor3 = if breached then Palette.ALARM else Palette.DAUB_DIM
+	else
+		wallLabel.Text = "Castle"
+		wallFill.Size = UDim2.fromScale(1, 1)
+	end
+	peopleText.Text = if team then ("%d on your side"):format(#team:GetPlayers()) else ""
+end
+
 local function drawGoods()
-	local stats = player:FindFirstChild("leaderstats")
+	local stats = goodsSource()
 	for name, text in goodsText do
 		local counter = stats and stats:FindFirstChild(name)
 		text.Text = if counter and counter:IsA("IntValue") then tostring(counter.Value) else "0"
@@ -315,6 +364,10 @@ local function drawGoods()
 end
 
 local function drawVillage()
+	if TWO_TEAM then
+		drawCastle()
+		return
+	end
 	local base = myBase()
 	if not base then
 		local eliminated = player:GetAttribute("Eliminated") == true
@@ -390,6 +443,35 @@ for _, name in { "Specialists", "Reputation", "Eliminated", "Squad" } do
 end
 
 local function watchStats()
+	if TWO_TEAM then
+		-- Follow whichever team you are on; teams are dealt at every match start.
+		local hooked: Instance? = nil
+		local connections: { RBXScriptConnection } = {}
+		local function rehook()
+			local goods = goodsSource()
+			if goods == hooked then
+				drawGoods()
+				return
+			end
+			for _, c in connections do
+				c:Disconnect()
+			end
+			table.clear(connections)
+			hooked = goods
+			if goods then
+				for _, counter in goods:GetChildren() do
+					if counter:IsA("IntValue") then
+						table.insert(connections, counter.Changed:Connect(drawGoods))
+					end
+				end
+			end
+			drawGoods()
+			drawVillage()
+		end
+		player:GetPropertyChangedSignal("Team"):Connect(rehook)
+		rehook()
+		return
+	end
 	local stats = player:WaitForChild("leaderstats", 10)
 	if not stats then
 		return

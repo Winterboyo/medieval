@@ -36,7 +36,16 @@ local FoldWeighting = require(ServerScriptService:WaitForChild("FoldWeighting"))
 
 local notifyRemote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("Notify")
 
+-- CLAUDE.md §3/§4: TwoTeam is the game; the squads, the fold and the shrinking zone
+-- below are the old free-for-all and stay dormant behind this flag.
+local TWO_TEAM = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("GameMode")).TwoTeam
+
 local LOBBY_SECONDS = 15
+-- TwoTeam: a short match with a hard cap (CLAUDE.md §5 placeholder 12-15 min),
+-- then a short Ended phase and back to the lobby. Conquest kept its 45 minutes
+-- and never came back from Ended; that is part of what stays dormant.
+local TWO_TEAM_MATCH_LENGTH = 13 * 60
+local ENDED_SECONDS = 12
 
 -- The doc says 45-60 minutes. Overridable by a Workspace attribute set before
 -- the server starts, because nobody - including a playtest - wants to sit
@@ -165,8 +174,13 @@ end
 -- ---------------------------------------------------------------- publishing
 local function publish()
 	Workspace:SetAttribute("MatchState", state)
-	Workspace:SetAttribute("MatchClock", math.max(0, math.floor(phaseEndsAt - os.clock())))
-	Workspace:SetAttribute("ZoneHalf", zoneHalf)
+	-- Never publish infinity: Conquest's Ended phase lasted math.huge, and the HUD's
+	-- "%d" clock cannot format it.
+	local left = phaseEndsAt - os.clock()
+	Workspace:SetAttribute("MatchClock", if left == left and left < 1e9 then math.max(0, math.floor(left)) else 0)
+	-- No zone in TwoTeam (layout.json zone: null). Unset means "no boundary" to
+	-- ResourceService's inZone and to the HUD.
+	Workspace:SetAttribute("ZoneHalf", if TWO_TEAM then nil else zoneHalf)
 end
 
 local function enter(nextState: string, seconds: number)
@@ -186,9 +200,138 @@ local function describeLength(seconds: number): string
 end
 
 local function endMatch(reason: string)
-	enter("Ended", math.huge)
+	enter("Ended", if TWO_TEAM then ENDED_SECONDS else math.huge)
 	setZoneVisible(false)
 	announce(reason)
+end
+
+-- ---------------------------------------------------------------- two teams
+-- The two Teams are made by CastleService from layout.json and carry TeamId and
+-- Castle attributes; this file only assigns people to them and decides results.
+local function castleTeams(): { Team }
+	local found: { Team } = {}
+	for _, team in Teams:GetTeams() do
+		if team:GetAttribute("Castle") ~= nil then
+			table.insert(found, team)
+		end
+	end
+	table.sort(found, function(a, b)
+		return tostring(a:GetAttribute("TeamId")) < tostring(b:GetAttribute("TeamId"))
+	end)
+	return found
+end
+
+local function castleOf(team: Team): Instance?
+	local castles = Workspace:FindFirstChild("Castles")
+	local id = team:GetAttribute("Castle")
+	return if castles and typeof(id) == "string" then castles:FindFirstChild(id) else nil
+end
+
+local function stockpileOf(team: Team): number
+	local total = 0
+	local goods = team:FindFirstChild("Goods")
+	if goods then
+		for _, counter in goods:GetChildren() do
+			if counter:IsA("IntValue") then
+				total += counter.Value
+			end
+		end
+	end
+	return total
+end
+
+-- Even sides at the start of every match: shuffle, then deal alternately.
+local function balanceTeams()
+	local sides = castleTeams()
+	if #sides < 2 then
+		return
+	end
+	local everyone = Players:GetPlayers()
+	local rng = Random.new()
+	for i = #everyone, 2, -1 do
+		local j = rng:NextInteger(1, i)
+		everyone[i], everyone[j] = everyone[j], everyone[i]
+	end
+	for index, player in everyone do
+		player.Team = sides[((index - 1) % #sides) + 1]
+	end
+end
+
+-- A castle that falls ends the match for the other side (CLAUDE.md §4). The
+-- Fallen attribute is set by whatever runs the siege (Phase 3); this only listens.
+local function watchCastles()
+	local function hook(castle: Instance)
+		castle:GetAttributeChangedSignal("Fallen"):Connect(function()
+			if castle:GetAttribute("Fallen") ~= true or state ~= "Running" then
+				return
+			end
+			local loser = castle:GetAttribute("Team")
+			for _, team in castleTeams() do
+				if team.Name ~= loser then
+					endMatch(("%s has fallen. %s takes the field."):format(tostring(loser), team.Name))
+					return
+				end
+			end
+			endMatch(("%s has fallen."):format(tostring(loser)))
+		end)
+	end
+	-- Castles are rebuilt whole between matches, so watch the folder, not one set.
+	task.spawn(function()
+		local folder = Workspace:WaitForChild("Castles")
+		local function rewatch(f: Instance)
+			for _, castle in f:GetChildren() do
+				hook(castle)
+			end
+			f.ChildAdded:Connect(hook)
+		end
+		rewatch(folder)
+		Workspace.ChildAdded:Connect(function(child)
+			if child.Name == "Castles" then
+				rewatch(child)
+			end
+		end)
+	end)
+end
+
+-- At the cap: highest total structure HP, then the largest stockpile (CLAUDE.md
+-- §5, placeholder tiebreaker).
+local function endTwoTeamByTimer()
+	local sides = castleTeams()
+	local function score(team: Team): (number, number)
+		local castle = castleOf(team)
+		local hp = castle and castle:GetAttribute("StructureHP")
+		return (if typeof(hp) == "number" then hp else 0), stockpileOf(team)
+	end
+	table.sort(sides, function(a, b)
+		local ha, sa = score(a)
+		local hb, sb = score(b)
+		if ha ~= hb then
+			return ha > hb
+		end
+		return sa > sb
+	end)
+	if #sides < 2 then
+		endMatch("Time.")
+		return
+	end
+	local h1, s1 = score(sides[1])
+	local h2, s2 = score(sides[2])
+	if h1 == h2 and s1 == s2 then
+		endMatch("Time. Neither castle gave ground - a draw.")
+	elseif h1 ~= h2 then
+		endMatch(("Time. %s held more of its castle."):format(sides[1].Name))
+	else
+		endMatch(("Time. Walls even; %s held the bigger stockpile."):format(sides[1].Name))
+	end
+end
+
+-- Everyone back to their own barracks at the start of a match.
+local function respawnAll()
+	for _, player in Players:GetPlayers() do
+		task.spawn(function()
+			player:LoadCharacter()
+		end)
+	end
 end
 
 -- ---------------------------------------------------------------- squads
@@ -404,6 +547,14 @@ local function endByTimer()
 end
 
 local function beginMatch()
+	if TWO_TEAM then
+		matchLength = Workspace:GetAttribute("MatchLength") or TWO_TEAM_MATCH_LENGTH
+		balanceTeams()
+		enter("Running", matchLength)
+		respawnAll()
+		announce(("The siege has begun - %s"):format(describeLength(matchLength)))
+		return
+	end
 	matchLength = Workspace:GetAttribute("MatchLength") or DEFAULT_MATCH_LENGTH
 	zoneHalf = boardHalf()
 	drawZone(zoneHalf)
@@ -415,13 +566,18 @@ end
 
 -- Someone arriving mid-match gets their own squad rather than being dropped into
 -- one. Joining should not silently hand an existing player a worker.
+-- (TwoTeam needs nothing here: the castle Teams are AutoAssignable, so Roblox puts
+-- a mid-match arrival on the shorter side by itself.)
 Players.PlayerAdded:Connect(function(player)
-	if state == "Running" and not squadLedBy(player) then
+	if not TWO_TEAM and state == "Running" and not squadLedBy(player) then
 		newSquad(player)
 	end
 end)
 
 Players.PlayerRemoving:Connect(function(player)
+	if TWO_TEAM then
+		return
+	end
 	for _, squad in squads do
 		local index = table.find(squad.members, player)
 		if index then
@@ -435,7 +591,11 @@ Players.PlayerRemoving:Connect(function(player)
 	resolveWin()
 end)
 
-watchForFallenKeeps()
+if TWO_TEAM then
+	watchCastles()
+else
+	watchForFallenKeeps()
+end
 
 task.spawn(function()
 	zoneHalf = boardHalf()
@@ -454,6 +614,19 @@ task.spawn(function()
 				phaseEndsAt = os.clock() + LOBBY_SECONDS
 			elseif remaining <= 0 then
 				beginMatch()
+			end
+			publish()
+
+		elseif state == "Running" and TWO_TEAM then
+			if remaining <= 0 then
+				endTwoTeamByTimer()
+			end
+			publish()
+
+		elseif state == "Ended" and TWO_TEAM then
+			if remaining <= 0 then
+				enter("Lobby", LOBBY_SECONDS) -- CastleService rebuilds both castles on this
+				announce("Back to the lobby. The next siege starts soon.")
 			end
 			publish()
 

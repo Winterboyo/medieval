@@ -26,6 +26,14 @@
 
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+-- This harness tests the old free-for-all (villages, squads, the fold). In TwoTeam
+-- it would fail every check and hand out resources, so it stays off until it is
+-- rewritten for two teams (Phase 5).
+if require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("GameMode")).TwoTeam then
+	return
+end
 
 if Workspace:GetAttribute("TwoPlayerCheck") ~= true then
 	return
