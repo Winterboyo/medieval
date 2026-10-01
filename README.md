@@ -1,4 +1,10 @@
-Working rules and the 2026-09-28 pivot live in CLAUDE.md. On conflicts over map, match format, win condition or scope, CLAUDE.md wins until this file is updated.
+# Medieval Siege — current project guide
+
+Read `DESIGN.md` for the current two-team game, `AGENTS.md` for working rules and art tasks, and `layout.json` for approved exterior coordinates. `CLAUDE.md` points Claude Code to those files. The current Keep win, carried-resource economy, tunnel, workshop specialists, and fixed ballista are not implemented by the old mode code below. The 2026-09-30 interior layout also needs revision before those pieces are built.
+
+The original README is preserved below as a historical guide to the old Conquest mode and its development workflow. Its descriptions of the 16-plot island, build phases, last-squad-standing win, zone shrink, and two-player test do not specify the current game.
+
+## Archived Conquest guide
 
 # Medieval Land
 

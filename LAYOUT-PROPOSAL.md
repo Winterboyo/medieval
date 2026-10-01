@@ -1,4 +1,6 @@
-# Layout proposal — two mirrored castles (CLAUDE.md §6.2)
+# Layout proposal — two mirrored castles (historical 2026-09-30 proposal)
+
+**Current-use note (2026-10-01):** This records the 2026-09-30 baseline. The user has since approved `MAP-REVISION-PROPOSAL.md` for the first in-game visual preview; its larger castles, road, cover, tunnel routes, and node moves must be migrated into `layout.json` before Blender work. The interior addendum below is superseded by `DESIGN.md`: the Keep is damageable, storage is a separate part, a tunnel and fixed ballista are required, and cannon mounts are parked. Propose revised interior coordinates before building those changed pieces. The present `layout.json` still contains the old interior fields.
 
 **Status: APPROVED 2026-09-30.** The data is now `layout.json`. The old 16-plot island
 export was renamed to `layout.old-island.json` (reference only). Next: rebuild the Blender
