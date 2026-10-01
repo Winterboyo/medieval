@@ -172,6 +172,8 @@ end
 -- The layout is in world studs. Each castle is authored around its centre with
 -- "forward" (f) pointing at its gate; team B's is team A's mirrored, which the
 -- layout already did, so here everything is placed straight from world numbers.
+local buildInterior: (Model, any, (number, number, number) -> CFrame, (number, number) -> CFrame, number) -> ()
+
 local function buildCastle(into: Instance, c: any, team: Team)
 	local castle = Instance.new("Model")
 	castle.Name = c.id
@@ -234,6 +236,63 @@ local function buildCastle(into: Instance, c: any, team: Team)
 	local door = structure(castle, g.door_id, "GateDoor")
 	part(door, "Body", Vector3.new(0.8, GATE_OPEN_H, GATE_OPEN_W - 0.2), at(gx + fx * 1.5, g.z, GATE_OPEN_H / 2), TIMBER)
 
+	-- layout.json v2 (2026-10-01) has NO interior yet: the keep, stockpile, barracks,
+	-- workshop and mounts await an approved interior proposal. Build the shell and the
+	-- temporary preview spawns only; the interior code below runs when they return.
+	if c.keep then
+		buildInterior(castle, c, at, facingRot, fx)
+	end
+
+	-- the team respawns inside its own barracks (v1.1) or, until an interior exists, at
+	-- the layout's clearly marked temporary preview spawns in the front courtyard
+	for _, sp in (c.spawn_points or c.temporary_preview_spawns or {}) do
+		local spawn = Instance.new("SpawnLocation")
+		spawn.Name = sp.id
+		spawn.Anchored = true
+		spawn.Size = Vector3.new(4, 0.4, 4)
+		spawn.CFrame = at(sp.x, sp.z, 0.2)
+		spawn.Neutral = false
+		spawn.AllowTeamChangeOnTouch = false
+		spawn.TeamColor = team.TeamColor
+		spawn.Color = team.TeamColor.Color
+		spawn.Transparency = 0.4
+		spawn.Duration = 3
+		spawn.Material = Enum.Material.SmoothPlastic
+		spawn:SetAttribute("Temporary", c.spawn_points == nil)
+		spawn.Parent = castle
+	end
+
+	-- The imported battlefield (Workspace.Battlefield, assets/map/battlefield.fbx) carries
+	-- the castle's look and collision. When it is present the grey placeholders stay as
+	-- invisible, non-colliding stand-ins that keep the structure names and HP attributes.
+	if Workspace:FindFirstChild("Battlefield") then
+		for _, d in castle:GetDescendants() do
+			if d:IsA("BasePart") and not d:IsA("SpawnLocation") and d.Name ~= "Floor" then
+				d.Transparency = 1
+				d.CanCollide = false
+			end
+		end
+	end
+
+	-- totals the HUD and the tiebreaker read
+	local total, max = 0, 0
+	for _, child in castle:GetChildren() do
+		local h, m = child:GetAttribute("Health"), child:GetAttribute("MaxHealth")
+		if typeof(h) == "number" and typeof(m) == "number" then
+			total += h
+			max += m
+		end
+	end
+	castle:SetAttribute("StructureHP", total)
+	castle:SetAttribute("StructureMax", max)
+	return castle
+end
+
+-- The 2026-09-30 interior (layout.json v1.1): keep with the king's storage, barracks,
+-- workshop and cannon mounts. Stale for the current design; kept for when a revised
+-- interior layout supplies these fields again.
+buildInterior = function(castle: Model, c: any, at: (number, number, number) -> CFrame,
+	facingRot: (number, number) -> CFrame, fx: number)
 	-- the king's keep: hollow, door toward the gate; cannot be destroyed
 	local k = c.keep
 	local keep = Instance.new("Model")
@@ -311,35 +370,6 @@ local function buildCastle(into: Instance, c: any, team: Team)
 		part(m, "Barrel", Vector3.new(4.5, 1.2, 1.2), at(cm.x, cm.z, cm.height + 1.75) * rot * CFrame.new(0.6, 0, 0), IRON)
 	end
 
-	-- the team respawns inside its own barracks
-	for _, sp in c.spawn_points do
-		local spawn = Instance.new("SpawnLocation")
-		spawn.Name = sp.id
-		spawn.Anchored = true
-		spawn.Size = Vector3.new(4, 0.4, 4)
-		spawn.CFrame = at(sp.x, sp.z, 0.2)
-		spawn.Neutral = false
-		spawn.AllowTeamChangeOnTouch = false
-		spawn.TeamColor = team.TeamColor
-		spawn.Color = team.TeamColor.Color
-		spawn.Transparency = 0.4
-		spawn.Duration = 3
-		spawn.Material = Enum.Material.SmoothPlastic
-		spawn.Parent = castle
-	end
-
-	-- totals the HUD and the tiebreaker read
-	local total, max = 0, 0
-	for _, child in castle:GetChildren() do
-		local h, m = child:GetAttribute("Health"), child:GetAttribute("MaxHealth")
-		if typeof(h) == "number" and typeof(m) == "number" then
-			total += h
-			max += m
-		end
-	end
-	castle:SetAttribute("StructureHP", total)
-	castle:SetAttribute("StructureMax", max)
-	return castle
 end
 
 local function buildCastles()
