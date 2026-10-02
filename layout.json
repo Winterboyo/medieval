@@ -1,7 +1,7 @@
 {
   "meta": {
     "status": "APPROVED FOR AN IN-GAME VISUAL PREVIEW 2026-10-01 (MAP-REVISION-PROPOSAL.md). Exterior battlefield only; subject to revision after the in-game review.",
-    "interior_status": "NOT DEFINED. The 2026-09-30 interior (v1.1, in git history) is stale and was removed. A new interior proposal is required before Keep, stockpile, barracks, workshop, spawn or ballista positions exist. temporary_preview_spawns are for the visual review only.",
+    "interior_status": "NOT DEFINED. The 2026-09-30 interior (v1.1, in git history) is stale and was removed. CASTLE-INTERIOR-V2-PROPOSAL.md proposes a Keep with an internal stockpile room, barracks, four specialist buildings, spawn and ballista positions; its coordinates await user approval. temporary_preview_spawns are for the visual review only.",
     "version": "2.0",
     "date": "2026-10-01",
     "units": "studs",
@@ -476,7 +476,7 @@
         "max_x": -280,
         "min_z": -87.8,
         "max_z": 87.8,
-        "note": "Keep and separate stockpile go here once an interior proposal is approved; their entry points must be at least 60 studs of courtyard route from the tunnel exit."
+        "note": "The proposed Keep contains the stockpile room. The Keep entrance must remain at least 60 studs of courtyard route from the tunnel exit; interior coordinates await user approval."
       },
       "temporary_preview_spawns": [
         {
@@ -517,7 +517,7 @@
         }
       ],
       "interior": null,
-      "interior_note": "NOT DEFINED. Keep, stockpile, barracks, workshop, spawns, tower access and ballista mounts need a new interior proposal (DESIGN.md open decisions). v1.1 positions are in git history and are stale."
+      "interior_note": "NOT DEFINED. CASTLE-INTERIOR-V2-PROPOSAL.md has measured Keep, internal stockpile room, barracks, specialist, spawn, tower access and ballista positions awaiting user approval. v1.1 positions are stale."
     },
     {
       "id": "Castle_B",
@@ -946,7 +946,7 @@
         "max_x": 367.8,
         "min_z": -87.8,
         "max_z": 87.8,
-        "note": "Keep and separate stockpile go here once an interior proposal is approved; their entry points must be at least 60 studs of courtyard route from the tunnel exit."
+        "note": "The proposed Keep contains the stockpile room. The Keep entrance must remain at least 60 studs of courtyard route from the tunnel exit; interior coordinates await user approval."
       },
       "temporary_preview_spawns": [
         {
@@ -987,7 +987,7 @@
         }
       ],
       "interior": null,
-      "interior_note": "NOT DEFINED. Keep, stockpile, barracks, workshop, spawns, tower access and ballista mounts need a new interior proposal (DESIGN.md open decisions). v1.1 positions are in git history and are stale."
+      "interior_note": "NOT DEFINED. CASTLE-INTERIOR-V2-PROPOSAL.md has measured Keep, internal stockpile room, barracks, specialist, spawn, tower access and ballista positions awaiting user approval. v1.1 positions are stale."
     }
   ],
   "central_road": {

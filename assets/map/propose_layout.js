@@ -117,10 +117,10 @@ function castle(c, sign) {
     towers, wall_sections: sections,
     tunnel_exit: { id: `${T}_Tunnel_Exit`, ...W(TUNNEL_A.exit.x - castleA.center.x, TUNNEL_A.exit.z) },
     reserved_rear_half: { min_x: r1(rearX[0]), max_x: r1(rearX[1]), min_z: -INNER, max_z: INNER,
-      note: "Keep and separate stockpile go here once an interior proposal is approved; their entry points must be at least 60 studs of courtyard route from the tunnel exit." },
+      note: "The proposed Keep contains the stockpile room. The Keep entrance must remain at least 60 studs of courtyard route from the tunnel exit; interior coordinates await user approval." },
     temporary_preview_spawns: spawns.map((s, i) => ({ id: `${T}_PreviewSpawn_${i + 1}`, ...s })),
     interior: null,
-    interior_note: "NOT DEFINED. Keep, stockpile, barracks, workshop, spawns, tower access and ballista mounts need a new interior proposal (DESIGN.md open decisions). v1.1 positions are in git history and are stale.",
+    interior_note: "NOT DEFINED. CASTLE-INTERIOR-V2-PROPOSAL.md has measured Keep, internal stockpile room, barracks, specialist, spawn, tower access and ballista positions awaiting user approval. v1.1 positions are stale.",
   };
 }
 const castles = [castle(castleA, +1), castle({ ...castleA, id: "Castle_B", team: "B", center: mirror(castleA.center) }, -1)];
@@ -166,7 +166,7 @@ const tunnels = [["A", 1], ["B", -1]].map(([side, sx]) => {
 const layout = {
   meta: {
     status: "APPROVED FOR AN IN-GAME VISUAL PREVIEW 2026-10-01 (MAP-REVISION-PROPOSAL.md). Exterior battlefield only; subject to revision after the in-game review.",
-    interior_status: "NOT DEFINED. The 2026-09-30 interior (v1.1, in git history) is stale and was removed. A new interior proposal is required before Keep, stockpile, barracks, workshop, spawn or ballista positions exist. temporary_preview_spawns are for the visual review only.",
+    interior_status: "NOT DEFINED. The 2026-09-30 interior (v1.1, in git history) is stale and was removed. CASTLE-INTERIOR-V2-PROPOSAL.md proposes a Keep with an internal stockpile room, barracks, four specialist buildings, spawn and ballista positions; its coordinates await user approval. temporary_preview_spawns are for the visual review only.",
     version: "2.0", date: "2026-10-01", units: "studs",
     coords: "Roblox: ground plane (x, z), height y. Blender: (x, y, z) -> (x, -z, y).",
     compass: "-Z = north, +X = east. Team A west, team B east.",
