@@ -12,6 +12,11 @@ The first list is parked. The 2026-10-01 entries below are user-chosen direction
 - **Tunnel placement revision.** The entrance belongs outside each castle in a cover zone; the exit is inside, far from both the stockpile and Keep. Its geometry must first be added to an approved layout revision.
 - **Additional attacker siege tools.** The user wants tools beyond the ram eventually. The ram is the first dedicated tool for gates and walls; hand-tool wall damage remains inefficient. Names, targets, and mechanics for the others are not chosen.
 
+## Presentation tasks after the blacksmith interior
+
+- **Lived-in interiors for the other current specialists (2026-10-02).** Give the Fletcher, Alchemist, and Carpenter separate, believable working rooms with equipment and storage that explain each craft at a glance. Use the same stylized Roblox proportions and readable silhouettes as the blacksmith interior. Design and review one building at a time; keep their approved layout footprints and doors.
+- **Movement and atmosphere presentation (2026-10-02).** Create an original, energetic running animation inspired by the motion feel in the user's Dungeon Quest clip, without copying its animation. Review cadence and transitions from a continuous side-view recording. In Roblox, pair it with sunlight and interior shadows, weather, subtle ground and forge VFX, and sound. Tune readability and performance in a real playtest. These are separate animation, lighting, and effects tasks; the Blender castle builder only makes static geometry.
+
 ## Later specialist ideas — not in the first playable siege
 
 - **Mason:** a possible stoneworking and wall-repair role. Decide whether it adds enough beyond direct player repairs before including it.

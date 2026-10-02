@@ -42,6 +42,12 @@ SRGB = {
     "IRON": (61, 61, 61),           # the dark of the gate opening: windows, bands, guns
     "CLOTH": (178, 178, 178),       # banner cloth, neutral so the team colour tints it
     "EMBLEM": (255, 255, 255),      # banner emblem: tints to the full team colour
+    # Forge reference photo: dark stone/wood and fire samples, lifted slightly so
+    # the room remains legible at Roblox's normal third-person camera distance.
+    "FORGE_STONE": (103, 95, 87),
+    "FORGE_WOOD": (130, 104, 77),
+    "EMBER": (197, 103, 52),
+    "FIRE": (255, 200, 97),
 }
 TEAM_A = (184, 65, 58)              # layout.json teams[0].banner_color_placeholder, preview only
 TEAM_B = (58, 95, 184)
@@ -802,19 +808,88 @@ def build_specialist(mat, role, hx, hy, door_side, ram_side=0, state="intact"):
             for y0, y1 in ((-hy + wt, -6.0), (6.0, hy - wt)):
                 p.box(x0, x1, y0, y1, 0.7, h, "STONE")
             p.box(x0, x1, -6.0, 6.0, 8.7, h, "TIMBER")
+        elif role == "Blacksmith_Forge" and side > 0:
+            # Three high openings admit the shafts of daylight in the reference.
+            p.box(x0, x1, -hy + wt, hy - wt, 0.7, 6.2, "STONE")
+            p.box(x0, x1, -hy + wt, hy - wt, 9.4, h, "STONE")
+            for ya, yb in ((-hy + wt, -9), (-5, -2), (2, 5), (9, hy - wt)):
+                p.box(x0, x1, ya, yb, 6.2, 9.4, "STONE")
+            for ya, yb in ((-9, -5), (-2, 2), (5, 9)):
+                p.box(x0 - 0.1, x1 + 0.1, ya, yb, 7.65, 7.95, "TIMBER")
+                ym = (ya + yb) / 2
+                p.box(x0 - 0.1, x1 + 0.1, ym - 0.12, ym + 0.12, 6.2, 9.4, "TIMBER")
         else:
             p.box(x0, x1, -hy + wt, hy - wt, 0.7, h, "STONE")
-    if state == "intact":
+    if role == "Blacksmith_Forge":
+        # Separate roof mesh lets the room be inspected and later camera-faded.
+        pass
+    elif state == "intact":
         p.gable(-hx - 0.6, hx + 0.6, -hy - 0.8, hy + 0.8, h, 16.5, "SLATE")
     else:
         p.gable(-hx - 0.6, 0.0, -hy - 0.8, hy + 0.8, h, 16.5, "SLATE")
         p.rubble(1, hx - 1, -hy + 1, hy - 1, 10, 1.2, 1.0, seed=230 + len(role))
     back_y = -door_side * (hy - 3.8)
     if role == "Blacksmith_Forge":
-        p.box(-hx + 2, -hx + 8, back_y - 2, back_y + 2, 0.7, 3.2, "STONE_DARK")
-        p.box(-hx + 4, -hx + 6, back_y - 1, back_y + 1, 3.0, 18.0, "STONE_DARK")
-        p.box(-1.5, 0.0, back_y - 1, back_y + 1, 0.7, 2.0, "TIMBER")
-        p.box(-2.0, 0.5, back_y - 1.4, back_y + 1.4, 2.0, 2.7, "IRON")
+        # One broad forge/worktable is the focal point from the front doorway.
+        # Keep x=-4..4 near the door clear for a 5-stud avatar.
+        p.box(-hx + 1.02, -hx + 1.14, -hy + 1, hy - 1, 0.72, 9.8, "FORGE_STONE")
+        p.box(-hx + 1, hx - 1, -hy + 1.02, -hy + 1.14, 0.72, 9.8, "FORGE_STONE")
+        for ya, yb in ((-hy + 1, -9), (-5, -2), (2, 5), (9, hy - 1)):
+            p.box(hx - 1.14, hx - 1.02, ya, yb, 0.72, 9.8, "FORGE_STONE")
+        for x0, x1, y0, y1 in ((-10, -2, -9.5, -3.7), (5.5, 11.5, -10.5, -7.0)):
+            p.box(x0, x1, y0, y1, 0.72, 1.15, "STONE_DARK")
+        # Central fire table: heavy timber base, stone bed, iron grate and coals.
+        for x in (-9.4, -2.6):
+            for y in (-8.2, -3.8):
+                p.box(x - 0.42, x + 0.42, y - 0.42, y + 0.42, 0.72, 2.8, "FORGE_WOOD")
+        p.box(-10.2, -1.8, -9.0, -3.0, 2.6, 3.15, "FORGE_WOOD")
+        p.box(-9.5, -2.5, -8.3, -3.7, 3.15, 3.55, "STONE_DARK")
+        p.box(-9.0, -3.0, -7.8, -4.2, 3.55, 3.77, "EMBER")
+        for x in (-8.5, -6.5, -4.5):
+            p.box(x - 0.12, x + 0.12, -8.0, -4.0, 3.8, 3.98, "IRON")
+        for x, y, r, top in ((-8, -6.6, 0.95, 5.5), (-6, -5.2, 1.15, 6.2), (-4.5, -7, 0.72, 5.15)):
+            p.cone(x, y, 4.0, r, top, 5, "FIRE", rot=0.2)
+        p.frustum(-6, -6, 7.0, 4.3, 9.6, 1.8, 4, "IRON", rot=math.pi / 4)
+        p.box(-7.6, -4.4, -7.6, -4.4, 9.2, 19.0, "FORGE_STONE")
+        # Anvil and quench barrel occupy the right of the room, leaving a walk lane.
+        p.box(5.8, 7.6, -2.8, -1.0, 0.72, 2.35, "FORGE_WOOD")
+        p.box(5.0, 8.5, -3.35, -0.45, 2.35, 2.85, "IRON")
+        p.box(5.7, 7.9, -2.8, -1.0, 2.85, 3.18, "IRON")
+        p.frustum(9.6, 5.2, 0.72, 1.5, 3.5, 1.5, 8, "FORGE_WOOD")
+        for z in (1.2, 3.0):
+            p.frustum(9.6, 5.2, z, 1.55, z + 0.18, 1.55, 8, "IRON")
+        # Rear bench, tool rack, large tongs and a few visibly forged blanks.
+        p.box(4.6, 11.5, -11.7, -9.0, 2.35, 2.78, "FORGE_WOOD")
+        for x in (5.0, 11.1):
+            p.box(x - 0.3, x + 0.3, -11.3, -9.4, 0.72, 2.35, "FORGE_WOOD")
+        p.box(4.7, 11.5, -12.55, -12.15, 5.2, 5.6, "FORGE_WOOD")
+        for x in (5.5, 7.5, 9.5, 11.0):
+            p.box(x - 0.1, x + 0.1, -12.25, -11.95, 3.4, 5.25, "IRON")
+            p.box(x - 0.4, x + 0.4, -12.25, -11.95, 3.2, 3.5, "IRON")
+        for x in (6.0, 8.5, 10.5):
+            p.box(x - 0.45, x + 0.45, -11.1, -10.75, 2.78, 2.95, "IRON")
+        # Ore/coal crate and a side-wall tool rail give the room a worked-in edge.
+        p.box(-11.3, -7.2, 4.2, 8.0, 0.72, 1.05, "FORGE_WOOD")
+        for x0, x1 in ((-11.3, -10.95), (-7.55, -7.2)):
+            p.box(x0, x1, 4.2, 8.0, 1.05, 2.2, "FORGE_WOOD")
+        for y0, y1 in ((4.2, 4.55), (7.65, 8.0)):
+            p.box(-11.3, -7.2, y0, y1, 1.05, 2.2, "FORGE_WOOD")
+        for x, y in ((-10.2, 5.1), (-8.5, 5.7), (-9.7, 7.0)):
+            p.frustum(x, y, 1.4, 0.7, 2.65, 0.45, 5, "IRON")
+        p.box(-12.65, -12.35, -2.5, 5.0, 5.1, 5.55, "FORGE_WOOD")
+        for y in (-1.0, 1.4, 3.8):
+            p.box(-12.35, -12.1, y - 0.1, y + 0.1, 3.1, 5.1, "IRON")
+            p.box(-12.35, -12.1, y - 0.38, y + 0.38, 3.0, 3.3, "IRON")
+        # Timber rafters under the roof expose the tall ceiling when viewed inside.
+        def beam(a, b, width):
+            va, vb = Vector(a), Vector(b)
+            d = vb - va
+            m = Matrix.Translation((va + vb) / 2) @ d.to_track_quat("Z", "Y").to_matrix().to_4x4()
+            p.box(-width/2, width/2, -width/2, width/2, -d.length/2, d.length/2, "FORGE_WOOD", m)
+        for x in (-10.5, 0.0, 10.5):
+            beam((x, -13, 10.5), (x, 0, 16.0), 0.55)
+            beam((x, 0, 16.0), (x, 13, 10.5), 0.55)
+            p.box(x - 0.28, x + 0.28, -12.5, 12.5, 10.3, 10.85, "FORGE_WOOD")
     elif role == "Fletcher":
         p.box(-hx + 2, hx - 2, back_y - 1.2, back_y + 1.2, 2.3, 2.7, "TIMBER")
         for x in (-hx + 4, -hx + 8, -hx + 12):
@@ -829,6 +904,31 @@ def build_specialist(mat, role, hx, hy, door_side, ram_side=0, state="intact"):
         for y in (back_y - 1.4, back_y, back_y + 1.4):
             p.along_x(-hx + 2, y, 0.95, 7.0, 0.5, 0.5, 6, "TIMBER")
     return p.finish(role + suffix(state), mat)
+
+
+def build_blacksmith_roof(mat, hx, hy, state="intact"):
+    """Thin pitched roof exposes rafters instead of capping the room flat."""
+    p = Piece()
+    if state == "rubble":
+        p.rubble(-hx + 2, hx - 2, -hy + 2, hy - 2, 8, 1.3, 0.5, seed=420,
+                 cols=("SLATE",))
+        return p.finish("Blacksmith_Forge_Roof_Rubble", mat)
+    slope_y, rise = hy + 0.8, 6.0
+    slope_len = math.hypot(slope_y, rise)
+    x1 = hx + 0.6 if state == "intact" else 0.0
+    for side in (-1, 1):
+        m = (Matrix.Translation((0, side * slope_y / 2, 13.5))
+             @ Matrix.Rotation(-side * math.atan2(rise, slope_y), 4, "X"))
+        p.box(-hx - 0.6, x1, -slope_len / 2, slope_len / 2,
+              -0.28, 0.28, "SLATE", m)
+    # Gable ends close the room while preserving the high inside roofline.
+    for x in (-hx + 0.2, x1 - 0.2):
+        width = 0.35
+        vs = [(x-width/2, -hy, 10.5), (x-width/2, hy, 10.5),
+              (x-width/2, 0, 16.2), (x+width/2, -hy, 10.5),
+              (x+width/2, hy, 10.5), (x+width/2, 0, 16.2)]
+        p._add(vs, [(0,1,2), (5,4,3), (0,3,4,1), (1,4,5,2), (2,5,3,0)], "STONE")
+    return p.finish("Blacksmith_Forge_Roof" + suffix(state), mat)
 
 
 def build_ballista(mat, state="intact"):
@@ -1174,7 +1274,10 @@ def build_meshes(mat, bmat, C, tunnel_width):
             ram_side = 1 if "ram_opening" in s and s["ram_opening"]["x"] == s["max_x"] else 0
             name = "Blacksmith_Forge" if role == "Blacksmith" else role
             me = build_specialist(mat, name, hx, hy, door_side, ram_side, state)
-            meshes[me.name] = me
+            meshes[name + suffix(state)] = me
+            if role == "Blacksmith":
+                roof = build_blacksmith_roof(mat, hx, hy, state)
+                meshes["Blacksmith_Forge_Roof" + suffix(state)] = roof
     for fn in (build_gate, build_stockpile, build_ram, build_scaffold, build_tower_ladder):
         me = fn(mat)
         meshes[me.name] = me
@@ -1255,6 +1358,8 @@ def build():
     for s in I["specialists"]:
         name = "Blacksmith_Forge" if s["role"] == "Blacksmith" else s["role"]
         place(A, s["id"], meshes[name], rect_c(s), 0)
+        if s["role"] == "Blacksmith":
+            place(A, s["id"] + "_Roof", meshes["Blacksmith_Forge_Roof"], rect_c(s), 0)
     c = I["ballista_mount"]
     place(A, c["id"], meshes["Ballista"], loc(c, c["y"] - gy),
           plus_x_rot(c["aim"]["x"], c["aim"]["z"]))
