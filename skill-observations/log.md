@@ -37,3 +37,18 @@ Observations captured during task-oriented work.
 **Suggested improvement:** Before modeling, separate image composition from playable geometry, preserve mechanic-critical gathering space, propose measured mirrored placements, run clearance checks, and flag illustrative elements that are outside the game scope.
 
 **Principle:** A cinematic image is a visual goal; a playable map needs explicit dimensions, routes, and collision checks.
+
+### Observation 3: Preserve source identifiers in shared 3D scenes
+
+**Status:** OPEN
+**Date:** 2026-10-01
+**Session context:** Updating a layout-driven Blender castle builder inside a scene that already contained similarly named objects.
+**Skill:** New skill candidate: layout-driven Blender asset validation
+**Type:** open-source
+**Phase/Area:** Generated-object identity and verification
+
+**Issue:** Blender automatically suffixed new object names when another scene already used the same layout-derived names, so mirror validation by object name falsely failed even though the geometry was placed correctly.
+
+**Suggested improvement:** Store a stable source identifier in a custom object property, use that property for mirror and export checks, and treat the Blender display name as advisory. Validate openings and passages with geometric rays after building.
+
+**Principle:** When a tool may rewrite display names, keep machine-readable source IDs separate from presentation names.

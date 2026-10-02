@@ -1,29 +1,27 @@
 """Siege castle kit, after references/castle-1.jpg (towers and roofs also castle-2.jpg),
-built in its own Blender scene ("Castle") and assembled from layout.json (v1.1).
+built in its own Blender scene ("Castle") from the approved layout.json v2.1.
 
 Run inside Blender with __file__ set, then bpy.app.driver_namespace["castle"]["build"]().
 
-Pieces (CLAUDE.md §4, §11), each its own named object in Castle_Kit:
+Pieces (DESIGN.md and AGENTS.md), each its own named object in Castle_Kit:
   Wall_Segment            one 20.4-stud bay: crenellated parapet on corbels
-  Wall_Corner_Tower       rear tower: two-stage drum, corbels, slate cone
-  Wall_Corner_Tower_Gun   front tower: same body, open crenellated gun platform on top
+  Wall_Corner_Tower       two-stage drum, corbels, slate cone and accessible deck
   Gate, Gate_Door         gatehouse with arched opening and corner turrets; timber door
-  Keep                    the king's keep: hollow, arched door, corner turrets
-  King_Storage            chests, crates, barrels and sacks: the team's stockpile
+  Keep                    damageable 44 x 44 keep with an internal stockpile room
+  Stockpile               chests and goods inside that room, with a clear interaction aisle
   Barracks                hollow stone hall with a slate roof; the team spawns inside
-  Workshop                open-fronted forge: hearth and chimney, anvil, bench, timber
-  Cannon                  defensive gun on a timber carriage, aimed along +X
+  Blacksmith, Alchemist, Fletcher, Carpenter: separate crafting buildings
+  Ballista                fixed gatehouse defense, aimed along +X
   Battering_Ram           roofed ram on wheels, iron head toward +X
-  Siege_Cannon            big gun on a heavy wheeled carriage, aimed along +X
+  Tower_Ladder            access to a corner-tower fighting deck
   Scaffold                timber scaffolding for one wall bay, shown during repair
   Banner                  hanging banner; neutral cloth tinted by Roblox's part Color
 Damage states (same footprint, swap in place): <Piece>_Damaged and <Piece>_Rubble for
-Wall_Segment, Wall_Corner_Tower, Wall_Corner_Tower_Gun, Gate_Door, Cannon, Workshop,
-Barracks.
+Wall_Segment, Wall_Corner_Tower, Gate_Door, Keep, Barracks, and specialist buildings.
 
-Assembly (Castle_Assembly) is team A's castle from layout.json: its 19 wall sections,
-4 towers (front two are gun platforms), gate, keep with the king's storage, barracks,
-workshop and 4 cannons, in castle-local Blender coordinates (gate toward +X).
+Castle_Assembly is team A's layout in castle-local Blender coordinates (gate toward
++X). Castle_Assembly_B is its exact x-axis mirror, checked against team B's layout.
+The kit and both assemblies are previews; this script does not export unless asked.
 
 1 unit = 1 stud. Flat shading, per-face colours (CORNER byte colour "Col"), every mesh
 triangulated with outward normals (Roblox renders one side only).
@@ -46,15 +44,16 @@ SRGB = {
     "EMBLEM": (255, 255, 255),      # banner emblem: tints to the full team colour
 }
 TEAM_A = (184, 65, 58)              # layout.json teams[0].banner_color_placeholder, preview only
+TEAM_B = (58, 95, 184)
 STATES = ("intact", "damaged", "rubble")
 
-BAY = 20.4                          # wall bay = the code's WALL_BLOCK length
+BAY = 20.4                          # validated against layout.json at build time
 WALL_T = 4.0                        # wall thickness
-WALL_H = 11.0                       # walkway height (the code's WALL_BLOCK height)
+WALL_H = 16.0                       # taller silhouette for the enlarged ring
 TOWER_R = 7.0
 TOWER_SIDES = 16
-TOWER_TOP = 25.0                    # top of the shaft, under the battlement band (wall top is 14.4)
-GATE_HW, GATE_D, GATE_H = 12.0, 5.0, 20.0          # gatehouse half width, half depth, roof walk
+TOWER_TOP = 36.0                    # upper drum, roof tip about 58 studs
+GATE_HW, GATE_D, GATE_H = 12.0, 5.0, 20.0       # roof deck 21.4 matches layout ballista y=31.4
 ARCH_HW, ARCH_SPRING = 5.0, 9.0                    # gate opening 10 wide, 14 to the crown
 
 
@@ -375,13 +374,27 @@ def build_tower(mat, state="intact", gun=False):
     else:
         # castle-1's roof: a thick rolled eave overhanging the drum, then the shingled
         # cone, a dormer facing out, and a thin iron finial.
+        # A narrow annular fighting deck below the eave keeps the four roofed towers
+        # usable without replacing their silhouette with open cannon platforms.
+        deck_z, inner_r, outer_r = top - 4.2, ru - 0.2, ru + 3.0
+        for k in range(n):
+            a0, a1 = 2 * math.pi * k / n, 2 * math.pi * (k + 1) / n
+            verts = [(math.cos(a) * rr, math.sin(a) * rr, z)
+                     for z in (deck_z - 0.35, deck_z) for rr in (inner_r, outer_r)
+                     for a in (a0, a1)]
+            p._add(verts, [(0, 2, 3, 1), (4, 5, 7, 6), (0, 1, 5, 4),
+                           (2, 6, 7, 3), (0, 4, 6, 2), (1, 3, 7, 5)], "STONE")
+        for k in range(0, n, 2):
+            a = 2 * math.pi * (k + 0.5) / n
+            m = Matrix.Translation((math.cos(a) * (outer_r - 0.2), math.sin(a) * (outer_r - 0.2), deck_z)) @ Matrix.Rotation(a, 4, "Z")
+            p.box(-0.4, 0.4, -0.9, 0.9, 0, 1.8, "STONE", m)
         eave = floor
         rr = ru + 2.9
         p.frustum(0, 0, eave - 0.3, ru + 1.4, eave + 0.3, rr, n, "SLATE")         # underside of the brim
         p.frustum(0, 0, eave + 0.3, rr, eave + 1.1, rr - 0.15, n, "SLATE")        # rolled lip
         roof_top = eave + 1.1 + 15.0
         if state == "intact":
-            p.shingle_cone(0, 0, eave + 1.0, rr - 0.2, roof_top, seed=101, tile_w=3.4, tile_h=3.5, step=2.2)
+            p.shingle_cone(0, 0, eave + 1.0, rr - 0.2, roof_top, seed=101, tile_w=3.8, tile_h=3.5, step=2.5)
             p.cone(0, 0, roof_top - 0.4, 0.3, roof_top + 3.0, 6, "IRON")         # finial
             p.frustum(0, 0, roof_top + 0.6, 0.5, roof_top + 1.2, 0.5, 6, "IRON")  # its knop
             # dormer on the outward face, a third of the way up the roof
@@ -398,7 +411,7 @@ def build_tower(mat, state="intact", gun=False):
             p.gable(-1.25, 1.25, -1.4, 1.1, 1.9, 2.9, "SLATE")                   # its little roof
             p.m = prev
         else:
-            p.shingle_cone(0, 0, eave + 1.0, rr - 0.2, roof_top, seed=101, tile_w=3.4, tile_h=3.5, step=2.2,
+            p.shingle_cone(0, 0, eave + 1.0, rr - 0.2, roof_top, seed=101, tile_w=3.8, tile_h=3.5, step=2.5,
                            top=0.42)   # top shot away
             for k in range(5):                                                  # broken rafters through the hole
                 a = 2 * math.pi * k / 5 + 0.3
@@ -527,15 +540,22 @@ def build_door(mat, state="intact"):
 
 
 # ------------------------------------------------------------------ keep and the king's storage
-KEEP_HX, KEEP_HY, KEEP_H = 12.0, 14.0, 20.0       # half depth (door on +X), half width, wall height
-KEEP_DOOR_HW, KEEP_DOOR_SPRING = 3.0, 6.2
+KEEP_HX, KEEP_HY, KEEP_H = 22.0, 22.0, 28.0
+KEEP_DOOR_HW, KEEP_DOOR_SPRING = 5.0, 7.0
 
 
-def build_keep(mat):
-    """Hollow, so raiders can walk in to the king's storage. Door on +X."""
+def build_keep(mat, room, state="intact"):
+    """The 44 x 44 hollow Keep; local +X door, stockpile room in its rear-south corner."""
     p = Piece()
     hx, hy, h, wt = KEEP_HX, KEEP_HY, KEEP_H, 1.6
     p.box(-hx - 0.5, hx + 0.5, -hy - 0.5, hy + 0.5, 0, 1.2, "STONE_DARK")       # plinth = floor
+    if state == "rubble":
+        for x0, x1 in ((-hx, -hx + wt), (hx - wt, hx)):
+            p.box(x0, x1, -hy, hy, 1.2, 5.0, "STONE")
+        for y0, y1 in ((-hy, -hy + wt), (hy - wt, hy)):
+            p.box(-hx + wt, hx - wt, y0, y1, 1.2, 4.3, "STONE")
+        p.rubble(-hx + 2, hx - 2, -hy + 2, hy - 2, 70, 2.2, 3.3, seed=111)
+        return p.finish("Keep_Rubble", mat)
     p.box(-hx, -hx + wt, -hy, hy, 1.2, h, "STONE")                              # back wall
     for s in (-1, 1):                                                           # side walls
         y0, y1 = sorted((s * hy, s * (hy - wt)))
@@ -554,6 +574,16 @@ def build_keep(mat):
              (math.cos(a1) * r1, sp + math.sin(a1) * r1), (math.cos(a1) * r0, sp + math.sin(a1) * r0)]
         p.profile(list(reversed(q)), -wt / 2 - 0.4, -wt / 2, "STONE_DARK")
     p.m = prev
+    # Room bounds and door opening are projected from layout.json by build_meshes().
+    # Its 8-stud interior door opens onto the central entrance hall.
+    room_x0, room_x1, room_y0, room_y1, door_x, door_hw = room
+    inner_h, inner_t = 10.0, 0.9
+    p.box(room_x0, room_x0 + inner_t, room_y0, room_y1, 1.2, inner_h, "STONE")
+    p.box(room_x1 - inner_t, room_x1, room_y0, room_y1, 1.2, inner_h, "STONE")
+    p.box(room_x0, room_x1, room_y0, room_y0 + inner_t, 1.2, inner_h, "STONE")
+    for x0, x1 in ((room_x0, door_x - door_hw), (door_x + door_hw, room_x1)):
+        p.box(x0, x1, room_y1 - inner_t, room_y1, 1.2, inner_h, "STONE")
+    p.box(door_x - door_hw, door_x + door_hw, room_y1 - inner_t, room_y1, 9.0, inner_h, "STONE")
     p.box(-hx + wt, hx - wt, -hy + wt, hy - wt, h - 1.0, h - 0.4, "STONE_DARK")    # ceiling
     p.box(-hx - 0.7, hx + 0.7, -hy - 0.7, hy + 0.7, h - 0.4, h + 1.0, "STONE")   # roof walk, overhanging
     for k in range(int(2 * hx // 4)):                                           # corbels under the roof walk, long sides
@@ -589,6 +619,9 @@ def build_keep(mat):
                 p.box(x - ww, x + ww, ya, yb, z + dz0, z + dz1, "IRON")
 
     crenellate(-hx - 0.7, hx + 0.7, -hy - 0.7, hy + 0.7, h + 1.0)                # tier 1 battlements
+    if state == "damaged":
+        p.rubble(3, hx - 2, -hy + 3, hy - 3, 22, 1.8, 1.8, seed=117)
+        return p.finish("Keep_Damaged", mat)
     # tier 2: set back toward the rear, with its own corbelled roof walk
     t2x0, t2x1, t2y0, t2y1, t2h = -hx + 1.0, hx - 7.0, -hy + 3.5, hy - 3.5, h + 9.5
     p.box(t2x0, t2x1, t2y0, t2y1, h + 1.0, t2h, "STONE")
@@ -622,32 +655,32 @@ def build_keep(mat):
     return p.finish("Keep", mat)
 
 
-def build_storage(mat):
-    """The king's storage: what the team has gathered. Centred on its own origin; fits 14 x 20."""
+def build_stockpile(mat):
+    """Goods stay against the room walls; the middle is the deposit/loot interaction."""
     p = Piece()
-    for x, y in ((-5.0, -7.5), (-5.0, -3.5), (-5.0, 0.5)):                       # chests along the back
+    for x, y in ((-6.3, -3.5), (-6.3, 0.0), (-6.3, 3.5)):
         p.box(x - 1.2, x + 1.2, y - 1.5, y + 1.5, 0, 1.6, "TIMBER")
         p.box(x - 1.3, x + 1.3, y - 1.6, y + 1.6, 1.6, 2.0, "TIMBER")
         for yy in (y - 0.9, y + 0.9):
             p.box(x - 1.3, x + 1.3, yy - 0.15, yy + 0.15, 0, 2.05, "IRON")
-    for x, y, s, z in ((-1.0, 6.0, 1.8, 0), (1.0, 6.2, 1.6, 0), (-0.1, 6.1, 1.4, 1.8), (2.0, 8.2, 1.6, 0)):   # crates
+    for x, y, s, z in ((6.2, 3.3, 1.8, 0), (5.7, 1.0, 1.6, 0), (6.0, 3.0, 1.4, 1.8)):
         p.box(x - s / 2, x + s / 2, y - s / 2, y + s / 2, z, z + s, "TIMBER")
-    for x, y in ((3.5, -6.5), (5.2, -6.0), (4.3, -4.4)):                         # barrels with hoops
+    for x, y in ((5.4, -3.7), (6.9, -3.0)):
         p.frustum(x, y, 0, 0.75, 1.0, 0.85, 8, "TIMBER")
         p.frustum(x, y, 1.0, 0.85, 2.0, 0.75, 8, "TIMBER")
         p.frustum(x, y, 0.45, 0.8, 0.6, 0.82, 8, "IRON")
         p.frustum(x, y, 1.4, 0.82, 1.55, 0.8, 8, "IRON")
-    for x, y in ((3.6, 2.0), (4.8, 2.6), (4.2, 3.6), (5.4, 1.3)):                # grain sacks
+    for x, y in ((5.0, 0.5), (6.4, 0.2)):
         p.frustum(x, y, 0, 0.7, 0.8, 0.6, 6, "STONE")
         p.cone(x, y, 0.8, 0.6, 1.25, 6, "STONE")
-    return p.finish("King_Storage", mat)
+    return p.finish("Stockpile", mat)
 
 
 # ------------------------------------------------------------------ barracks and workshop
 def build_barracks(mat, state="intact"):
-    """Hollow hall; door on -Y. Local X +-16, Y +-7 (the layout's 32 x 14)."""
+    """42 x 27 hollow spawn hall with a 10-stud courtyard doorway on -Y."""
     p = Piece()
-    hx, hy, h, wt = 16.0, 7.0, 8.0, 1.2
+    hx, hy, h, wt = 21.0, 13.5, 13.0, 1.2
     p.box(-hx - 0.4, hx + 0.4, -hy - 0.4, hy + 0.4, 0, 0.8, "STONE_DARK")
     if state == "rubble":
         top_back = [(hx, 2.6), (8, 1.6), (0, 3.0), (-8, 1.4), (-hx, 2.4)]
@@ -671,7 +704,7 @@ def build_barracks(mat, state="intact"):
         p.m = Matrix.Translation((s * (hx - wt / 2), 0, 0)) @ Matrix.Rotation(math.pi / 2, 4, "Z")
         p.profile([(-hy, h), (hy, h), (0, h + 4.6)], -wt / 2, wt / 2, "STONE")
         p.m = prev
-    door = [(-2.5, 0.8)] + [(x, z + 0.8) for x, z in arch_outline(2.5, 4.2, 6)] + [(2.5, 0.8)]   # 5 wide, 7.5 to the crown
+    door = [(-5.0, 0.8)] + [(x, z + 0.8) for x, z in arch_outline(5.0, 6.2, 8)] + [(5.0, 0.8)]
     if state == "intact":
         outline = [(-hx, 0.8)] + door + [(hx, 0.8), (hx, h), (-hx, h)]
     else:   # a bite out of the wall east of the door; the door itself still stands
@@ -682,9 +715,9 @@ def build_barracks(mat, state="intact"):
             p.box(x - 0.6, x + 0.6, -hy - 0.12, -hy, 4.0, 6.2, "IRON")
         p.box(x - 0.6, x + 0.6, hy, hy + 0.12, 4.0, 6.2, "IRON")
     if state == "intact":
-        p.gable(-hx - 0.8, hx + 0.8, -hy - 1.2, hy + 1.2, h, h + 5.0, "SLATE")
+        p.gable(-hx - 0.8, hx + 0.8, -hy - 1.2, hy + 1.2, h, h + 6.0, "SLATE")
     else:
-        p.gable(-hx - 0.8, 2.0, -hy - 1.2, hy + 1.2, h, h + 5.0, "SLATE")          # the west half of the roof still on
+        p.gable(-hx - 0.8, 2.0, -hy - 1.2, hy + 1.2, h, h + 6.0, "SLATE")
         for k in range(4):                                                       # bare rafters over the hole
             x = 4.0 + k * 3.6
             m = Matrix.Translation((x, -2.8, h + 0.2)) @ Matrix.Rotation(-0.62, 4, "X")
@@ -743,6 +776,105 @@ def build_workshop(mat, state="intact"):
     for k in range(3):                                                          # timber stack by the side wall
         p.along_x(10.0, 1.5 + k * 1.3, 1.1, 3.5, 0.55, 0.55, 6, "TIMBER")
     return p.finish("Workshop" + suffix(state), mat)
+
+
+def build_specialist(mat, role, hx, hy, door_side, ram_side=0, state="intact"):
+    """A distinct village building at its layout footprint. Door is on local +/-Y."""
+    p = Piece()
+    h, wt, door_hw = 10.5, 1.0, 4.0
+    p.box(-hx, hx, -hy, hy, 0, 0.7, "STONE_DARK")
+    if state == "rubble":
+        for yy in (-hy, hy - wt):
+            p.box(-hx, hx, yy, yy + wt, 0.7, 2.3, "STONE")
+        p.rubble(-hx + 1, hx - 1, -hy + 1, hy - 1, 24, 1.4, 1.5, seed=200 + len(role))
+        return p.finish(role + "_Rubble", mat)
+    for side in (-1, 1):
+        y0, y1 = (side * hy - wt, side * hy) if side > 0 else (side * hy, side * hy + wt)
+        if side == door_side:
+            for x0, x1 in ((-hx, -door_hw), (door_hw, hx)):
+                p.box(x0, x1, y0, y1, 0.7, h, "STONE")
+            p.box(-door_hw, door_hw, y0, y1, 8.7, h, "STONE")
+        else:
+            p.box(-hx, hx, y0, y1, 0.7, h, "STONE")
+    for side in (-1, 1):
+        x0, x1 = (side * hx - wt, side * hx) if side > 0 else (side * hx, side * hx + wt)
+        if side == ram_side:
+            for y0, y1 in ((-hy + wt, -6.0), (6.0, hy - wt)):
+                p.box(x0, x1, y0, y1, 0.7, h, "STONE")
+            p.box(x0, x1, -6.0, 6.0, 8.7, h, "TIMBER")
+        else:
+            p.box(x0, x1, -hy + wt, hy - wt, 0.7, h, "STONE")
+    if state == "intact":
+        p.gable(-hx - 0.6, hx + 0.6, -hy - 0.8, hy + 0.8, h, 16.5, "SLATE")
+    else:
+        p.gable(-hx - 0.6, 0.0, -hy - 0.8, hy + 0.8, h, 16.5, "SLATE")
+        p.rubble(1, hx - 1, -hy + 1, hy - 1, 10, 1.2, 1.0, seed=230 + len(role))
+    back_y = -door_side * (hy - 3.8)
+    if role == "Blacksmith_Forge":
+        p.box(-hx + 2, -hx + 8, back_y - 2, back_y + 2, 0.7, 3.2, "STONE_DARK")
+        p.box(-hx + 4, -hx + 6, back_y - 1, back_y + 1, 3.0, 18.0, "STONE_DARK")
+        p.box(-1.5, 0.0, back_y - 1, back_y + 1, 0.7, 2.0, "TIMBER")
+        p.box(-2.0, 0.5, back_y - 1.4, back_y + 1.4, 2.0, 2.7, "IRON")
+    elif role == "Fletcher":
+        p.box(-hx + 2, hx - 2, back_y - 1.2, back_y + 1.2, 2.3, 2.7, "TIMBER")
+        for x in (-hx + 4, -hx + 8, -hx + 12):
+            p.box(x - 0.12, x + 0.12, back_y - 0.15, back_y + 0.15, 2.7, 6.5, "TIMBER")
+    elif role == "Alchemist":
+        p.box(-hx + 2, hx - 2, back_y - 1.2, back_y + 1.2, 2.3, 2.7, "TIMBER")
+        for x in (-hx + 4, -hx + 8, -hx + 12):
+            p.frustum(x, back_y, 2.7, 0.6, 3.4, 0.4, 8, "IRON")
+            p.cone(x, back_y, 3.4, 0.4, 3.8, 8, "STONE")
+    elif role == "Carpenter":
+        p.box(-hx + 2, 1.0, back_y - 1.3, back_y + 1.3, 2.2, 2.7, "TIMBER")
+        for y in (back_y - 1.4, back_y, back_y + 1.4):
+            p.along_x(-hx + 2, y, 0.95, 7.0, 0.5, 0.5, 6, "TIMBER")
+    return p.finish(role + suffix(state), mat)
+
+
+def build_ballista(mat, state="intact"):
+    """Fixed defensive crossbow, not a gun; muzzle is local +X."""
+    p = Piece()
+    p.box(-3.2, 3.2, -1.8, 1.8, 0, 0.6, "TIMBER")
+    if state == "rubble":
+        p.rubble(-3, 3, -2, 2, 8, 0.9, 0.5, seed=301, cols=("TIMBER", "IRON"))
+        return p.finish("Ballista_Rubble", mat)
+    p.frustum(0, 0, 0.6, 0.7, 2.1, 0.55, 8, "TIMBER")
+    p.box(-2.4, 4.0, -0.45, 0.45, 2.0, 2.7, "TIMBER")
+    p.box(3.2, 4.6, -0.8, 0.8, 2.0, 2.9, "IRON")
+    for side in (-1, 1):
+        m = Matrix.Translation((2.1, 0, 2.35)) @ Matrix.Rotation(side * 0.47, 4, "Z")
+        p.box(-0.3, 0.3, min(0, side * 5.2), max(0, side * 5.2), -0.25, 0.25,
+              "TIMBER", m)
+    if state == "intact":
+        p.box(0.6, 1.0, -5.2, 5.2, 2.2, 2.28, "IRON")
+        p.along_x(0.8, 0, 2.38, 4.4, 0.12, 0.08, 6, "TIMBER")
+    else:
+        p.box(0.2, 0.6, -4.0, 1.0, 1.6, 1.7, "IRON")
+    return p.finish("Ballista" + suffix(state), mat)
+
+
+def build_tower_ladder(mat):
+    """Visual access ladder with a short top bridge toward local +X; climb logic is in Studio."""
+    p = Piece()
+    top = TOWER_TOP - 4.2
+    for y in (-1.1, 1.1):
+        p.box(-0.2, 0.2, y - 0.15, y + 0.15, 0, top, "TIMBER")
+    for k in range(1, int(top / 1.3)):
+        z = k * 1.3
+        p.box(-0.25, 0.25, -1.1, 1.1, z, z + 0.18, "TIMBER")
+    p.box(0, 4.1, -1.5, 1.5, top - 0.25, top, "TIMBER")
+    return p.finish("Tower_Ladder", mat)
+
+
+def build_tunnel_exit(mat, width):
+    """Surface portal only; the underground crawl geometry belongs to the terrain."""
+    p = Piece()
+    hw = width / 2
+    for y in (-hw - 0.4, hw + 0.4):
+        p.box(-hw - 0.8, hw + 0.8, y - 0.4, y + 0.4, 0, 1.2, "STONE_DARK")
+    for x in (-hw - 0.4, hw + 0.4):
+        p.box(x - 0.4, x + 0.4, -hw, hw, 0, 1.2, "STONE_DARK")
+    return p.finish("Tunnel_Exit_Portal", mat)
 
 
 # ------------------------------------------------------------------ cannons and siege tools (aim along +X)
@@ -949,6 +1081,7 @@ def preview_world_hdri():
 # ------------------------------------------------------------------ assembly from layout.json
 def place(coll, name, mesh, loc, rot_deg, color=None):
     o = bpy.data.objects.new(name, mesh)
+    o["layout_id"] = name
     o.location = loc
     o.rotation_euler = Euler((0, 0, math.radians(rot_deg)))
     if color:
@@ -957,24 +1090,104 @@ def place(coll, name, mesh, loc, rot_deg, color=None):
     return o
 
 
-def build_meshes(mat, bmat):
+def room_shape(C):
+    k = C["interior"]["keep"]
+    r = k["stockpile_room"]
+    kx = (k["min_x"] + k["max_x"]) / 2
+    kz = (k["min_z"] + k["max_z"]) / 2
+    return (r["min_x"] - kx, r["max_x"] - kx,
+            -(r["max_z"] - kz), -(r["min_z"] - kz),
+            r["door"]["x"] - kx, r["door"]["clear_width"] / 2)
+
+
+def validate_layout(L):
+    if L.get("meta", {}).get("version") != "2.1" or len(L["castles"]) != 2:
+        raise ValueError("Castle builder requires approved layout.json v2.1 with two castles")
+    A, B = L["castles"]
+    for C in (A, B):
+        if len(C["wall_sections"]) != 35 or len(C["towers"]) != 4:
+            raise ValueError("Expected 35 wall sections and four towers per castle")
+        if abs(C["ring_size"]["x"] - 9 * BAY) > 1e-4:
+            raise ValueError("Wall bay width disagrees with approved ring")
+        I = C["interior"]
+        if len(I["specialists"]) != 4:
+            raise ValueError("Four specialist buildings are required")
+        k = I["keep"]
+        if (k["max_x"] - k["min_x"], k["max_z"] - k["min_z"]) != (44, 44):
+            raise ValueError("Keep mesh must be revised if its layout footprint changes")
+        r = k["stockpile_room"]
+        if not (k["min_x"] < r["min_x"] < r["max_x"] < k["max_x"]
+                and k["min_z"] < r["min_z"] < r["max_z"] < k["max_z"]):
+            raise ValueError("Stockpile room must be entirely within the Keep")
+        if r["door"]["clear_width"] < 8 or k["front_door"]["clear_width"] < 10:
+            raise ValueError("Keep doors are too narrow for the approved layout")
+        if (k["front_door"]["x"] != (k["max_x"] if C["team"] == "A" else k["min_x"])
+                or k["front_door"]["z"] != (k["min_z"] + k["max_z"]) / 2):
+            raise ValueError("Keep front door moved; revise the Keep mesh")
+        if r["door"]["z"] != r["min_z"]:
+            raise ValueError("Stockpile door moved; revise the interior partition")
+        if abs(I["ballista_mount"]["y"] - C["pad"]["y"] - (GATE_H + 1.4)) > 1e-4:
+            raise ValueError("Ballista mount is not on the gatehouse deck")
+        for s in I["specialists"]:
+            if s["door"]["z"] not in (s["min_z"], s["max_z"]):
+                raise ValueError("Specialist door moved off its front wall")
+            if s["door"]["clear_width"] != 8:
+                raise ValueError("Specialist door width changed; revise its mesh")
+            if s["role"] == "Carpenter" and (s["ram_opening"]["clear_width"] != 12
+                                             or s["ram_opening"]["x"] != (s["max_x"] if C["team"] == "A" else s["min_x"])):
+                raise ValueError("Carpenter ram opening moved; revise its mesh")
+    if A["center"]["x"] != -B["center"]["x"] or A["center"]["z"] != B["center"]["z"]:
+        raise ValueError("Castles are not mirrored across x=0")
+    for key in ("wall_sections", "towers"):
+        for a, b in zip(A[key], B[key]):
+            if abs(a["x"] + b["x"]) > 1e-4 or abs(a["z"] - b["z"]) > 1e-4:
+                raise ValueError("Castle exterior is not mirrored: " + a["id"])
+    for key in ("keep", "barracks"):
+        a, b = A["interior"][key], B["interior"][key]
+        if (a["min_x"] != -b["max_x"] or a["max_x"] != -b["min_x"]
+                or a["min_z"] != b["min_z"] or a["max_z"] != b["max_z"]):
+            raise ValueError("Interior footprint is not mirrored: " + key)
+    for a, b in zip(A["interior"]["specialists"], B["interior"]["specialists"]):
+        if (a["role"] != b["role"] or a["min_x"] != -b["max_x"]
+                or a["max_x"] != -b["min_x"] or a["min_z"] != b["min_z"]
+                or a["max_z"] != b["max_z"]):
+            raise ValueError("Specialist footprint is not mirrored: " + a["role"])
+    return A, B
+
+
+def build_meshes(mat, bmat, C, tunnel_width):
     meshes = {}
+    role_lookup = {s["role"]: s for s in C["interior"]["specialists"]}
     for state in STATES:
-        for fn, name in ((build_wall, "Wall_Segment"), (build_door, "Gate_Door"), (build_cannon, "Cannon"),
-                         (build_workshop, "Workshop"), (build_barracks, "Barracks")):
+        for fn in (build_wall, build_door, build_barracks, build_ballista):
             me = fn(mat, state)
             meshes[me.name] = me
-        for gun in (False, True):
-            me = build_tower(mat, state, gun)
+        me = build_tower(mat, state)
+        meshes[me.name] = me
+        me = build_keep(mat, room_shape(C), state)
+        meshes[me.name] = me
+        for role in ("Blacksmith", "Alchemist", "Fletcher", "Carpenter"):
+            s = role_lookup[role]
+            hx, hy = (s["max_x"] - s["min_x"]) / 2, (s["max_z"] - s["min_z"]) / 2
+            mid_z = (s["min_z"] + s["max_z"]) / 2
+            door_side = 1 if s["door"]["z"] < mid_z else -1
+            ram_side = 1 if "ram_opening" in s and s["ram_opening"]["x"] == s["max_x"] else 0
+            name = "Blacksmith_Forge" if role == "Blacksmith" else role
+            me = build_specialist(mat, name, hx, hy, door_side, ram_side, state)
             meshes[me.name] = me
-    for fn in (build_gate, build_keep, build_storage, build_ram, build_siege_cannon, build_scaffold):
+    for fn in (build_gate, build_stockpile, build_ram, build_scaffold, build_tower_ladder):
         me = fn(mat)
         meshes[me.name] = me
+    meshes["Tunnel_Exit_Portal"] = build_tunnel_exit(mat, tunnel_width)
     meshes["Banner"] = build_banner(bmat)
     return meshes
 
 
 def build():
+    with open(LAYOUT, encoding="utf-8") as f:
+        L = json.load(f)
+    C, C_b = validate_layout(L)
+    tunnel = next(t for t in L["tunnels"] if t["team"] == C["team"])
     old = bpy.data.scenes.get("Castle")
     if old:
         meshes = {o.data for o in old.objects if o.type == "MESH"}
@@ -993,20 +1206,18 @@ def build():
         pass
     scene.world = preview_world()
     colls = {}
-    for name in ("Castle_Kit", "Castle_Assembly", "Castle_Preview"):
+    for name in ("Castle_Kit", "Castle_Assembly", "Castle_Assembly_B",
+                 "Castle_Preview", "Castle_Layout_Markers"):
         c = bpy.data.collections.new(name); scene.collection.children.link(c); colls[name] = c
 
-    with open(LAYOUT, encoding="utf-8") as f:
-        L = json.load(f)
-    C = L["castles"][0]                                    # team A; B is its mirror
     cx, cz, gy = C["center"]["x"], C["center"]["z"], C["pad"]["y"]
-    loc = lambda o, up=0.0: (o["x"] - cx, -(o["z"] - cz), up)            # Roblox world -> castle-local Blender
+    loc = lambda o, up=0.0: (o["x"] - cx, -(o["z"] - cz), up)
     face_rot = lambda fx, fz: math.degrees(math.atan2(fx, fz))           # local -Y outer face -> Roblox facing (fx, fz)
     plus_x_rot = lambda fx, fz: math.degrees(math.atan2(-fz, fx))        # local +X -> Roblox facing (fx, fz)
     rect_c = lambda r: ((r["min_x"] + r["max_x"]) / 2 - cx, -((r["min_z"] + r["max_z"]) / 2 - cz), 0.0)
 
     mat, bmat = castle_material(), banner_material()
-    meshes = build_meshes(mat, bmat)
+    meshes = build_meshes(mat, bmat, C, tunnel["width"])
 
     # the kit: one of everything, in rows behind the castle (hidden in castle views)
     x, y = -110.0, 120.0
@@ -1022,7 +1233,7 @@ def build():
     for t in C["towers"]:
         lx, ly, _ = loc(t)
         rot = math.degrees(math.atan2(ly, lx)) - 225.0     # windows (local 225 deg) face outward
-        place(A, t["id"], meshes["Wall_Corner_Tower_Gun" if t["kind"] == "gun" else "Wall_Corner_Tower"], loc(t), rot)
+        place(A, t["id"], meshes["Wall_Corner_Tower"], loc(t), rot)
     g, fg = C["gate"], C["gate_facing"]
     grot = face_rot(fg["x"], fg["z"])
     gl = loc(g)
@@ -1032,18 +1243,55 @@ def build():
     for s, tag in ((-1, "N"), (1, "S")):
         bx = gate_line[0] + fg["x"] * (GATE_D + 0.15)
         place(A, "%s_Banner_Gate%s" % (C["team"], tag), meshes["Banner"], (bx, gate_line[1] - s * 8.4, GATE_H - 1.8), grot, TEAM_A)
-    k = C["keep"]
-    krot = plus_x_rot(k["door_facing"]["x"], k["door_facing"]["z"])
-    place(A, k["id"], meshes["Keep"], rect_c(k), krot)
-    place(A, k["storage"]["id"], meshes["King_Storage"], tuple(v + (1.2 if i == 2 else 0) for i, v in enumerate(rect_c(k["storage"]))), krot)
-    b = C["barracks"]
-    place(A, b["id"], meshes["Barracks"], rect_c(b), face_rot(b["door_facing"]["x"], b["door_facing"]["z"]))
-    w = C["workshop"]
-    place(A, w["id"], meshes["Workshop"], rect_c(w), face_rot(-w["door_facing"]["x"], -w["door_facing"]["z"]))   # open side is local +Y
-    for c in C["cannon_mounts"]:
-        place(A, c["id"], meshes["Cannon"], loc(c, c["height"]), plus_x_rot(c["aim"]["x"], c["aim"]["z"]))
+    I = C["interior"]
+    k = I["keep"]
+    place(A, k["id"], meshes["Keep"], rect_c(k), 0)
+    r = k["stockpile_room"]
+    stock_loc = rect_c(r)
+    place(A, C["team"] + "_Stockpile_Contents", meshes["Stockpile"],
+          (stock_loc[0], stock_loc[1], 1.2), 0)
+    b = I["barracks"]
+    place(A, b["id"], meshes["Barracks"], rect_c(b), 0)
+    for s in I["specialists"]:
+        name = "Blacksmith_Forge" if s["role"] == "Blacksmith" else s["role"]
+        place(A, s["id"], meshes[name], rect_c(s), 0)
+    c = I["ballista_mount"]
+    place(A, c["id"], meshes["Ballista"], loc(c, c["y"] - gy),
+          plus_x_rot(c["aim"]["x"], c["aim"]["z"]))
+    tower_by_suffix = {t["id"].split("_")[-1]: t for t in C["towers"]}
+    for marker in I["tower_access"]:
+        t = tower_by_suffix[marker["id"].split("_")[-1]]
+        mx, my, _ = loc(marker)
+        tx, ty, _ = loc(t)
+        direction = math.degrees(math.atan2(ty - my, tx - mx))
+        place(A, marker["id"], meshes["Tower_Ladder"], loc(marker), direction)
+    place(A, C["tunnel_exit"]["id"], meshes["Tunnel_Exit_Portal"], loc(C["tunnel_exit"]), 0)
 
-    # preview only: ground, a 5-stud avatar, and an attacker's ram and siege cannon in the lane
+    # Mirror geometry with positive object scale so normals remain usable for a
+    # future assembled FBX, including the asymmetric room and carpenter opening.
+    B = colls["Castle_Assembly_B"]
+    mirror_axis = -cx
+    mirrored_meshes = {}
+    for original in A.objects:
+        name = original["layout_id"].replace(C["team"] + "_", C_b["team"] + "_", 1)
+        source = original.data
+        if source not in mirrored_meshes:
+            reflected = source.copy()
+            reflected.name = source.name + "_Mirror"
+            reflected.transform(Matrix.Scale(-1.0, 4, Vector((1, 0, 0))))
+            reflected.flip_normals()
+            mirrored_meshes[source] = reflected
+        duplicate = bpy.data.objects.new(name, mirrored_meshes[source])
+        duplicate["layout_id"] = name
+        duplicate.location = (2 * mirror_axis - original.location.x,
+                              original.location.y, original.location.z)
+        duplicate.rotation_euler = Euler((0, 0, -original.rotation_euler.z))
+        duplicate.color = original.color[:]
+        if original.data == meshes["Banner"]:
+            duplicate.color = (lin(TEAM_B[0]), lin(TEAM_B[1]), lin(TEAM_B[2]), 1.0)
+        B.objects.link(duplicate)
+
+    # Preview only: ground, a 5-stud avatar, and a completed ram on its layout pad.
     P = colls["Castle_Preview"]
     sun_data = bpy.data.lights.get("Preview_Sun") or bpy.data.lights.new("Preview_Sun", "SUN")
     sun_data.energy = 3.2
@@ -1054,7 +1302,7 @@ def build():
     sun.rotation_euler = Vector((-0.8, 0.45, -1.0)).normalized().to_track_quat("-Z", "Y").to_euler()
     P.objects.link(sun)
     gp = Piece()
-    gp.box(-130, 130, -110, 290, -0.5, 0.0, "STONE_DARK")
+    gp.box(-130, 690, -110, 110, -0.5, 0.0, "STONE_DARK")
     gm = gp.finish("Preview_Ground", mat)
     gm.color_attributes["Col"].data.foreach_set("color_srgb", [x for _ in range(len(gm.loops)) for x in (124 / 255, 146 / 255, 82 / 255, 1.0)])
     place(P, "Preview_Ground", gm, (0, 0, 0), 0)
@@ -1065,8 +1313,29 @@ def build():
     d.box(-1.0, 1.0, -0.5, 0.5, 2.0, 4.0, "TIMBER")
     d.box(-0.6, 0.6, -0.6, 0.6, 4.0, 5.0, "TIMBER")
     place(P, "Dummy_5stud", d.finish("Dummy_5stud", mat), (gate_line[0] + 16, 7, 0), 90.0)
-    place(P, "Preview_Ram", meshes["Battering_Ram"], (gate_line[0] + 26, -10, 0), 180.0)
-    place(P, "Preview_Siege_Cannon", meshes["Siege_Cannon"], (gate_line[0] + 44, 16, 0), 180.0)
+    place(P, "Preview_Ram", meshes["Battering_Ram"], rect_c(I["clear_areas"]["ram_assembly_pad"]), 0)
+
+    # Verification overlay: points are raised only to stay visible above roofs in
+    # top view. Their horizontal coordinates come directly from layout.json.
+    M = colls["Castle_Layout_Markers"]
+    markers = [g, k["front_door"], r["door"], r["interaction"], b["door"],
+               C["tunnel_exit"], I["ballista_mount"]]
+    markers += [s["door"] for s in I["specialists"]]
+    markers += I["tower_access"]
+    ram_area = I["clear_areas"]["ram_assembly_pad"]
+    markers.append({"id": ram_area["id"], "x": (ram_area["min_x"] + ram_area["max_x"]) / 2,
+                    "z": (ram_area["min_z"] + ram_area["max_z"]) / 2})
+    labels = {g["id"]: "Gate", k["front_door"]["id"]: "Keep door",
+              r["interaction"]["id"]: "Stockpile", C["tunnel_exit"]["id"]: "Tunnel",
+              I["ballista_mount"]["id"]: "Ballista", ram_area["id"]: "Ram pad"}
+    for point in markers:
+        marker = bpy.data.objects.new("Marker_" + labels.get(point["id"], point["id"]), None)
+        marker.location = loc(point, 68)
+        marker.empty_display_size = 3.0
+        marker.show_name = point["id"] in labels
+        marker["layout_id"] = point["id"]
+        M.objects.link(marker)
+    M.hide_viewport = True
 
     scene.view_layers[0].update()
     stats = {}
@@ -1127,7 +1396,7 @@ def _v3d():
                 return win, area, area.spaces.active
 
 
-def show(scene, kit_visible=False, assembly_visible=True):
+def show(scene, kit_visible=False, assembly_visible=True, markers_visible=False):
     win, area, sp = _v3d()
     win.scene = scene
     lcs = scene.view_layers[0].layer_collection.children
@@ -1135,12 +1404,19 @@ def show(scene, kit_visible=False, assembly_visible=True):
         lcs["Castle_Kit"].hide_viewport = not kit_visible
     if lcs.get("Castle_Assembly"):
         lcs["Castle_Assembly"].hide_viewport = not assembly_visible
+    if lcs.get("Castle_Assembly_B"):
+        lcs["Castle_Assembly_B"].hide_viewport = not assembly_visible
     if lcs.get("Castle_Preview"):
         lcs["Castle_Preview"].hide_viewport = not assembly_visible
+    if lcs.get("Castle_Layout_Markers"):
+        lcs["Castle_Layout_Markers"].hide_viewport = not markers_visible
+    bpy.data.collections["Castle_Layout_Markers"].hide_viewport = not markers_visible
     sp.shading.type = "RENDERED"
     sp.shading.show_object_outline = False
     sp.clip_start, sp.clip_end = 0.1, 4000
+    sp.overlay.show_overlays = markers_visible
     sp.overlay.show_floor = False
+    sp.overlay.show_cursor = False
     sp.overlay.show_axis_x = sp.overlay.show_axis_y = False
 
 
