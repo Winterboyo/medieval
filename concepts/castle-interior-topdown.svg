@@ -5,9 +5,9 @@
     </style>
   </defs>
   <rect width="800" height="790" fill="#e7e1d2"/>
-  <text x="30" y="31" class="title">Castle interior — Team A proposal</text>
+  <text x="30" y="31" class="title">Castle interior — historical workshop sketch</text>
   <text x="30" y="50" class="sub">Team B mirrors across the field’s center · local f points toward the gate →</text>
-  <text x="590" y="75" class="sub">PROPOSED · for review</text>
+  <text x="568" y="75" class="sub">SUPERSEDED · see DESIGN.md</text>
   <g transform="translate(400 390) scale(3)">
     <rect x="-100" y="-100" width="200" height="200" fill="#a5bd80" stroke="#7e9968" stroke-width="1" stroke-dasharray="3 2"/>
     <rect class="wall" x="-91.8" y="-91.8" width="183.6" height="183.6"/>
@@ -60,5 +60,5 @@
   <text x="601" y="318" class="detail">One ballista on gatehouse roof</text>
   <text x="30" y="725" class="sub">Each square is proportional to its proposed footprint. Orange ticks mark doors; small pale dots mark six preview spawn positions.</text>
   <text x="30" y="744" class="sub">The tunnel exit is ~76 studs from the Keep door and ~129 from the stockpile door. Roof access and combat rules remain open.</text>
-  <text x="30" y="770" class="sub">Ground plane: f → toward enemy; north is up. Wall ring 183.6 × 183.6 studs; castle pad 200 × 200 studs.</text>
+  <text x="30" y="770" class="sub">Historical layout: the shared workshop is now a forge with separate village-like specialist buildings to be designed.</text>
 </svg>

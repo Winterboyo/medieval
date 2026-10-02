@@ -1,6 +1,6 @@
 # Castle interior proposal — mirrored first playable siege
 
-**Status: SUPERSEDED IN PART by the user's village-like interior direction (2026-10-01).** The user chose a dedicated blacksmith forge where this sketch placed one shared workshop, and wants separate specialist buildings like a compact village. The workshop row, its three stations, and the associated diagram are historical, not approved construction instructions. Keep, stockpile, barracks, access, and ballista coordinates below remain unapproved proposals that can inform a new plan. Do not add this interior to `layout.json` or build it. The approved exterior is already in `layout.json` v2.0.
+**Status: SUPERSEDED by `CASTLE-INTERIOR-V2-PROPOSAL.md` (2026-10-01).** The user chose four separate crafting-only specialist buildings: blacksmith forge, fletcher, carpenter, and alchemist. The forge replaces the shared workshop in this sketch. This whole page and its diagram are historical, not approved construction instructions. Do not add this interior to `layout.json` or build it. The approved exterior is already in `layout.json` v2.0; the new village-like interior proposal awaits user approval.
 
 ## Coordinate convention
 
@@ -45,4 +45,4 @@ Every footprint sits inside the ring's inner face. The main 18-stud corridor is 
 
 ## Historical approval question — replaced by village-like revision
 
-The earlier question proposed a shared workshop. It is no longer current. Revise the interior after deciding which distinct specialist buildings belong in the first playable siege. Structure HP, recipes, and ballista combat rules remain separate decisions.
+The earlier question proposed a shared workshop. It is no longer current. Review `CASTLE-INTERIOR-V2-PROPOSAL.md` for the new four-building footprint. Structure HP, recipes, and ballista combat rules remain separate decisions.

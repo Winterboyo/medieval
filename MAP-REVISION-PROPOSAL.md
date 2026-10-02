@@ -1,8 +1,8 @@
 # Map revision proposal — prominent castles, foraging, and L tunnels
 
-**Status: APPROVED FOR AN IN-GAME VISUAL PREVIEW (2026-10-01).** The user said the proposal looks good for now and will evaluate it after generation in-game. Treat these coordinates as approved for the first build and subject to revision from that evaluation. Migrate them into `layout.json` before generating Blender geometry. `DESIGN.md` records the chosen direction. `concepts/map-revision-topdown.svg` is a proportional schematic; the battle concept image is a perspective mood reference, not a measured plan.
+**Status: APPROVED FOR AN IN-GAME VISUAL PREVIEW (2026-10-01); migrated into `layout.json` v2.0.** The user said the proposal looks good for now and will evaluate it after generation in-game. Treat these coordinates as approved for the first build and subject to revision from that evaluation. `DESIGN.md` records the chosen direction. `concepts/map-revision-topdown.svg` is a proportional schematic; the battle concept image is a perspective mood reference, not a measured plan.
 
-Units are Roblox studs. Ground plane is `(x, z)` and `-z` is north. Team A is west, Team B east, mirrored across `x = 0`. The coordinates below are approved for the first in-game preview, but `layout.json` still contains the earlier geometry and must be migrated before Blender work.
+Units are Roblox studs. Ground plane is `(x, z)` and `-z` is north. Team A is west, Team B east, mirrored across `x = 0`. The coordinates below are the approved exterior in `layout.json` v2.0; its castle interiors remain undefined.
 
 ## What changes
 
@@ -40,7 +40,7 @@ The **long leg approaches the castle**; the **short leg ends inside its forward 
 
 The outer leg is **175 studs straight** and the inner leg **65 studs**, for a 240-stud crawl. An illustrative 5-stud/s crawl takes about **48 seconds**, versus about 15 seconds to cover the same path length at normal running speed. Speed, portal elevation, tunnel width, and collision height are placeholders to verify with the actual Roblox crawl controller. Start with roughly 6 studs of width and 3.5 studs of clear height. No ram fits. Only one traveler may be in each tunnel at a time; there is no passing or combat while crawling. The straight outer leg and short inner leg create firing lanes for campers; the bend prevents a single shot down the entire tunnel. Keep the tunnel free of interior cover so its risk remains legible.
 
-The exit is near the north/front quadrant of each courtyard, not next to either objective. Reserve the rear half of each enlarged castle for the Keep and separate stockpile, and keep their eventual entry points at least 60 studs of traversable courtyard route from the tunnel exit. The exact Keep, stockpile, barracks, workshop, spawn points, tower access, and ballista mounts still need an interior proposal. Their 2026-09-30 coordinates in `layout.json` are stale. Do not reuse the old storage-inside-Keep or cannon mounts when constructing the enlarged castle.
+The exit is near the north/front quadrant of each courtyard, not next to either objective. Reserve the rear half of each enlarged castle for the Keep and separate stockpile, and keep their eventual entry points at least 60 studs of traversable courtyard route from the tunnel exit. `CASTLE-INTERIOR-V2-PROPOSAL.md` now gives measured Keep, stockpile, barracks, specialist, spawn, tower-access, and ballista positions, pending the user's approval. The 2026-09-30 interior is absent from `layout.json` v2.0; do not reuse old storage-inside-Keep or cannon mounts.
 
 ## Preliminary geometry audit
 
@@ -51,7 +51,7 @@ The proposed coordinates pass a 2D clearance check: all 16 resource slots retain
 1. Retain each node's flat pad and type identity. Check every pad, crater, barricade, cover patch, and tunnel portal against castle pads and the road.
 2. Verify the two halves are exact `x` mirrors, all four crater bowls and four barricades are traversable cover, and the central road stays clear at avatar and ram width.
 3. Confirm from a 5-stud avatar camera that a crouched player gets useful cover, a standing player remains exposed, and tunnel sightlines behave as intended.
-4. Update `layout.json` and its generator/validation together. Then generate terrain and castle assets in Blender using the viewport screenshot workflow in `AGENTS.md`. Test one tile and one castle piece in Studio before exporting the rest.
+4. The exterior is in `layout.json` v2.0. After the separate interior proposal is approved, update its `interior` fields and generator/validation together. Generate castle assets in Blender using the viewport screenshot workflow in `AGENTS.md`. Test one castle piece in Studio before exporting the rest.
 
 ## Approval record
 
