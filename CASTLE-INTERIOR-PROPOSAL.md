@@ -1,6 +1,6 @@
 # Castle interior proposal — mirrored first playable siege
 
-**Status: SUPERSEDED by `CASTLE-INTERIOR-V2-PROPOSAL.md` (2026-10-01).** The user chose four separate crafting-only specialist buildings: blacksmith forge, fletcher, carpenter, and alchemist. The forge replaces the shared workshop in this sketch. This whole page and its diagram are historical, not approved construction instructions. Do not add this interior to `layout.json` or build it. The approved exterior is already in `layout.json` v2.0; the new village-like interior proposal awaits user approval.
+**Status: SUPERSEDED by `CASTLE-INTERIOR-V2-PROPOSAL.md` (2026-10-01).** The user chose four separate crafting-only specialist buildings: blacksmith forge, fletcher, carpenter, and alchemist, with the stockpile room inside the Keep. The forge replaces the shared workshop in this sketch. This whole page and its diagram are historical, not approved construction instructions. Do not add this interior to `layout.json` or build it. The approved village-like interior is in `layout.json` v2.1.
 
 ## Coordinate convention
 

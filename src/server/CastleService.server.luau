@@ -236,16 +236,16 @@ local function buildCastle(into: Instance, c: any, team: Team)
 	local door = structure(castle, g.door_id, "GateDoor")
 	part(door, "Body", Vector3.new(0.8, GATE_OPEN_H, GATE_OPEN_W - 0.2), at(gx + fx * 1.5, g.z, GATE_OPEN_H / 2), TIMBER)
 
-	-- layout.json v2 (2026-10-01) has NO interior yet: the keep, stockpile, barracks,
-	-- workshop and mounts await an approved interior proposal. Build the shell and the
-	-- temporary preview spawns only; the interior code below runs when they return.
+	-- layout.json v2.1 has approved interior coordinates. The old v1.1 interior
+	-- placeholder builder below still expects an obsolete workshop/cannon schema;
+	-- the new geometry is for art generation until that builder is redesigned.
 	if c.keep then
 		buildInterior(castle, c, at, facingRot, fx)
 	end
 
-	-- the team respawns inside its own barracks (v1.1) or, until an interior exists, at
-	-- the layout's clearly marked temporary preview spawns in the front courtyard
-	for _, sp in (c.spawn_points or c.temporary_preview_spawns or {}) do
+	-- The approved barracks markers replace the old front-courtyard preview spawns.
+	local spawnPoints = if c.interior then c.interior.spawn_points else (c.spawn_points or c.temporary_preview_spawns or {})
+	for _, sp in spawnPoints do
 		local spawn = Instance.new("SpawnLocation")
 		spawn.Name = sp.id
 		spawn.Anchored = true
@@ -258,7 +258,7 @@ local function buildCastle(into: Instance, c: any, team: Team)
 		spawn.Transparency = 0.4
 		spawn.Duration = 3
 		spawn.Material = Enum.Material.SmoothPlastic
-		spawn:SetAttribute("Temporary", c.spawn_points == nil)
+		spawn:SetAttribute("Temporary", c.interior == nil and c.spawn_points == nil)
 		spawn.Parent = castle
 	end
 
@@ -289,8 +289,8 @@ local function buildCastle(into: Instance, c: any, team: Team)
 end
 
 -- The 2026-09-30 interior (layout.json v1.1): keep with the king's storage, barracks,
--- workshop and cannon mounts. Stale for the current design; kept for when a revised
--- interior layout supplies these fields again.
+-- workshop and cannon mounts. Dormant: layout.json v2.1 uses c.interior with four
+-- specialists and a ballista; do not connect this old builder to that schema.
 buildInterior = function(castle: Model, c: any, at: (number, number, number) -> CFrame,
 	facingRot: (number, number) -> CFrame, fx: number)
 	-- the king's keep: hollow, door toward the gate; cannot be destroyed

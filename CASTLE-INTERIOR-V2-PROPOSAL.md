@@ -1,8 +1,8 @@
 # Castle interior v2 — village layout proposal
 
-**Status: PROPOSED 2026-10-01; awaiting user approval for `layout.json` and Blender generation.** The exterior ring, gate, and tunnel endpoints are already in `layout.json` v2.0. Its `interior` fields are still `null`. This proposal replaces the shared-workshop sketch in `CASTLE-INTERIOR-PROPOSAL.md` with the four separate specialist buildings chosen in `DESIGN.md`. [Top-down schematic](concepts/castle-interior-village-proposal.svg) shows the measured footprints and clear routes.
+**Status: APPROVED 2026-10-01; migrated into `layout.json` v2.1 for both castles.** This plan replaces the shared-workshop sketch in `CASTLE-INTERIOR-PROPOSAL.md` with the four separate specialist buildings chosen in `DESIGN.md`. The approved stockpile room sits inside the Keep. [Top-down schematic](concepts/castle-interior-village-proposal.svg) shows the measured footprints and clear routes.
 
-This approval concerns **positions, footprints, doors, and reserved paths**. Recipes, Keep HP, ballista combat, ram damage, and final art detail remain separate gameplay and asset decisions. No coordinates below are approved until the user accepts this proposal.
+Approval covers **positions, footprints, doors, and reserved paths**. Recipes, Keep HP, ballista combat, ram damage, and final art detail remain separate gameplay and asset decisions. `layout.json` owns the approved world coordinates; this page records their castle-local form and reasoning.
 
 ## Coordinates and mirror
 
@@ -36,7 +36,7 @@ The specialist buildings are distinct small village-like structures around open 
 - **Access around the Keep:** keep a north passage between the Keep and barracks and an open south rear courtyard where the separate storehouse was proposed. Keep the `f = -30..-18` strip open beside the Keep's front corners so players can circulate around it from the main courtyard. The minimum rear building-to-wall strip is 11.8 studs; reserve it for foot traffic and repair access.
 - **Tower access:** reserve ladder or stair markers near `(-80,-80)`, `(-80,80)`, `(80,-80)`, and `(80,80)`. Defenders must be able to reach a fighting deck on each corner tower. The final ladder meshes must preserve the perimeter strip.
 - **Gatehouse ballista:** reserve one fixed mount at `(91.8,0)` on the gatehouse roof and an inside ladder or stair near `(79,-23)`. The mount faces the central road. This is a location reservation, not an answer to operator, ammunition, arc, HP, or reload rules.
-- **Barracks preview spawns:** place six provisional ground markers at `(-60,-66)`, `(-50,-66)`, `(-40,-66)`, `(-60,-57)`, `(-50,-57)`, and `(-40,-57)`, mirrored for Team B. These are spatial test points, not a final 6v6 team-size decision. Remove `temporary_preview_spawns` when this interior is migrated into `layout.json`.
+- **Barracks preview spawns:** six provisional ground markers sit at `(-60,-66)`, `(-50,-66)`, `(-40,-66)`, `(-60,-57)`, `(-50,-57)`, and `(-40,-57)`, mirrored for Team B. These are spatial test points, not a final 6v6 team-size decision. `layout.json` v2.1 uses them as barracks spawn points and has removed the old `temporary_preview_spawns`.
 
 ## Geometric check
 
@@ -45,10 +45,10 @@ The specialist buildings are distinct small village-like structures around open 
 - Straight-line distances from the tunnel exit are about **76 studs to the Keep's front door**, **107 studs to the stockpile interaction**, and **69 studs to the barracks door**. The stockpile route must go through the Keep entrance and interior room door, so its actual walk is longer than 107 studs. A tunnel raider still crosses defended courtyard space and enters the Keep to loot.
 - This is a 2D footprint check, not a collision or sightline test. In Studio, verify a 5-stud avatar can enter each exterior door and the stockpile room, leave every spawn, reach each tower deck, and move a ram from its pad through the gate; view the Keep, stockpile room, and tunnel exit from attacker and defender cameras.
 
-## On approval
+## Generation handoff
 
-1. Add these proposed local footprints, the Keep's internal stockpile room and access hall, doors, spawns, pads, clear routes, tower access, and ballista mount to both castles' `interior` entries in `layout.json`, applying the exact mirror transform. Keep the existing exterior and tunnel endpoints.
-2. Update any generator or validator that creates or reads castle interior data. The old Blender `assets/castle/build_castle.py` expects `keep`, `workshop`, `King_Storage`, and cannons from the superseded v1.1 layout; it is not a source for the new geometry and must be revised before using it for this interior.
+1. `layout.json` v2.1 contains these footprints, doors, spawns, pads, clear routes, tower access, and ballista mount under each castle's `interior` entry. `assets/map/propose_layout.js` generates and checks their exact mirror transform. The exterior and tunnel endpoints remain unchanged.
+2. `assets/map/build_battlefield.py` and `CastleService.server.luau` read the approved barracks spawn positions. The old Blender `assets/castle/build_castle.py` and old Studio interior builder expect `keep`, `workshop`, `King_Storage`, and cannons from the superseded v1.1 layout; neither builds this new interior. Revise them before generating new castle art or placeholders.
 3. Build one named asset or group at a time under `AGENTS.md`'s Blender screenshot contract. Test the full gray footprint layout and one art piece in Studio before finishing/exporting the castle set.
 
-**Approval requested:** accept this mirrored interior footprint and route plan for `layout.json` and castle generation, or name the building or route to move.
+The spatial layout is ready for the castle generation pass; the new interior meshes and in-game collision remain to be built and reviewed.

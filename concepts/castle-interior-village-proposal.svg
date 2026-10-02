@@ -1,8 +1,8 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="820" viewBox="0 0 1000 820" role="img" aria-label="Top-down proposed village layout for one mirrored castle">
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="820" viewBox="0 0 1000 820" role="img" aria-label="Top-down approved village layout for one mirrored castle">
   <rect width="1000" height="820" fill="#f3efe4"/>
-  <text x="72" y="48" font-family="Arial, sans-serif" font-size="25" font-weight="700" fill="#26333a">Castle interior v2 — village layout proposal</text>
+  <text x="72" y="48" font-family="Arial, sans-serif" font-size="25" font-weight="700" fill="#26333a">Castle interior v2 — approved village layout</text>
   <text x="72" y="77" font-family="Arial, sans-serif" font-size="15" fill="#506066">Local f points toward the enemy gate → · north is up · Team B mirrors Team A across world x = 0</text>
-  <text x="72" y="103" font-family="Arial, sans-serif" font-size="13" fill="#8b5039">PROPOSED — await approval before writing the interior into layout.json or building new castle art</text>
+  <text x="72" y="103" font-family="Arial, sans-serif" font-size="13" fill="#8b5039">APPROVED — interior coordinates are in layout.json v2.1; new castle art and collision still need review</text>
 
   <!-- Existing 183.6-stud ring, inner face at +/-87.8. -->
   <rect x="100" y="120" width="600" height="600" fill="#758086" stroke="#455158" stroke-width="2"/>
@@ -94,5 +94,5 @@
   <text x="760" y="673" font-family="Arial, sans-serif" font-size="13" fill="#657174">and collision require Studio review.</text>
 
   <text x="72" y="766" font-family="Arial, sans-serif" font-size="14" fill="#4f5e61">Team A center (-280, 0): world x = -280 + f. Team B center (280, 0): world x = 280 − f. Same z.</text>
-  <text x="72" y="792" font-family="Arial, sans-serif" font-size="12" fill="#8b5039">Exact footprints and doors: CASTLE-INTERIOR-V2-PROPOSAL.md · no new art from this proposal until approved.</text>
+  <text x="72" y="792" font-family="Arial, sans-serif" font-size="12" fill="#8b5039">Exact world coordinates: layout.json v2.1 · Local measurements: CASTLE-INTERIOR-V2-PROPOSAL.md</text>
 </svg>

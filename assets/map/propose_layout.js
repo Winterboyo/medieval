@@ -1,5 +1,6 @@
-// Generates the mirrored battlefield layout (layout.json v2.0, the exterior from
-// MAP-REVISION-PROPOSAL.md, approved for an in-game preview 2026-10-01) and checks it:
+// Generates the mirrored battlefield layout (layout.json v2.1, the exterior from
+// MAP-REVISION-PROPOSAL.md and the approved interior from
+// CASTLE-INTERIOR-V2-PROPOSAL.md) and checks it:
 // pad gaps, the central road clear, crater/barricade/cover clearances, the L tunnels,
 // pads inside bounds, exact mirroring, steepest pad-to-pad ramp, walking times.
 // Team A is authored on the west (x < 0); team B is its mirror across x = 0.
@@ -8,10 +9,8 @@
 //   node assets/map/propose_layout.js              check only, prints the report
 //   node assets/map/propose_layout.js layout.json  also writes the file
 //
-// THE CASTLE INTERIOR IS NOT HERE. The 2026-09-30 keep, storage, barracks, workshop and
-// cannon mounts are stale (DESIGN.md, 2026-10-01) and were dropped; the new interior
-// needs its own approved proposal. The only things inside the walls are the tunnel exit,
-// the reserved rear half, and TEMPORARY preview spawns that are not a design decision.
+// The interior below is approved spatial data for both castles. It does not imply that
+// the old 2026-09-30 workshop/cannon gameplay or meshes are approved for this layout.
 const fs = require("fs");
 const out = process.argv[2];
 
@@ -66,17 +65,13 @@ const COVER_A = [
 ];
 const TUNNEL_A = { entrance: { x: -85, z: -120 }, bend: { x: -260, z: -120 }, exit: { x: -260, z: -55 } };
 const TUNNEL = { width: 6, clear_height: 3.5, one_traveller: true };
-// PREVIEW ONLY: somewhere safe to stand inside the walls so the in-game review can start.
-// South-front courtyard, away from the tunnel exit (north-front) and the reserved rear half.
-// Not barracks positions; the interior proposal replaces them.
-const PREVIEW_SPAWNS_F = [20, 32, 44];
-const PREVIEW_SPAWNS_Z = [36, 46];
+const BARRACKS_SPAWNS = [[-60, -66], [-50, -66], [-40, -66], [-60, -57], [-50, -57], [-40, -57]];
 
 const mirror = (p) => ({ ...p, x: -p.x });
 const r1 = (v) => Math.round(v * 10) / 10;
 const swapAB = (id) => id.replace(/^A_/, "B_").replace(/_A(\d)/, "_B$1");
 
-// ---------------------------------------------------------------- castles (exterior shell only)
+// ---------------------------------------------------------------- castles and approved spatial interior
 // Authored in castle-local "forward" coordinates: f points from the castle centre toward
 // its gate, z is world z. World x = centre.x + sign * f, so B (sign -1) mirrors A exactly.
 const HALF = RING / 2; // 91.8: outer face
@@ -87,6 +82,12 @@ function castle(c, sign) {
   const cx = c.center.x, y = c.center.y;
   const W = (f, z) => ({ x: r1(cx + sign * f), y, z: r1(z) });
   const T = c.team;
+  const P = (id, f, z, extra = {}) => ({ id: `${T}_${id}`, ...W(f, z), ...extra });
+  const R = (id, f0, f1, z0, z1) => {
+    const x0 = W(f0, z0).x, x1 = W(f1, z1).x;
+    return { id: `${T}_${id}`, min_x: Math.min(x0, x1), max_x: Math.max(x0, x1),
+      min_z: z0, max_z: z1, y };
+  };
   const facing = { x: sign, z: 0 };
   // 35 wall sections: 9 a side less the gate bay. F = front (gate side), R = rear,
   // N = north (-z), S = south (+z). Numbered along +z (F, R) or +f (N, S).
@@ -103,8 +104,48 @@ function castle(c, sign) {
     { id: `${T}_Tower_RN`, ...W(-WALL_LINE, -WALL_LINE) },
     { id: `${T}_Tower_RS`, ...W(-WALL_LINE, WALL_LINE) },
   ];
-  const spawns = [];
-  for (const f of PREVIEW_SPAWNS_F) for (const z of PREVIEW_SPAWNS_Z) spawns.push(W(f, z));
+  const interior = {
+    status: "APPROVED 2026-10-01 (CASTLE-INTERIOR-V2-PROPOSAL.md); geometry only. Gameplay values and final art remain open.",
+    coordinate_frame: "World Roblox studs. Local f increases toward this castle's gate; Team B mirrors Team A across x = 0.",
+    keep: {
+      ...R("Keep", -76, -32, -22, 22),
+      front_door: P("Keep_FrontDoor", -32, 0, { clear_width: 10 }),
+      entrance_hall: R("Keep_EntranceHall", -72, -32, -6, 6),
+      stockpile_room: {
+        ...R("Stockpile_Room", -72, -54, 6, 18),
+        door: P("Stockpile_Room_Door", -63, 6, { clear_width: 8 }),
+        interaction: P("Stockpile_Interaction", -63, 12),
+      },
+    },
+    barracks: { ...R("Barracks", -70, -28, -75, -48),
+      door: P("Barracks_Door", -49, -48, { clear_width: 10 }) },
+    specialists: [
+      { role: "Blacksmith", ...R("Blacksmith_Forge", -12, 16, 47, 75),
+        door: P("Blacksmith_Door", 2, 47, { clear_width: 8 }) },
+      { role: "Alchemist", ...R("Alchemist", -18, 6, -76, -50),
+        door: P("Alchemist_Door", -6, -50, { clear_width: 8 }) },
+      { role: "Fletcher", ...R("Fletcher", 41, 66, -76, -50),
+        door: P("Fletcher_Door", 53.5, -50, { clear_width: 8 }) },
+      { role: "Carpenter", ...R("Carpenter", 31, 55, 46, 74),
+        door: P("Carpenter_Door", 43, 46, { clear_width: 8 }),
+        ram_opening: P("Carpenter_RamOpening", 55, 60, { clear_width: 12 }) },
+    ],
+    spawn_points: BARRACKS_SPAWNS.map(([f, z], i) => P(`Barracks_Spawn_${i + 1}`, f, z)),
+    clear_areas: {
+      main_gate_to_keep: R("MainRoute", -32, INNER, -9, 9),
+      tunnel_landing: R("TunnelLanding", 14, 26, -61, -49),
+      tunnel_egress: R("TunnelEgress", 14, 26, -49, -9),
+      ram_assembly_pad: R("RamAssemblyPad", 57, 77, 44, 64),
+      ram_turning_area: R("RamTurningArea", 57, 82, 9, 44),
+      keep_front_circulation: R("KeepFrontCirculation", -30, -18, -48, 47),
+      open_south_rear_courtyard: R("OpenSouthRearCourtyard", -76, -48, 43, 69),
+    },
+    tower_access: [P("Tower_Access_RN", -80, -80), P("Tower_Access_RS", -80, 80),
+      P("Tower_Access_FN", 80, -80), P("Tower_Access_FS", 80, 80)],
+    ballista_mount: { ...P("Gatehouse_Ballista_Mount", HALF, 0), y: r1(y + 21.4),
+      height_note: "Gatehouse-roof mount height is an art placeholder; verify against the final gate mesh.",
+      aim: { x: sign, z: 0 }, access: P("Gatehouse_Ballista_Access", 79, -23) },
+  };
   const rearX = [cx, cx - sign * INNER].sort((a, b) => a - b);
   return {
     id: c.id, team: c.team, center: c.center,
@@ -117,10 +158,8 @@ function castle(c, sign) {
     towers, wall_sections: sections,
     tunnel_exit: { id: `${T}_Tunnel_Exit`, ...W(TUNNEL_A.exit.x - castleA.center.x, TUNNEL_A.exit.z) },
     reserved_rear_half: { min_x: r1(rearX[0]), max_x: r1(rearX[1]), min_z: -INNER, max_z: INNER,
-      note: "The proposed Keep contains the stockpile room. The Keep entrance must remain at least 60 studs of courtyard route from the tunnel exit; interior coordinates await user approval." },
-    temporary_preview_spawns: spawns.map((s, i) => ({ id: `${T}_PreviewSpawn_${i + 1}`, ...s })),
-    interior: null,
-    interior_note: "NOT DEFINED. CASTLE-INTERIOR-V2-PROPOSAL.md has measured Keep, internal stockpile room, barracks, specialist, spawn, tower access and ballista positions awaiting user approval. v1.1 positions are stale.",
+      note: "The Keep and its internal stockpile room occupy the approved rear part of the courtyard." },
+    interior,
   };
 }
 const castles = [castle(castleA, +1), castle({ ...castleA, id: "Castle_B", team: "B", center: mirror(castleA.center) }, -1)];
@@ -165,9 +204,9 @@ const tunnels = [["A", 1], ["B", -1]].map(([side, sx]) => {
 
 const layout = {
   meta: {
-    status: "APPROVED FOR AN IN-GAME VISUAL PREVIEW 2026-10-01 (MAP-REVISION-PROPOSAL.md). Exterior battlefield only; subject to revision after the in-game review.",
-    interior_status: "NOT DEFINED. The 2026-09-30 interior (v1.1, in git history) is stale and was removed. CASTLE-INTERIOR-V2-PROPOSAL.md proposes a Keep with an internal stockpile room, barracks, four specialist buildings, spawn and ballista positions; its coordinates await user approval. temporary_preview_spawns are for the visual review only.",
-    version: "2.0", date: "2026-10-01", units: "studs",
+    status: "Exterior approved for an in-game visual preview (MAP-REVISION-PROPOSAL.md); interior geometry approved 2026-10-01 (CASTLE-INTERIOR-V2-PROPOSAL.md). Subject to in-game review.",
+    interior_status: "APPROVED SPATIAL LAYOUT 2026-10-01. The Keep contains the stockpile room. The 2026-09-30 workshop/cannon interior and gameplay are stale; approved coordinates do not imply the new art or logic is built.",
+    version: "2.1", date: "2026-10-01", units: "studs",
     coords: "Roblox: ground plane (x, z), height y. Blender: (x, y, z) -> (x, -z, y).",
     compass: "-Z = north, +X = east. Team A west, team B east.",
     generator: "assets/map/propose_layout.js",
@@ -290,13 +329,48 @@ for (const t of tunnels) {
   for (let x = Math.min(t.entrance.x, t.bend.x); x <= Math.max(t.entrance.x, t.bend.x); x += 1)
     for (const p of pads.filter((q) => q.kind === "circle")) closest = Math.min(closest, distTo(p, x, t.entrance.z));
   report[`${t.id}_outer_leg_to_nearest_node_pad`] = r1(closest - t.width / 2);
-  // temporary spawns: inside the courtyard, out of the rear half, away from the exit
-  for (const s of c.temporary_preview_spawns) {
-    const sf = (s.x - c.center.x) * sign, sz = s.z - c.center.z;
-    if (Math.abs(sf) > INNER - 4 || Math.abs(sz) > INNER - 4) problems.push(`${s.id} is not inside the courtyard`);
-    if (sf <= 0) problems.push(`${s.id} is in the reserved rear half`);
-    if (Math.hypot(s.x - t.exit.x, s.z - t.exit.z) < 60) problems.push(`${s.id} is within 60 of the tunnel exit`);
-  }
+}
+// Approved interior: every building fits, nested stockpile can be reached through the
+// Keep hall, preview spawns are retired, and the reserved fighting paths stay open.
+const containsPoint = (r, p) => p.x >= r.min_x && p.x <= r.max_x && p.z >= r.min_z && p.z <= r.max_z;
+const containsRect = (outer, inner) => inner.min_x >= outer.min_x && inner.max_x <= outer.max_x
+  && inner.min_z >= outer.min_z && inner.max_z <= outer.max_z;
+const overlaps = (a, b) => Math.min(a.max_x, b.max_x) > Math.max(a.min_x, b.min_x)
+  && Math.min(a.max_z, b.max_z) > Math.max(a.min_z, b.min_z);
+const onEdge = (r, p) => containsPoint(r, p)
+  && (p.x === r.min_x || p.x === r.max_x || p.z === r.min_z || p.z === r.max_z);
+const interiorRects = (c) => {
+  const i = c.interior;
+  return [i.keep, i.keep.entrance_hall, i.keep.stockpile_room, i.barracks,
+    ...i.specialists, ...Object.values(i.clear_areas)];
+};
+const interiorPoints = (c) => {
+  const i = c.interior;
+  return [i.keep.front_door, i.keep.stockpile_room.door, i.keep.stockpile_room.interaction,
+    i.barracks.door, ...i.specialists.flatMap((s) => [s.door, ...(s.ram_opening ? [s.ram_opening] : [])]),
+    ...i.spawn_points, ...i.tower_access, i.ballista_mount, i.ballista_mount.access];
+};
+for (const c of castles) {
+  const i = c.interior, k = i.keep, s = k.stockpile_room, a = i.clear_areas;
+  const castleInner = { min_x: c.center.x - INNER, max_x: c.center.x + INNER, min_z: -INNER, max_z: INNER };
+  const buildings = [k, i.barracks, ...i.specialists];
+  for (const b of buildings) if (!containsRect(castleInner, b)) problems.push(`${b.id} exceeds inner wall face`);
+  for (let j = 0; j < buildings.length; j++) for (let h = j + 1; h < buildings.length; h++)
+    if (overlaps(buildings[j], buildings[h])) problems.push(`${buildings[j].id} overlaps ${buildings[h].id}`);
+  if (!containsRect(k, s) || !containsRect(k, k.entrance_hall)) problems.push(`${k.id} does not contain its stockpile room and entrance hall`);
+  if (!containsPoint(s, s.interaction) || !containsPoint(s, s.door)) problems.push(`${s.id} interaction or door lies outside the room`);
+  if (!containsPoint(k.entrance_hall, s.door) || !containsPoint(k.entrance_hall, k.front_door))
+    problems.push(`${k.id} hall does not connect front and stockpile doors`);
+  for (const [r, p] of [[k, k.front_door], [s, s.door], [i.barracks, i.barracks.door],
+      ...i.specialists.flatMap((b) => [[b, b.door], ...(b.ram_opening ? [[b, b.ram_opening]] : [])])])
+    if (!onEdge(r, p)) problems.push(`${p.id} is not on the edge of ${r.id}`);
+  if (i.spawn_points.length !== 6) problems.push(`${c.id} needs six provisional barracks spawns`);
+  for (const p of i.spawn_points) if (!containsPoint(i.barracks, p)) problems.push(`${p.id} lies outside barracks`);
+  for (const b of buildings) for (const route of [a.main_gate_to_keep, a.tunnel_landing, a.tunnel_egress,
+      a.ram_assembly_pad, a.ram_turning_area, a.keep_front_circulation, a.open_south_rear_courtyard])
+    if (overlaps(b, route)) problems.push(`${b.id} blocks ${route.id}`);
+  const d = Math.hypot(c.tunnel_exit.x - k.front_door.x, c.tunnel_exit.z - k.front_door.z);
+  need(`${c.id}_tunnel_exit_to_keep_door`, d, 60);
 }
 // bounds
 for (const p of [...pads, ...coverR, ...craterC]) {
@@ -320,10 +394,15 @@ for (const o of cover.filter((q) => q.id.startsWith("A_"))) {
 }
 const [tA, tB] = tunnels;
 for (const k of ["entrance", "bend", "exit"]) if (tB[k].x !== -tA[k].x || tB[k].z !== tA[k].z) problems.push(`tunnel ${k} is not mirrored`);
-const castleItems = (c) => [...c.wall_sections, ...c.towers, ...c.temporary_preview_spawns, c.tunnel_exit, { ...c.gate, id: c.gate.id }];
+const castleItems = (c) => [...c.wall_sections, ...c.towers, ...interiorPoints(c), c.tunnel_exit, { ...c.gate, id: c.gate.id }];
 for (const a of castleItems(cA)) {
   const b = castleItems(cB).find((p) => p.id === swapAB(a.id));
   if (!b || b.x !== -a.x || b.z !== a.z || b.y !== a.y) problems.push(`castle item ${a.id} is not mirrored`);
+}
+for (const a of interiorRects(cA)) {
+  const b = interiorRects(cB).find((r) => r.id === swapAB(a.id));
+  if (!b || b.min_x !== -a.max_x || b.max_x !== -a.min_x || b.min_z !== a.min_z
+      || b.max_z !== a.max_z || b.y !== a.y) problems.push(`interior footprint ${a.id} is not mirrored`);
 }
 if (cA.center.x !== -cB.center.x || cA.pad.size !== cB.pad.size) problems.push("castles are not mirrored");
 if (road.min_x !== -road.max_x) problems.push("road is not centred on the mirror axis");
@@ -334,7 +413,7 @@ for (const c of castles) {
 }
 if (slots.length !== 16) problems.push(`${slots.length} node slots, not 16`);
 const ids = new Set();
-for (const o of [...castles.flatMap(castleItems), ...slots, ...craters, ...barricades, ...cover, ...tunnels]) {
+for (const o of [...castles.flatMap(castleItems), ...castles.flatMap(interiorRects), ...slots, ...craters, ...barricades, ...cover, ...tunnels]) {
   if (ids.has(o.id)) problems.push(`duplicate id ${o.id}`);
   ids.add(o.id);
 }

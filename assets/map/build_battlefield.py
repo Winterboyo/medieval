@@ -1,4 +1,4 @@
-"""The mirrored battlefield exterior (layout.json v2.0), in its own Blender scene
+"""The mirrored battlefield exterior (layout.json v2.1), in its own Blender scene
 ("Battlefield"), for the first in-game visual review.
 
 Run inside Blender with __file__ set, then bpy.app.driver_namespace["battlefield"]["build"]().
@@ -15,8 +15,9 @@ What it builds:
   (assets/castle/build_castle.py), scaled to avatar proportions measured against a 5-stud
   soldier in the concept image (TARGET-LAYOUT-PROPOSAL.md option C): walls 20.4, tower
   battlements 30.9, roof tips ~49; at the layout's 35 wall sections, 4 towers and gate.
-  NO interior: the Keep, stockpile, barracks, workshop and ballista have no approved
-  positions. The gate door is left out so the preview spawns can walk out.
+  No interior meshes in this exterior preview. The approved Keep, stockpile room,
+  barracks, specialists and ballista now have positions in layout.json, but require
+  their own castle-art task. The gate door is left out so players can walk out.
 - Props: four timber barricades, tunnel entrance portals hidden in their cover patches,
   courtyard tunnel exits (hatches), low rocks in cover zones.
 - Pines only in the edge belt and the cover zones.
@@ -67,7 +68,8 @@ KIT.SRGB.update({"BF_TIMBER": (122, 90, 60), "BF_TIMBER_DARK": (92, 66, 44), "BF
 MARKER = {"castle": (235, 40, 40), "gate": (255, 215, 0), "road": (255, 215, 0), "spawn": (255, 255, 255),
           "home": (0, 220, 120), "mid": (0, 200, 255), "forward": (255, 130, 0), "center": (200, 0, 255),
           "cover": (120, 255, 60), "crater": (255, 80, 200), "barricade": (255, 255, 255), "tunnel": (255, 140, 0),
-          "boundary": (255, 0, 255), "axis": (255, 255, 255), "origin": (255, 0, 255), "rear": (120, 120, 255)}
+          "boundary": (255, 0, 255), "axis": (255, 255, 255), "origin": (255, 0, 255), "rear": (120, 120, 255),
+          "interior": (220, 80, 180), "stockpile": (255, 180, 40), "clear_route": (255, 245, 90)}
 TEAM_COL = {"A": (184, 65, 58), "B": (58, 95, 184)}
 
 HALF_X, HALF_Y = 672.0, 480.0
@@ -815,10 +817,21 @@ def build_markers(coll, D, mat, height):
         t += post(gx, gy, gz, 1.5, 45, MARKER["gate"])
         r = c["reserved_rear_half"]
         t += rect(r["min_x"], -r["max_z"], r["max_x"], -r["min_z"], 1.2, MARKER["rear"], 0.8)
-        for s in c["temporary_preview_spawns"]:
+        for s in c["interior"]["spawn_points"]:
             px_, py_, pz_ = rb(s["x"], s["y"], s["z"])
             t += post(px_, py_, pz_, 1.2, 9, MARKER["spawn"])
         emit("Marker_" + c["id"], t, "layout.json castles " + c["id"])
+        interior = c["interior"]
+        t = []
+        for b in [interior["keep"], interior["barracks"], *interior["specialists"]]:
+            t += rect(b["min_x"], -b["max_z"], b["max_x"], -b["min_z"], 1.2, MARKER["interior"], 1.0)
+        stock = interior["keep"]["stockpile_room"]
+        t += rect(stock["min_x"], -stock["max_z"], stock["max_x"], -stock["min_z"], 1.5, MARKER["stockpile"], 1.2)
+        emit("Marker_Interior_" + c["id"], t, "layout.json castles " + c["id"] + " interior footprints")
+        t = []
+        for route in interior["clear_areas"].values():
+            t += rect(route["min_x"], -route["max_z"], route["max_x"], -route["min_z"], 0.7, MARKER["clear_route"], 0.9)
+        emit("Marker_ClearRoutes_" + c["id"], t, "layout.json castles " + c["id"] + " interior clear_areas")
     for p in D["pads"]:
         if p["kind"] != "node":
             continue

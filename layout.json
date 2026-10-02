@@ -1,8 +1,8 @@
 {
   "meta": {
-    "status": "APPROVED FOR AN IN-GAME VISUAL PREVIEW 2026-10-01 (MAP-REVISION-PROPOSAL.md). Exterior battlefield only; subject to revision after the in-game review.",
-    "interior_status": "NOT DEFINED. The 2026-09-30 interior (v1.1, in git history) is stale and was removed. CASTLE-INTERIOR-V2-PROPOSAL.md proposes a Keep with an internal stockpile room, barracks, four specialist buildings, spawn and ballista positions; its coordinates await user approval. temporary_preview_spawns are for the visual review only.",
-    "version": "2.0",
+    "status": "Exterior approved for an in-game visual preview (MAP-REVISION-PROPOSAL.md); interior geometry approved 2026-10-01 (CASTLE-INTERIOR-V2-PROPOSAL.md). Subject to in-game review.",
+    "interior_status": "APPROVED SPATIAL LAYOUT 2026-10-01. The Keep contains the stockpile room. The 2026-09-30 workshop/cannon interior and gameplay are stale; approved coordinates do not imply the new art or logic is built.",
+    "version": "2.1",
     "date": "2026-10-01",
     "units": "studs",
     "coords": "Roblox: ground plane (x, z), height y. Blender: (x, y, z) -> (x, -z, y).",
@@ -476,48 +476,283 @@
         "max_x": -280,
         "min_z": -87.8,
         "max_z": 87.8,
-        "note": "The proposed Keep contains the stockpile room. The Keep entrance must remain at least 60 studs of courtyard route from the tunnel exit; interior coordinates await user approval."
+        "note": "The Keep and its internal stockpile room occupy the approved rear part of the courtyard."
       },
-      "temporary_preview_spawns": [
-        {
-          "id": "A_PreviewSpawn_1",
-          "x": -260,
+      "interior": {
+        "status": "APPROVED 2026-10-01 (CASTLE-INTERIOR-V2-PROPOSAL.md); geometry only. Gameplay values and final art remain open.",
+        "coordinate_frame": "World Roblox studs. Local f increases toward this castle's gate; Team B mirrors Team A across x = 0.",
+        "keep": {
+          "id": "A_Keep",
+          "min_x": -356,
+          "max_x": -312,
+          "min_z": -22,
+          "max_z": 22,
           "y": 10,
-          "z": 36
+          "front_door": {
+            "id": "A_Keep_FrontDoor",
+            "x": -312,
+            "y": 10,
+            "z": 0,
+            "clear_width": 10
+          },
+          "entrance_hall": {
+            "id": "A_Keep_EntranceHall",
+            "min_x": -352,
+            "max_x": -312,
+            "min_z": -6,
+            "max_z": 6,
+            "y": 10
+          },
+          "stockpile_room": {
+            "id": "A_Stockpile_Room",
+            "min_x": -352,
+            "max_x": -334,
+            "min_z": 6,
+            "max_z": 18,
+            "y": 10,
+            "door": {
+              "id": "A_Stockpile_Room_Door",
+              "x": -343,
+              "y": 10,
+              "z": 6,
+              "clear_width": 8
+            },
+            "interaction": {
+              "id": "A_Stockpile_Interaction",
+              "x": -343,
+              "y": 10,
+              "z": 12
+            }
+          }
         },
-        {
-          "id": "A_PreviewSpawn_2",
-          "x": -260,
+        "barracks": {
+          "id": "A_Barracks",
+          "min_x": -350,
+          "max_x": -308,
+          "min_z": -75,
+          "max_z": -48,
           "y": 10,
-          "z": 46
+          "door": {
+            "id": "A_Barracks_Door",
+            "x": -329,
+            "y": 10,
+            "z": -48,
+            "clear_width": 10
+          }
         },
-        {
-          "id": "A_PreviewSpawn_3",
-          "x": -248,
-          "y": 10,
-          "z": 36
+        "specialists": [
+          {
+            "role": "Blacksmith",
+            "id": "A_Blacksmith_Forge",
+            "min_x": -292,
+            "max_x": -264,
+            "min_z": 47,
+            "max_z": 75,
+            "y": 10,
+            "door": {
+              "id": "A_Blacksmith_Door",
+              "x": -278,
+              "y": 10,
+              "z": 47,
+              "clear_width": 8
+            }
+          },
+          {
+            "role": "Alchemist",
+            "id": "A_Alchemist",
+            "min_x": -298,
+            "max_x": -274,
+            "min_z": -76,
+            "max_z": -50,
+            "y": 10,
+            "door": {
+              "id": "A_Alchemist_Door",
+              "x": -286,
+              "y": 10,
+              "z": -50,
+              "clear_width": 8
+            }
+          },
+          {
+            "role": "Fletcher",
+            "id": "A_Fletcher",
+            "min_x": -239,
+            "max_x": -214,
+            "min_z": -76,
+            "max_z": -50,
+            "y": 10,
+            "door": {
+              "id": "A_Fletcher_Door",
+              "x": -226.5,
+              "y": 10,
+              "z": -50,
+              "clear_width": 8
+            }
+          },
+          {
+            "role": "Carpenter",
+            "id": "A_Carpenter",
+            "min_x": -249,
+            "max_x": -225,
+            "min_z": 46,
+            "max_z": 74,
+            "y": 10,
+            "door": {
+              "id": "A_Carpenter_Door",
+              "x": -237,
+              "y": 10,
+              "z": 46,
+              "clear_width": 8
+            },
+            "ram_opening": {
+              "id": "A_Carpenter_RamOpening",
+              "x": -225,
+              "y": 10,
+              "z": 60,
+              "clear_width": 12
+            }
+          }
+        ],
+        "spawn_points": [
+          {
+            "id": "A_Barracks_Spawn_1",
+            "x": -340,
+            "y": 10,
+            "z": -66
+          },
+          {
+            "id": "A_Barracks_Spawn_2",
+            "x": -330,
+            "y": 10,
+            "z": -66
+          },
+          {
+            "id": "A_Barracks_Spawn_3",
+            "x": -320,
+            "y": 10,
+            "z": -66
+          },
+          {
+            "id": "A_Barracks_Spawn_4",
+            "x": -340,
+            "y": 10,
+            "z": -57
+          },
+          {
+            "id": "A_Barracks_Spawn_5",
+            "x": -330,
+            "y": 10,
+            "z": -57
+          },
+          {
+            "id": "A_Barracks_Spawn_6",
+            "x": -320,
+            "y": 10,
+            "z": -57
+          }
+        ],
+        "clear_areas": {
+          "main_gate_to_keep": {
+            "id": "A_MainRoute",
+            "min_x": -312,
+            "max_x": -192.2,
+            "min_z": -9,
+            "max_z": 9,
+            "y": 10
+          },
+          "tunnel_landing": {
+            "id": "A_TunnelLanding",
+            "min_x": -266,
+            "max_x": -254,
+            "min_z": -61,
+            "max_z": -49,
+            "y": 10
+          },
+          "tunnel_egress": {
+            "id": "A_TunnelEgress",
+            "min_x": -266,
+            "max_x": -254,
+            "min_z": -49,
+            "max_z": -9,
+            "y": 10
+          },
+          "ram_assembly_pad": {
+            "id": "A_RamAssemblyPad",
+            "min_x": -223,
+            "max_x": -203,
+            "min_z": 44,
+            "max_z": 64,
+            "y": 10
+          },
+          "ram_turning_area": {
+            "id": "A_RamTurningArea",
+            "min_x": -223,
+            "max_x": -198,
+            "min_z": 9,
+            "max_z": 44,
+            "y": 10
+          },
+          "keep_front_circulation": {
+            "id": "A_KeepFrontCirculation",
+            "min_x": -310,
+            "max_x": -298,
+            "min_z": -48,
+            "max_z": 47,
+            "y": 10
+          },
+          "open_south_rear_courtyard": {
+            "id": "A_OpenSouthRearCourtyard",
+            "min_x": -356,
+            "max_x": -328,
+            "min_z": 43,
+            "max_z": 69,
+            "y": 10
+          }
         },
-        {
-          "id": "A_PreviewSpawn_4",
-          "x": -248,
-          "y": 10,
-          "z": 46
-        },
-        {
-          "id": "A_PreviewSpawn_5",
-          "x": -236,
-          "y": 10,
-          "z": 36
-        },
-        {
-          "id": "A_PreviewSpawn_6",
-          "x": -236,
-          "y": 10,
-          "z": 46
+        "tower_access": [
+          {
+            "id": "A_Tower_Access_RN",
+            "x": -360,
+            "y": 10,
+            "z": -80
+          },
+          {
+            "id": "A_Tower_Access_RS",
+            "x": -360,
+            "y": 10,
+            "z": 80
+          },
+          {
+            "id": "A_Tower_Access_FN",
+            "x": -200,
+            "y": 10,
+            "z": -80
+          },
+          {
+            "id": "A_Tower_Access_FS",
+            "x": -200,
+            "y": 10,
+            "z": 80
+          }
+        ],
+        "ballista_mount": {
+          "id": "A_Gatehouse_Ballista_Mount",
+          "x": -188.2,
+          "y": 31.4,
+          "z": 0,
+          "height_note": "Gatehouse-roof mount height is an art placeholder; verify against the final gate mesh.",
+          "aim": {
+            "x": 1,
+            "z": 0
+          },
+          "access": {
+            "id": "A_Gatehouse_Ballista_Access",
+            "x": -201,
+            "y": 10,
+            "z": -23
+          }
         }
-      ],
-      "interior": null,
-      "interior_note": "NOT DEFINED. CASTLE-INTERIOR-V2-PROPOSAL.md has measured Keep, internal stockpile room, barracks, specialist, spawn, tower access and ballista positions awaiting user approval. v1.1 positions are stale."
+      }
     },
     {
       "id": "Castle_B",
@@ -946,48 +1181,283 @@
         "max_x": 367.8,
         "min_z": -87.8,
         "max_z": 87.8,
-        "note": "The proposed Keep contains the stockpile room. The Keep entrance must remain at least 60 studs of courtyard route from the tunnel exit; interior coordinates await user approval."
+        "note": "The Keep and its internal stockpile room occupy the approved rear part of the courtyard."
       },
-      "temporary_preview_spawns": [
-        {
-          "id": "B_PreviewSpawn_1",
-          "x": 260,
+      "interior": {
+        "status": "APPROVED 2026-10-01 (CASTLE-INTERIOR-V2-PROPOSAL.md); geometry only. Gameplay values and final art remain open.",
+        "coordinate_frame": "World Roblox studs. Local f increases toward this castle's gate; Team B mirrors Team A across x = 0.",
+        "keep": {
+          "id": "B_Keep",
+          "min_x": 312,
+          "max_x": 356,
+          "min_z": -22,
+          "max_z": 22,
           "y": 10,
-          "z": 36
+          "front_door": {
+            "id": "B_Keep_FrontDoor",
+            "x": 312,
+            "y": 10,
+            "z": 0,
+            "clear_width": 10
+          },
+          "entrance_hall": {
+            "id": "B_Keep_EntranceHall",
+            "min_x": 312,
+            "max_x": 352,
+            "min_z": -6,
+            "max_z": 6,
+            "y": 10
+          },
+          "stockpile_room": {
+            "id": "B_Stockpile_Room",
+            "min_x": 334,
+            "max_x": 352,
+            "min_z": 6,
+            "max_z": 18,
+            "y": 10,
+            "door": {
+              "id": "B_Stockpile_Room_Door",
+              "x": 343,
+              "y": 10,
+              "z": 6,
+              "clear_width": 8
+            },
+            "interaction": {
+              "id": "B_Stockpile_Interaction",
+              "x": 343,
+              "y": 10,
+              "z": 12
+            }
+          }
         },
-        {
-          "id": "B_PreviewSpawn_2",
-          "x": 260,
+        "barracks": {
+          "id": "B_Barracks",
+          "min_x": 308,
+          "max_x": 350,
+          "min_z": -75,
+          "max_z": -48,
           "y": 10,
-          "z": 46
+          "door": {
+            "id": "B_Barracks_Door",
+            "x": 329,
+            "y": 10,
+            "z": -48,
+            "clear_width": 10
+          }
         },
-        {
-          "id": "B_PreviewSpawn_3",
-          "x": 248,
-          "y": 10,
-          "z": 36
+        "specialists": [
+          {
+            "role": "Blacksmith",
+            "id": "B_Blacksmith_Forge",
+            "min_x": 264,
+            "max_x": 292,
+            "min_z": 47,
+            "max_z": 75,
+            "y": 10,
+            "door": {
+              "id": "B_Blacksmith_Door",
+              "x": 278,
+              "y": 10,
+              "z": 47,
+              "clear_width": 8
+            }
+          },
+          {
+            "role": "Alchemist",
+            "id": "B_Alchemist",
+            "min_x": 274,
+            "max_x": 298,
+            "min_z": -76,
+            "max_z": -50,
+            "y": 10,
+            "door": {
+              "id": "B_Alchemist_Door",
+              "x": 286,
+              "y": 10,
+              "z": -50,
+              "clear_width": 8
+            }
+          },
+          {
+            "role": "Fletcher",
+            "id": "B_Fletcher",
+            "min_x": 214,
+            "max_x": 239,
+            "min_z": -76,
+            "max_z": -50,
+            "y": 10,
+            "door": {
+              "id": "B_Fletcher_Door",
+              "x": 226.5,
+              "y": 10,
+              "z": -50,
+              "clear_width": 8
+            }
+          },
+          {
+            "role": "Carpenter",
+            "id": "B_Carpenter",
+            "min_x": 225,
+            "max_x": 249,
+            "min_z": 46,
+            "max_z": 74,
+            "y": 10,
+            "door": {
+              "id": "B_Carpenter_Door",
+              "x": 237,
+              "y": 10,
+              "z": 46,
+              "clear_width": 8
+            },
+            "ram_opening": {
+              "id": "B_Carpenter_RamOpening",
+              "x": 225,
+              "y": 10,
+              "z": 60,
+              "clear_width": 12
+            }
+          }
+        ],
+        "spawn_points": [
+          {
+            "id": "B_Barracks_Spawn_1",
+            "x": 340,
+            "y": 10,
+            "z": -66
+          },
+          {
+            "id": "B_Barracks_Spawn_2",
+            "x": 330,
+            "y": 10,
+            "z": -66
+          },
+          {
+            "id": "B_Barracks_Spawn_3",
+            "x": 320,
+            "y": 10,
+            "z": -66
+          },
+          {
+            "id": "B_Barracks_Spawn_4",
+            "x": 340,
+            "y": 10,
+            "z": -57
+          },
+          {
+            "id": "B_Barracks_Spawn_5",
+            "x": 330,
+            "y": 10,
+            "z": -57
+          },
+          {
+            "id": "B_Barracks_Spawn_6",
+            "x": 320,
+            "y": 10,
+            "z": -57
+          }
+        ],
+        "clear_areas": {
+          "main_gate_to_keep": {
+            "id": "B_MainRoute",
+            "min_x": 192.2,
+            "max_x": 312,
+            "min_z": -9,
+            "max_z": 9,
+            "y": 10
+          },
+          "tunnel_landing": {
+            "id": "B_TunnelLanding",
+            "min_x": 254,
+            "max_x": 266,
+            "min_z": -61,
+            "max_z": -49,
+            "y": 10
+          },
+          "tunnel_egress": {
+            "id": "B_TunnelEgress",
+            "min_x": 254,
+            "max_x": 266,
+            "min_z": -49,
+            "max_z": -9,
+            "y": 10
+          },
+          "ram_assembly_pad": {
+            "id": "B_RamAssemblyPad",
+            "min_x": 203,
+            "max_x": 223,
+            "min_z": 44,
+            "max_z": 64,
+            "y": 10
+          },
+          "ram_turning_area": {
+            "id": "B_RamTurningArea",
+            "min_x": 198,
+            "max_x": 223,
+            "min_z": 9,
+            "max_z": 44,
+            "y": 10
+          },
+          "keep_front_circulation": {
+            "id": "B_KeepFrontCirculation",
+            "min_x": 298,
+            "max_x": 310,
+            "min_z": -48,
+            "max_z": 47,
+            "y": 10
+          },
+          "open_south_rear_courtyard": {
+            "id": "B_OpenSouthRearCourtyard",
+            "min_x": 328,
+            "max_x": 356,
+            "min_z": 43,
+            "max_z": 69,
+            "y": 10
+          }
         },
-        {
-          "id": "B_PreviewSpawn_4",
-          "x": 248,
-          "y": 10,
-          "z": 46
-        },
-        {
-          "id": "B_PreviewSpawn_5",
-          "x": 236,
-          "y": 10,
-          "z": 36
-        },
-        {
-          "id": "B_PreviewSpawn_6",
-          "x": 236,
-          "y": 10,
-          "z": 46
+        "tower_access": [
+          {
+            "id": "B_Tower_Access_RN",
+            "x": 360,
+            "y": 10,
+            "z": -80
+          },
+          {
+            "id": "B_Tower_Access_RS",
+            "x": 360,
+            "y": 10,
+            "z": 80
+          },
+          {
+            "id": "B_Tower_Access_FN",
+            "x": 200,
+            "y": 10,
+            "z": -80
+          },
+          {
+            "id": "B_Tower_Access_FS",
+            "x": 200,
+            "y": 10,
+            "z": 80
+          }
+        ],
+        "ballista_mount": {
+          "id": "B_Gatehouse_Ballista_Mount",
+          "x": 188.2,
+          "y": 31.4,
+          "z": 0,
+          "height_note": "Gatehouse-roof mount height is an art placeholder; verify against the final gate mesh.",
+          "aim": {
+            "x": -1,
+            "z": 0
+          },
+          "access": {
+            "id": "B_Gatehouse_Ballista_Access",
+            "x": 201,
+            "y": 10,
+            "z": -23
+          }
         }
-      ],
-      "interior": null,
-      "interior_note": "NOT DEFINED. CASTLE-INTERIOR-V2-PROPOSAL.md has measured Keep, internal stockpile room, barracks, specialist, spawn, tower access and ballista positions awaiting user approval. v1.1 positions are stale."
+      }
     }
   ],
   "central_road": {
