@@ -240,6 +240,15 @@ def west_constraints(D):
     top = [(x, road_half(R, x)) for x in xs]
     bot = [(x, -road_half(R, x)) for x in reversed(xs)]
     poly(top + bot, closed=False)
+    # collision cell lines: no triangle may cross one, so every ground piece stays cell-sized
+    # (large flat pad triangles spilling across cells made 200-stud pieces, 0.9 studs off)
+    xs, ys = terrain_cells(D)
+    for x in xs:
+        if -HALF_X < x < 0:
+            poly([(x, -HALF_Y + k * 8) for k in range(int(2 * HALF_Y // 8) + 1)], closed=False)
+    for y in ys:
+        if -HALF_Y < y < HALF_Y:
+            poly([(-HALF_X + k * 8, y) for k in range(int(HALF_X // 8) + 1)], closed=False)
     # craters: floor edge, rim crest, outer edge, centre
     for c in D["craters"]:
         if c["cx"] > 0:
@@ -286,9 +295,58 @@ def face_col(D, inland, V, tri):
     return "GRASS_2" if MAP.facet_hash(cx, cy) < GRASS_2_SHARE else "GRASS"
 
 
+# Ground pieces are cut for ROBLOX COLLISION, measured in Studio (2026-10-01):
+# PreciseConvexDecomposition blurs at a fixed fraction of a piece's size. A 380 x 274
+# tile was off by up to 2.3 studs; 168 x 120 by up to 1.3; 84 x 60 averaged 0.1-0.2
+# (worst ~0.5); a crater alone in a ~50-stud piece was exact. Any piece with a hole or a
+# bite cut out of it gets a "lid" over the gap, so a crater is never cut out of anything:
+# each sits whole in its own cell. Cells are at most MAX_CELL_X x MAX_CELL_Y, with
+# breakpoints centred on the craters, mirrored across x = 0.
+MAX_CELL_X, MAX_CELL_Y = 84.0, 60.0
+CRATER_CELL_X, CRATER_CELL_Y = 50.0, 60.0
+
+
+def _breaks(lo, hi, centres, cell, max_cell):
+    """Sorted breakpoints from lo to hi: a cell of width `cell` centred on each centre,
+    the gaps between filled with near-equal cells no wider than max_cell."""
+    fixed = []
+    for c in sorted(centres):
+        fixed += [c - cell / 2, c + cell / 2]
+    pts, prev = [lo], lo
+    for f in fixed + [hi]:
+        f = min(max(f, prev), hi)
+        gap = f - prev
+        if gap > 1e-6:
+            n = max(1, int(math.ceil(gap / max_cell - 1e-9)))
+            pts += [prev + gap * k / n for k in range(1, n + 1)]
+        prev = f
+    out = []
+    for p in pts:
+        if not out or p - out[-1] > 1e-6:
+            out.append(p)
+    return out
+
+
+def terrain_cells(D):
+    """(x breakpoints, y breakpoints) in Blender coordinates; x mirrored about 0."""
+    west_cx = sorted({c["cx"] for c in D["craters"] if c["cx"] < 0})
+    west = _breaks(-HALF_X, 0.0, west_cx, CRATER_CELL_X, MAX_CELL_X)
+    xs = west + [-x for x in reversed(west[:-1])]
+    ys = _breaks(-HALF_Y, HALF_Y, sorted({c["cy"] for c in D["craters"]}), CRATER_CELL_Y, MAX_CELL_Y)
+    return xs, ys
+
+
+def cell_of(xs, ys, x, y):
+    import bisect
+    i = max(0, min(len(xs) - 2, bisect.bisect_right(xs, x) - 1))
+    j = max(0, min(len(ys) - 2, bisect.bisect_right(ys, y) - 1))
+    return i, j
+
+
 def build_ground(coll, D, height, inland, rng, mat):
     from mathutils import geometry
     cpts, cedges = west_constraints(D)
+    cell_xs, cell_ys = terrain_cells(D)
     spacing_at = lambda x, y: MAP.SPACING if inland(x, y) > -40 else MAP.SPACING_SEA
     free = MAP.poisson_points(rng, -HALF_X + 2, -2, -HALF_Y + 2, HALF_Y - 2, spacing_at, 60000)
     R = D["road"]
@@ -300,6 +358,8 @@ def build_ground(coll, D, height, inland, rng, mat):
             if d < 3.0:
                 return True
         if abs(x) <= R["x1"] + 7 and abs(abs(y) - road_half(R, x)) < 3.0:
+            return True
+        if any(abs(x - b) < 2.5 for b in cell_xs) or any(abs(y - b) < 2.5 for b in cell_ys):
             return True
         return any(math.hypot(x - c["cx"], y - c["cy"]) < c["r"] + 3.0 for c in D["craters"])
     free = [(x, y) for x, y in free if not near_outline(x, y)]
@@ -320,18 +380,22 @@ def build_ground(coll, D, height, inland, rng, mat):
         tris.append((vid(*a), vid(*b), vid(*c)))
         tris.append((vid(-a[0], a[1]), vid(-c[0], c[1]), vid(-b[0], b[1])))
     V3 = [(x, y, height(x, y)) for x, y in verts]
+    # Cut into collision-sized cells (see terrain_cells); a crater sits whole in its cell.
+    xs, ys = terrain_cells(D)
     buckets = {}
     for t in tris:
         p = [V3[i] for i in t]
         cx = sum(q[0] for q in p) / 3; cy = sum(q[1] for q in p) / 3
-        buckets.setdefault(MAP.tile_of(cx, cy), []).append((t, face_col(D, inland, V3, t)))
+        buckets.setdefault(cell_of(xs, ys, cx, cy), []).append((t, face_col(D, inland, V3, t)))
+    crater_cells = {cell_of(xs, ys, c["cx"], c["cy"]): c["id"] for c in D["craters"]}
     stats = {}
-    for (ti, tj), items in sorted(buckets.items()):
+    for key, items in sorted(buckets.items()):
         used = sorted({i for t, _ in items for i in t})
         remap = {old: new for new, old in enumerate(used)}
         tv = [V3[i] for i in used]
         tf = [tuple(remap[i] for i in t) for t, _ in items]
-        name = "BF_Terrain_Tile_%d_%d" % (ti, tj)
+        # named by Roblox-facing cell indices; a crater's cell also carries the crater id
+        name = "BF_Terrain_%02d_%02d" % key + ("_" + crater_cells[key] if key in crater_cells else "")
         me = MAP.colour_mesh(name, tv, tf, [SRGB[c] for _, c in items], [False] * len(tf), mat)
         MAP.add_object(coll, name, me, "layout.json v2: ground around pads, road, craters (AGENTS §6)")
         stats[name] = len(tf)
@@ -801,7 +865,7 @@ def verify(B):
     scene, D, height, inland = B["scene"], B["D"], B["height"], B["inland"]
     by_id = {o.get("export_name", o.name): o for o in scene.objects}
     dg = bpy.context.evaluated_depsgraph_get()
-    terrain = [o for o in scene.objects if o.name.startswith("BF_Terrain_Tile")]
+    terrain = [o for o in scene.objects if o.name.startswith("BF_Terrain_")]   # tiles and crater pieces
 
     def ground(x, y):
         origin = Vector((x + 0.013, y + 0.017, 500.0))
