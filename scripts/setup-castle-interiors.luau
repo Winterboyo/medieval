@@ -45,7 +45,9 @@ for _, part in model:GetDescendants() do
 		local kind = name:match("^[AB]_(.+)$")
 		local fidelity: Enum.CollisionFidelity? = nil
 		if name:find("_Forecourt") then
-			fidelity = Enum.CollisionFidelity.Box
+			-- Curved terraces need their actual outline; a box makes invisible
+			-- rectangular corners hover above the surrounding courtyard.
+			fidelity = Enum.CollisionFidelity.PreciseConvexDecomposition
 		elseif kind == "Keep" or kind == "Barracks" or kind == "Blacksmith_Forge"
 			or kind == "Fletcher" or kind == "Alchemist" or kind == "Carpenter" then
 			fidelity = Enum.CollisionFidelity.PreciseConvexDecomposition

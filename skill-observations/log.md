@@ -67,3 +67,18 @@ Observations captured during task-oriented work.
 **Suggested improvement:** Verify both screenshot capability and the final Studio import mechanism at the start of a 3D asset task. If the import is UI-only, export a small test asset first, write an idempotent alignment script based on two layout anchors, and communicate the exact one-step handoff before undertaking a large batch.
 
 **Principle:** A verified export is not an in-game asset until the import and alignment path has been exercised.
+
+### Observation 5: Resolve visual versus collision complaints before changing a floor
+
+**Status:** OPEN
+**Date:** 2026-10-02
+**Session context:** Revising the blacksmith floor after the user said it "doesn't work."
+**Skill:** New skill candidate: reference-driven 3D revision
+**Type:** open-source
+**Phase/Area:** Interpreting feedback and preparing partial imports
+
+**Issue:** The phrase first suggested a collision failure, but the user meant that the flat rectangular paving did not match the curved stone reference. The revised dark foundation also lived in the forge shell, so an export containing only the visible paving and detail meshes would have left Studio with the old floor color.
+
+**Suggested improvement:** Ask which failure mode the user means while inspecting the current view. Trace every changed face back to its owning mesh before making a partial FBX export; include all changed owners and test the replacement script against a rotated test import.
+
+**Principle:** Visual changes are complete only when the exported and in-game mesh set matches the reviewed Blender view.

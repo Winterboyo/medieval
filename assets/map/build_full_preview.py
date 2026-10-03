@@ -127,20 +127,27 @@ def show(scene):
     BF.show(scene, markers=False)
 
 
-def export_interior_fbx(scene, path):
-    """Export only the mirrored castle interiors at layout world coordinates.
+def export_interior_fbx(scene, path, floor_only=False):
+    """Export mirrored interiors, or just the six blacksmith floor update pieces.
 
     The exterior walls and terrain already live in battlefield.fbx. The export
     deliberately excludes them so Studio receives no duplicate geometry.
     """
     coll = bpy.data.collections["Full_Preview_Castles"]
-    interiors = ("Keep", "Stockpile_Contents", "Barracks", "Blacksmith_Forge",
-                 "Blacksmith_Forecourt", "Fletcher", "Alchemist", "Carpenter",
-                 "Ballista", "Tower_Access")
-    objs = [o for o in coll.objects if any(o.get("layout_id", "").startswith(team + "_" + role)
-            for team in ("A", "B") for role in interiors)]
-    if len(objs) != 40:
-        raise AssertionError("Interior export count changed: %d" % len(objs))
+    if floor_only:
+        ids = {team + "_" + role for team in ("A", "B") for role in
+               ("Blacksmith_Forecourt", "Blacksmith_Forge_Detail", "Blacksmith_Forge")}
+        objs = [o for o in coll.objects if o.get("layout_id") in ids]
+        expected = 6
+    else:
+        interiors = ("Keep", "Stockpile_Contents", "Barracks", "Blacksmith_Forge",
+                     "Blacksmith_Forecourt", "Fletcher", "Alchemist", "Carpenter",
+                     "Ballista", "Tower_Access")
+        objs = [o for o in coll.objects if any(o.get("layout_id", "").startswith(team + "_" + role)
+                for team in ("A", "B") for role in interiors)]
+        expected = 40
+    if len(objs) != expected:
+        raise AssertionError("Interior export count changed: %d instead of %d" % (len(objs), expected))
     layer = scene.view_layers[0]
     win = bpy.context.window
     previous_scene = win.scene

@@ -45,6 +45,7 @@ SRGB = {
     # Forge reference photo: dark stone/wood and fire samples, lifted slightly so
     # the room remains legible at Roblox's normal third-person camera distance.
     "FORGE_STONE": (103, 95, 87),
+    "FORGE_FLOOR": (77, 75, 73),
     "FORGE_WOOD": (130, 104, 77),
     "EMBER": (197, 103, 52),
     "FIRE": (255, 200, 97),
@@ -68,6 +69,7 @@ SRGB = {
     "COURT_STONE": (118, 111, 103),
     "COURT_LIGHT": (139, 131, 120),
     "COURT_DARK": (97, 93, 88),
+    "COURT_GRAVEL": (145, 120, 88),
 }
 TEAM_A = (184, 65, 58)              # layout.json teams[0].banner_color_placeholder, preview only
 TEAM_B = (58, 95, 184)
@@ -810,7 +812,8 @@ def build_specialist(mat, role, hx, hy, door_side, ram_side=0, state="intact"):
     h, wt, door_hw = 10.5, 1.0, 4.0
     wall_col = "STONE" if role == "Blacksmith_Forge" else "PLASTER"
     frame_col = "FORGE_WOOD" if role == "Blacksmith_Forge" else "FRAME"
-    p.box(-hx, hx, -hy, hy, 0, 0.7, "STONE_DARK")
+    p.box(-hx, hx, -hy, hy, 0, 0.7,
+          "FORGE_FLOOR" if role == "Blacksmith_Forge" else "STONE_DARK")
     if state == "rubble":
         for yy in (-hy, hy - wt):
             p.box(-hx, hx, yy, yy + wt, 0.7, 2.3, "STONE")
@@ -1026,6 +1029,24 @@ def build_blacksmith_detail(mat, state="intact"):
                  cols=("FORGE_STONE", "FORGE_WOOD"))
         return p.finish("Blacksmith_Detail_Rubble", mat)
 
+    # The photo's worn dark flagstones, with thin foundation showing as grout.
+    # These are visual faces only; the forge shell keeps the continuous walkable floor.
+    rng = random.Random(617)
+    for row in range(9):
+        y0 = -12.65 + row * 2.85
+        for col in range(9):
+            x0 = -13.2 + col * 3.12 + (1.45 if row % 2 else 0)
+            x1 = min(12.65, x0 + 2.92)
+            if x1 - x0 < 0.75:
+                continue
+            y1 = min(12.65, y0 + 2.66)
+            z = 0.73 + rng.uniform(0, 0.035)
+            trim = rng.uniform(0.03, 0.17)
+            p._add([(x0 + trim, y0 + 0.08, z), (x1 - 0.08, y0 + trim, z),
+                    (x1 - trim, y1 - 0.08, z), (x0 + 0.08, y1 - trim, z)],
+                   [(0, 1, 2, 3)],
+                   ("FORGE_STONE", "COURT_DARK", "STONE_DARK")[(row * 5 + col * 7) % 3])
+
     # Hearth backplate and an open, dark firebox behind the working grate.
     p.box(-11.0, -1.0, -13.15, -12.76, 0.72, 9.1, "FORGE_STONE")
     p.box(-9.15, -2.85, -12.69, -12.56, 1.0, 4.3, "IRON")
@@ -1053,10 +1074,10 @@ def build_blacksmith_detail(mat, state="intact"):
             x0 = -12.55 + col * 2.25 + (0.42 if row % 2 else 0)
             y0 = 6.2 + row * 1.8
             p.box(x0, x0 + 1.75, y0, y0 + 1.3, 0.72, 0.83,
-                  "STONE" if (row + col) % 3 == 0 else "STONE_DARK")
+                  "COURT_LIGHT" if (row + col) % 3 == 0 else "FORGE_STONE")
     for x0, x1, y0, y1 in ((-2.3, 2.3, 10.8, 12.2),
                            (-1.7, 1.7, 12.25, 13.45)):
-        p.box(x0, x1, y0, y1, 0.72, 0.91, "STONE")
+        p.box(x0, x1, y0, y1, 0.72, 0.91, "COURT_LIGHT")
 
     # Timber-framed shop wall behind the separate public forge bay. The gap
     # towards the rear lets an avatar walk from the working bay into the room.
@@ -1077,24 +1098,66 @@ def build_blacksmith_detail(mat, state="intact"):
 
 
 def build_blacksmith_forecourt(mat):
-    """Paved, gently tiered approach within the approved 38 x 19 footprint."""
+    """Curved, broad flagstone terraces like the user reference, inside 38 x 19."""
     p = Piece()
-    p.box(-19, 19, -9.5, 9.5, 0.04, 0.22, "COURT_DARK")
-    # Broad treads at the shop entrance; leave the 8-stud doorway unobstructed.
-    for x0, x1, y0, y1, z0, z1 in (
-        (-16, 16, -9.4, -6.7, 0.22, 0.50),
-        (-14, 14, -9.4, -8.0, 0.50, 0.75),
-    ):
-        p.box(x0, x1, y0, y1, z0, z1, "COURT_STONE")
-    for row in range(5):
-        y0 = -6.4 + row * 3.1
-        for col in range(10):
-            x0 = -18.35 + col * 3.68 + (0.42 if row % 2 else 0.0)
-            x1 = min(18.3, x0 + 3.35)
-            if x0 >= x1:
-                continue
-            tone = ("COURT_STONE", "COURT_LIGHT", "COURT_STONE", "COURT_DARK")[(row * 3 + col) % 4]
-            p.box(x0, x1, y0, y0 + 2.70, 0.22, 0.31, tone)
+    cy = -9.5  # the shop threshold; arcs widen into the courtyard (+Y)
+    rng = random.Random(1017)
+
+    def slab(r0, r1, a0, a1, top, col):
+        # Three angular samples give each tread a visibly curved front edge.
+        angles = (a0, (a0 + a1) / 2, a1)
+        outer = [(r1 * math.cos(a), cy + r1 * math.sin(a)) for a in angles]
+        inner = ([(r0 * math.cos(a), cy + r0 * math.sin(a)) for a in reversed(angles)]
+                 if r0 else [(0, cy)])
+        outline = outer + inner
+        n = len(outline)
+        verts = [(x, y, 0.045) for x, y in outline] + [(x, y, top) for x, y in outline]
+        faces = [tuple(reversed(range(n))), tuple(range(n, 2 * n))]
+        faces += [(i, (i + 1) % n, n + (i + 1) % n, n + i) for i in range(n)]
+        p._add(verts, faces, col)
+
+    # Dark mortar follows the curved outline rather than leaving a rectangular pad.
+    for k in range(20):
+        slab(0, 18.9, math.pi * k / 20, math.pi * (k + 1) / 20,
+             0.075, "COURT_DARK")
+
+    # Each ring steps down only 0.1-0.2 stud, so it remains comfortable to walk.
+    # Offset joints between courses; wide varied flagstones read at gameplay distance.
+    courses = ((0, 7.4, 0.69, 10), (7.55, 11.8, 0.53, 8),
+               (11.95, 15.4, 0.35, 10), (15.55, 17.25, 0.22, 11),
+               (17.4, 18.82, 0.115, 13))
+    for ring, (inner, outer, height, count) in enumerate(courses):
+        for k in range(count):
+            margin = 0 if ring in (0, 4) else 0.006 / max(1, outer / 9)
+            a0 = math.pi * k / count + margin
+            a1 = math.pi * (k + 1) / count - margin
+            tone = ("COURT_GRAVEL" if ring == 4 else "COURT_STONE" if ring == 0 else
+                    ("COURT_STONE", "COURT_LIGHT", "COURT_STONE", "COURT_DARK")[(k * 3 + ring * 5) % 4])
+            slab(inner, outer, a0, a1,
+                 height if ring in (0, 4) else height + rng.uniform(-0.018, 0.018), tone)
+
+    # Large worn flags on the top landing instead of a starburst of radial joints.
+    flags = (
+        (-6.25, -2.25, -9.15, -7.55), (-2.00, 2.00, -9.15, -7.55),
+        (2.25, 6.25, -9.15, -7.55), (-5.90, -2.05, -7.30, -5.45),
+        (-1.80, 2.35, -7.30, -5.45), (2.60, 5.90, -7.30, -5.45),
+        (-3.05, -0.10, -5.20, -2.98), (0.15, 3.05, -5.20, -2.98),
+    )
+    for k, (x0, x1, y0, y1) in enumerate(flags):
+        c = 0.08 + (k % 3) * 0.025
+        p._add([(x0 + c, y0 + 0.06, 0.701), (x1 - 0.06, y0 + c, 0.701),
+                (x1 - c, y1 - 0.06, 0.701), (x0 + 0.06, y1 - c, 0.701)],
+               [(0, 1, 2, 3)], "COURT_LIGHT" if k % 4 == 0 else "COURT_STONE")
+
+    # Sparse, irregular small stones break up the gravel collar without noise.
+    for k in range(62):
+        a = math.pi * (k + 0.25 + rng.uniform(-0.2, 0.2)) / 62
+        r = rng.uniform(17.65, 18.55)
+        x, y = r * math.cos(a), cy + r * math.sin(a)
+        sx, sy = rng.uniform(0.06, 0.18), rng.uniform(0.06, 0.17)
+        p._add([(x - sx, y - sy, 0.124), (x + sx, y - sy * 0.7, 0.124),
+                (x + sx * 0.3, y + sy, 0.124)],
+               [(0, 1, 2)], "COURT_LIGHT" if k % 5 == 0 else "COURT_DARK")
     return p.finish("Blacksmith_Forecourt", mat)
 
 
