@@ -23,38 +23,67 @@ local atmosphere = owned("Atmosphere", "Atmosphere", Lighting) :: Atmosphere
 local grade = owned("ColorCorrectionEffect", "ColorCorrection", Lighting) :: ColorCorrectionEffect
 local bloom = owned("BloomEffect", "Bloom", Lighting) :: BloomEffect
 local sunRays = owned("SunRaysEffect", "SunRays", Lighting) :: SunRaysEffect
+local depth = owned("DepthOfFieldEffect", "DepthOfField", Lighting) :: DepthOfFieldEffect
 local clouds = owned("Clouds", "Clouds", Workspace.Terrain) :: Clouds
+
+-- The skybox is original art: a golden-hour gradient with faceted low-poly cumulus,
+-- rendered in Blender by assets/sky/build_sky.py and uploaded as images. Its warm glow is
+-- painted where the sun stands at ClockTime 16.4 (latitude -12): low in the north-west,
+-- behind Castle A from the field. Change the clock and the glow no longer matches.
+-- All six faces must be the same size; a smaller one breaks environment lighting (magenta).
+local sky = owned("Sky", "Sky", Lighting) :: Sky
+sky.SkyboxFt = "rbxassetid://125025616651962"
+sky.SkyboxBk = "rbxassetid://115298958132412"
+sky.SkyboxLf = "rbxassetid://118607207189786"
+sky.SkyboxRt = "rbxassetid://136975032525324"
+sky.SkyboxUp = "rbxassetid://85577216608863"
+sky.SkyboxDn = "rbxassetid://127934957660455"
+sky.CelestialBodiesShown = true
+sky.SunAngularSize = 12
+sky.MoonAngularSize = 9
+sky.StarCount = 0
 
 local function setWeather(preset: string)
 	local wet = preset == "Rain"
 	local overcast = wet or preset == "Overcast"
 	pcall(function() Lighting.LightingStyle = Enum.LightingStyle.Realistic end)
-	Lighting.ClockTime = 15.6
+	Lighting.ClockTime = 16.4 -- the painted sky's sun position; long, warm late-afternoon shadows
 	Lighting.GlobalShadows = true
-	Lighting.ShadowSoftness = if overcast then 0.45 else 0.29
-	Lighting.Brightness = if overcast then 1.8 else 2.35
-	Lighting.ExposureCompensation = if overcast then -0.13 else -0.09
-	Lighting.Ambient = Color3.fromRGB(77, 82, 88)
-	Lighting.OutdoorAmbient = if overcast then Color3.fromRGB(122, 130, 136) else Color3.fromRGB(146, 146, 141)
-	Lighting.ColorShift_Top = if overcast then Color3.fromRGB(224, 229, 232) else Color3.fromRGB(255, 239, 211)
-	atmosphere.Density = if overcast then 0.30 else 0.22
-	atmosphere.Offset = 0.04
-	atmosphere.Haze = if overcast then 0.9 else 0.34
-	atmosphere.Glare = if overcast then 0.03 else 0.12
-	atmosphere.Color = if overcast then Color3.fromRGB(183, 194, 200) else Color3.fromRGB(205, 211, 209)
-	atmosphere.Decay = Color3.fromRGB(114, 125, 135)
+	Lighting.ShadowSoftness = if overcast then 0.45 else 0.25
+	Lighting.Brightness = if overcast then 1.8 else 2.6
+	Lighting.ExposureCompensation = if overcast then -0.13 else 0
+	Lighting.Ambient = if overcast then Color3.fromRGB(77, 82, 88) else Color3.fromRGB(70, 72, 84)
+	Lighting.OutdoorAmbient = if overcast then Color3.fromRGB(122, 130, 136) else Color3.fromRGB(128, 124, 134)
+	Lighting.ColorShift_Top = if overcast then Color3.fromRGB(224, 229, 232) else Color3.fromRGB(255, 226, 186)
+	Lighting.ColorShift_Bottom = Color3.fromRGB(0, 0, 0)
+	-- the skybox lights the scene too: warm from the sun side, cool from the open sky
+	Lighting.EnvironmentDiffuseScale = 1
+	Lighting.EnvironmentSpecularScale = 0.35
+	atmosphere.Density = if overcast then 0.30 else 0.26
+	atmosphere.Offset = if overcast then 0.04 else 0.1
+	atmosphere.Haze = if overcast then 0.9 else 0.55
+	atmosphere.Glare = if overcast then 0.03 else 0.25
+	atmosphere.Color = if overcast then Color3.fromRGB(183, 194, 200) else Color3.fromRGB(222, 212, 196)
+	atmosphere.Decay = if overcast then Color3.fromRGB(114, 125, 135) else Color3.fromRGB(164, 172, 196)
 	grade.Brightness = 0
-	grade.Contrast = if overcast then 0.08 else 0.11
-	grade.Saturation = if overcast then -0.08 else -0.05
-	grade.TintColor = if overcast then Color3.fromRGB(230, 236, 239) else Color3.fromRGB(255, 247, 234)
-	bloom.Intensity = 0.16
-	bloom.Size = 25
-	bloom.Threshold = 1.75
-	sunRays.Intensity = if overcast then 0.025 else 0.11
-	sunRays.Spread = 0.62
-	clouds.Cover = if wet then 0.78 elseif overcast then 0.61 else 0.27
-	clouds.Density = if overcast then 0.48 else 0.32
-	clouds.Color = if overcast then Color3.fromRGB(188, 195, 197) else Color3.fromRGB(245, 241, 230)
+	grade.Contrast = if overcast then 0.08 else 0.12
+	grade.Saturation = if overcast then -0.08 else 0.12
+	grade.TintColor = if overcast then Color3.fromRGB(230, 236, 239) else Color3.fromRGB(255, 244, 228)
+	bloom.Intensity = if overcast then 0.16 else 0.35
+	bloom.Size = 28
+	bloom.Threshold = if overcast then 1.75 else 1.15
+	sunRays.Intensity = if overcast then 0.025 else 0.07
+	sunRays.Spread = 0.75
+	-- a soft far blur gives the island the concept's painted, miniature distance
+	depth.FarIntensity = if overcast then 0.1 else 0.18
+	depth.FocusDistance = 140
+	depth.InFocusRadius = 160
+	depth.NearIntensity = 0
+	-- dynamic clouds only for bad weather; on clear days the painted sky carries them
+	clouds.Enabled = overcast
+	clouds.Cover = if wet then 0.78 else 0.61
+	clouds.Density = 0.48
+	clouds.Color = Color3.fromRGB(188, 195, 197)
 end
 
 local effects = owned("Folder", "CastleVisualEffects", Workspace)
