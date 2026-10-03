@@ -47,9 +47,13 @@ KIT = _load("bf_castle_kit", os.path.normpath(os.path.join(_HERE, "..", "castle"
 
 SEED = 20261001
 SRGB = {
-    "GRASS": (118, 146, 64),       # meadow, between terrain-meadow's grass and the §9 target
-    "GRASS_2": (108, 136, 60),     # second tone, a share of facets (round 1: softer, was 102,128,56)
-    "MEADOW": (126, 153, 67),      # gathering pads, mixed with GRASS (round 1: read as pale disks at 134,160,72)
+    "GRASS": (88, 123, 56),        # deeper greens, sampled against the user's forest screenshot
+    "GRASS_2": (82, 116, 53),
+    "GRASS_SHADE": (74, 106, 50),
+    "MEADOW": (97, 132, 62),
+    "BLADE_DARK": (38, 83, 33),
+    "BLADE_MID": (55, 103, 42),
+    "BLADE_LIGHT": (72, 122, 51),
     "DIRT": (130, 112, 72),        # road and crater walls (round 3: toward the concept's olive-tan path, was 134,108,70)
     "DIRT_DARK": (104, 86, 62),    # crater floors
     "ROCK": (104, 100, 124),       # cliff faces, boulders: muted purple-grey
@@ -294,6 +298,14 @@ def face_col(D, inland, V, tri):
     for pd in D["pads"]:
         if pd["kind"] == "node" and pad_dist(pd, cx, cy) == 0.0:
             return "MEADOW" if MAP.facet_hash(cx, cy) < 0.7 else "GRASS"
+    # Broad mottled swaths, not a random colour on every triangle. The 11-stud
+    # terrain facets still catch light; the colour reads as meadow from afar.
+    swath = (0.52 * math.sin(cx / 54.0 + 0.4) * math.cos(cy / 62.0 - 0.6)
+             + 0.31 * math.sin((cx + 0.65 * cy) / 91.0))
+    if swath < -0.42:
+        return "GRASS_SHADE"
+    if swath > 0.43:
+        return "MEADOW"
     return "GRASS_2" if MAP.facet_hash(cx, cy) < GRASS_2_SHARE else "GRASS"
 
 
@@ -402,6 +414,120 @@ def build_ground(coll, D, height, inland, rng, mat):
         MAP.add_object(coll, name, me, "layout.json v2: ground around pads, road, craters (AGENTS §6)")
         stats[name] = len(tf)
     return stats, V3, tris
+
+
+# ---------------------------------------------------------- meadow groundcover
+def build_groundcover(coll, D, height, inland, mat):
+    """Visual-only, mirrored grass tufts. Terrain tiles remain the walkable floor.
+
+    Five narrow double-sided blades per tuft provide a silhouette at avatar
+    height without textures or alpha sorting. Castle routes, the road, structures,
+    resource pads, craters, and tunnel mouths retain their gameplay readability.
+    """
+    rng = random.Random(SEED + 317)
+    stride = 3.8
+    buckets = {}
+    counts = {"tufts": 0, "field": 0, "castle": 0, "node": 0}
+
+    def box_contains(rect, x, y, margin):
+        return (rect["min_x"] - margin <= x <= rect["max_x"] + margin and
+                -rect["max_z"] - margin <= y <= -rect["min_z"] + margin)
+
+    def castle_exclusion(x, y):
+        for castle in D["L"]["castles"]:
+            interior = castle["interior"]
+            structures = [interior["keep"], interior["barracks"],
+                          *interior["specialists"],
+                          interior["surfaces"]["blacksmith_forecourt"]]
+            if any(box_contains(b, x, y, 2.2) for b in structures):
+                return True
+            if any(box_contains(b, x, y, 1.0)
+                   for b in interior["clear_areas"].values()):
+                return True
+        return False
+
+    def bucket_for(x, y):
+        # Smaller than terrain collision cells' budget but few enough parts to
+        # stream efficiently in Roblox (8 columns x 8 rows over the island).
+        return (min(7, max(0, int((x + HALF_X) / (2 * HALF_X / 8)))),
+                min(7, max(0, int((y + HALF_Y) / (2 * HALF_Y / 8)))))
+
+    for i in range(int(HALF_X / stride)):
+        for j in range(int(2 * HALF_Y / stride)):
+            x = -HALF_X + (i + 0.5) * stride + rng.uniform(-0.9, 0.9)
+            y = -HALF_Y + (j + 0.5) * stride + rng.uniform(-0.9, 0.9)
+            if x > -2.5 or inland(x, y) < CLIFF + 5:
+                continue
+            if in_road_dirt(D["road"], x, y) or (
+                    abs(x) <= D["road"]["x1"] + 5 and
+                    abs(y) < road_half(D["road"], x) + 1.5):
+                continue
+            if any(math.hypot(x - c["cx"], y - c["cy"]) < c["r"] + 0.5
+                   for c in D["craters"]):
+                continue
+            if any(abs(x - b["cx"]) < b["lx"] / 2 + 2 and
+                   abs(y - b["cy"]) < b["dz"] / 2 + 2
+                   for b in D["barricades"]):
+                continue
+            if any(math.hypot(x - t["entrance"][0], y - t["entrance"][1]) < 10
+                   for t in D["tunnels"]):
+                continue
+
+            pad = next((p for p in D["pads"] if pad_dist(p, x, y) == 0), None)
+            if pad and pad["kind"] == "castle":
+                if castle_exclusion(x, y) or rng.random() < 0.52:
+                    continue
+                kind, low, high = "castle", 0.32, 0.75
+            elif pad and pad["kind"] == "node":
+                if rng.random() < 0.25:
+                    continue
+                kind, low, high = "node", 0.45, 0.95
+            else:
+                kind, low, high = "field", 0.75, 1.6
+            if any(in_rect(z, x, y) for z in D["cover"]):
+                low, high = max(low, 1.1), max(high, 2.1)
+            if abs(x) <= D["road"]["x1"] + 6 and \
+                    road_half(D["road"], x) + 1.5 < abs(y) < road_half(D["road"], x) + 10:
+                low, high = max(low, 0.95), max(high, 1.75)
+
+            z = height(x, y) + 0.015
+            h = rng.uniform(low, high)
+            rot = rng.uniform(0, 2 * math.pi)
+            blades = []
+            for blade in range(5):
+                a = rot + blade * 2 * math.pi / 5 + rng.uniform(-0.2, 0.2)
+                ax, ay = math.cos(a), math.sin(a)
+                spread = rng.uniform(0.08, 0.56)
+                bx, by = x + ax * spread, y + ay * spread
+                bh = h * rng.uniform(0.68, 1.14)
+                width = rng.uniform(0.18, 0.36) * (0.7 + 0.3 * bh)
+                side = (-ay, ax)
+                v0 = (bx - side[0] * width / 2, by - side[1] * width / 2, z)
+                v1 = (bx + side[0] * width / 2, by + side[1] * width / 2, z)
+                tip = (bx + ax * bh * 0.30, by + ay * bh * 0.30, z + bh)
+                tone = rng.choices(("BLADE_DARK", "BLADE_MID", "BLADE_LIGHT"),
+                                   weights=(3, 4, 1), k=1)[0]
+                blades.append(((v0, v1, tip), tone))
+            for mx in (x, -x):
+                tris = buckets.setdefault(bucket_for(mx, y), [])
+                for (v0, v1, tip), tone in blades:
+                    if mx > 0:
+                        v0, v1, tip = ((-v[0], v[1], v[2]) for v in (v0, v1, tip))
+                    tris.extend((((v0, v1, tip), tone),
+                                 ((v1, v0, tip), tone)))
+            counts["tufts"] += 2
+            counts[kind] += 2
+
+    stats = {}
+    for key, tris in sorted(buckets.items()):
+        name = "BF_Grass_%02d_%02d" % key
+        stats[name] = MAP.tri_object(
+            coll, name, tris, mat,
+            "AGENTS §6.5 and layout.json: visual mirrored meadow groundcover; no collision",
+            SRGB)
+    if max(stats.values(), default=0) >= 15000:
+        raise AssertionError("A grass tile exceeded the 15k triangle target")
+    return stats, counts
 
 
 # ------------------------------------------------------------------ sea and shore
@@ -1026,7 +1152,7 @@ def tri_counts(scene):
 
 
 # ------------------------------------------------------------------ export
-EXPORT_COLLECTIONS = ("BF_Terrain", "BF_Sea", "BF_Shore", "BF_Trees", "BF_Props", "BF_Castles")
+EXPORT_COLLECTIONS = ("BF_Terrain", "BF_Groundcover", "BF_Sea", "BF_Shore", "BF_Trees", "BF_Props", "BF_Castles")
 
 
 def export_fbx(scene, path, names=None):
@@ -1140,6 +1266,8 @@ def build():
     stats = {}
     g, V3, tris = build_ground(colls["BF_Terrain"], D, height, inland, rng, mat)
     stats.update(g)
+    grass, grass_counts = build_groundcover(colls["BF_Groundcover"], D, height, inland, mat)
+    stats.update(grass)
     stats.update(build_sea(colls["BF_Sea"], outline, inland, rng, mat))
     sh, n_rocks = build_shore(colls["BF_Shore"], outline, inland, rng, mat)
     stats.update(sh)
@@ -1168,7 +1296,7 @@ def build():
     place(P, "BF_Dummy_Gate", dummy, (gA["x"] + 22, 6, height(gA["x"] + 22, 6)), 90.0, "preview: 5-stud avatar at A_Gate")
     mk, boundary_pts = build_markers(colls["BF_Layout_Markers"], D, mmat, height)
     scene.view_layers[0].update()
-    return dict(scene=scene, stats=stats, markers=mk, D=D, renamed_in_other_scenes=renamed, inland=inland, height=height, base=base, trees=trees, V3=V3, tris=tris,
+    return dict(scene=scene, stats=stats, markers=mk, D=D, renamed_in_other_scenes=renamed, inland=inland, height=height, base=base, trees=trees, grass_counts=grass_counts, V3=V3, tris=tris,
                 boundary_pts=boundary_pts, castle_meshes=castle_meshes, prop_meshes=prop_meshes, shore_rocks=n_rocks, cover_rocks=rocks)
 
 

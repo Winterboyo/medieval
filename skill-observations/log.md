@@ -82,3 +82,18 @@ Observations captured during task-oriented work.
 **Suggested improvement:** Ask which failure mode the user means while inspecting the current view. Trace every changed face back to its owning mesh before making a partial FBX export; include all changed owners and test the replacement script against a rotated test import.
 
 **Principle:** Visual changes are complete only when the exported and in-game mesh set matches the reviewed Blender view.
+
+### Observation 6: Confirm which surface a visual complaint targets
+
+**Status:** OPEN
+**Date:** 2026-10-02
+**Session context:** Revising the battlefield after the user clarified that the unattractive floor was the entire green map ground, not the blacksmith paving.
+**Skill:** New skill candidate: reference-driven 3D revision
+**Type:** open-source
+**Phase/Area:** Mapping feedback to scene objects
+
+**Issue:** Clarifying that a floor complaint was visual still left its spatial scope ambiguous. Work on the forge floor passed visual and collision checks, but the user's intended target was the terrain across the entire map.
+
+**Suggested improvement:** Before editing an ambiguous surface, name the exact scene object and spatial extent in a screenshot or concise statement. Check that the target matches the user's reference before building and exporting.
+
+**Principle:** Visual feedback must be mapped to a specific surface and extent before asset work begins.
