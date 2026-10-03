@@ -131,6 +131,9 @@ function castle(c, sign) {
         ram_opening: P("Carpenter_RamOpening", 55, 60, { clear_width: 12 }) },
     ],
     spawn_points: BARRACKS_SPAWNS.map(([f, z], i) => P(`Barracks_Spawn_${i + 1}`, f, z)),
+    surfaces: {
+      blacksmith_forecourt: R("Blacksmith_Forecourt", -17, 21, 28, 47),
+    },
     clear_areas: {
       main_gate_to_keep: R("MainRoute", -32, INNER, -9, 9),
       tunnel_landing: R("TunnelLanding", 14, 26, -61, -49),
@@ -342,7 +345,7 @@ const onEdge = (r, p) => containsPoint(r, p)
 const interiorRects = (c) => {
   const i = c.interior;
   return [i.keep, i.keep.entrance_hall, i.keep.stockpile_room, i.barracks,
-    ...i.specialists, ...Object.values(i.clear_areas)];
+    ...i.specialists, ...Object.values(i.surfaces), ...Object.values(i.clear_areas)];
 };
 const interiorPoints = (c) => {
   const i = c.interior;
@@ -354,6 +357,12 @@ for (const c of castles) {
   const i = c.interior, k = i.keep, s = k.stockpile_room, a = i.clear_areas;
   const castleInner = { min_x: c.center.x - INNER, max_x: c.center.x + INNER, min_z: -INNER, max_z: INNER };
   const buildings = [k, i.barracks, ...i.specialists];
+  const forecourt = i.surfaces.blacksmith_forecourt;
+  if (!containsRect(castleInner, forecourt)) problems.push(`${forecourt.id} exceeds inner wall face`);
+  for (const b of buildings.filter((item) => item.role !== "Blacksmith"))
+    if (overlaps(b, forecourt)) problems.push(`${forecourt.id} overlaps ${b.id}`);
+  for (const route of Object.values(a))
+    if (overlaps(route, forecourt)) problems.push(`${forecourt.id} blocks ${route.id}`);
   for (const b of buildings) if (!containsRect(castleInner, b)) problems.push(`${b.id} exceeds inner wall face`);
   for (let j = 0; j < buildings.length; j++) for (let h = j + 1; h < buildings.length; h++)
     if (overlaps(buildings[j], buildings[h])) problems.push(`${buildings[j].id} overlaps ${buildings[h].id}`);
