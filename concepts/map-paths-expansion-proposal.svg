@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-825 -385 1650 770" width="1650" height="770" role="img" aria-label="Top-down proposed mirrored battlefield with two ram paths and castles 840 studs apart">
+  <rect x="-825" y="-385" width="1650" height="770" fill="#7994a3"/>
+  <rect x="-780" y="-340" width="1560" height="680" rx="80" fill="#6f9651" stroke="#ced9ba" stroke-width="6"/>
+  <g fill="#86a95b" opacity=".7">
+    <path d="M-765-240 Q-655-280-570-230 T-350-250 T-110-215 T145-255 T400-230 T645-250 L755-210 755-135 Q650-165 560-120 T330-135 T95-115 T-160-130 T-395-120 T-765-145Z"/>
+    <path d="M-765 170 Q-600 120-510 175 T-240 150 T40 175 T320 145 T570 185 T760 160 L760 250 Q600 235 480 265 T200 245 T-100 265 T-390 240 T-765 260Z"/>
+  </g>
+  <g stroke="#304b35" stroke-width="2" fill="#a0b16b" opacity=".9">
+    <circle cx="-560" cy="-190" r="58"/><circle cx="560" cy="-190" r="58"/>
+    <circle cx="-560" cy="195" r="66.5"/><circle cx="560" cy="195" r="66.5"/>
+    <circle cx="-390" cy="-190" r="58"/><circle cx="390" cy="-190" r="58"/>
+    <circle cx="-400" cy="185" r="66.5"/><circle cx="400" cy="185" r="66.5"/>
+    <circle cx="-250" cy="135" r="50.5"/><circle cx="250" cy="135" r="50.5"/>
+    <circle cx="-190" cy="-235" r="50.5"/><circle cx="190" cy="-235" r="50.5"/>
+    <circle cx="-185" cy="245" r="58"/><circle cx="185" cy="245" r="58"/>
+    <circle cx="0" cy="-140" r="44"/><circle cx="0" cy="140" r="44"/>
+  </g>
+  <g fill="#516948" stroke="#253d32" stroke-width="3">
+    <rect x="-520" y="-100" width="200" height="200" rx="5"/><rect x="320" y="-100" width="200" height="200" rx="5"/>
+    <rect x="-511.8" y="-91.8" width="183.6" height="183.6" fill="#a5a397"/>
+    <rect x="328.2" y="-91.8" width="183.6" height="183.6" fill="#a5a397"/>
+  </g>
+  <g fill="none" stroke="#584633" stroke-width="25" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M-328.2 0 -260 -20 -180 -42 180 -42 260 -20 328.2 0"/>
+    <path d="M-328.2 0 -260 20 -180 42 180 42 260 20 328.2 0"/>
+  </g>
+  <g fill="none" stroke="#bca67a" stroke-width="18" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M-328.2 0 -260 -20 -180 -42 180 -42 260 -20 328.2 0"/>
+    <path d="M-328.2 0 -260 20 -180 42 180 42 260 20 328.2 0"/>
+  </g>
+  <g fill="none" stroke="#d3c1a1" stroke-width="3" stroke-dasharray="13 19" opacity=".7">
+    <path d="M-328.2 0 -260 -20 -180 -42 180 -42 260 -20 328.2 0"/>
+    <path d="M-328.2 0 -260 20 -180 42 180 42 260 20 328.2 0"/>
+  </g>
+  <g fill="#6b5a45" stroke="#332f2c" stroke-width="2">
+    <circle cx="-105" cy="0" r="18"/><circle cx="105" cy="0" r="18"/>
+    <rect x="-161" y="-2" width="12" height="4"/><rect x="-51" y="-2" width="12" height="4"/>
+    <rect x="39" y="-2" width="12" height="4"/><rect x="149" y="-2" width="12" height="4"/>
+  </g>
+  <g fill="none" stroke="#3b4340" stroke-width="7" stroke-dasharray="14 9">
+    <path d="M-225-120H-400V-55"/><path d="M225-120H400V-55"/>
+  </g>
+  <g fill="#243529" font-family="Arial,sans-serif" font-weight="700" text-anchor="middle" paint-order="stroke" stroke="#d8e4ca" stroke-width="4">
+    <text x="-420" y="5" font-size="24">CASTLE A</text><text x="420" y="5" font-size="24">CASTLE B</text>
+    <text x="0" y="-52" font-size="18">NORTH RAM ROUTE</text>
+    <text x="0" y="74" font-size="18">SOUTH RAM ROUTE</text>
+    <text x="0" y="-200" font-size="16">SHARED ORE</text><text x="0" y="205" font-size="16">SHARED ORE</text>
+    <text x="0" y="-310" font-size="17">1,560 STUD PLAYABLE LENGTH • MIRRORED AT x = 0</text>
+  </g>
+  <g fill="#edf2df" font-family="Arial,sans-serif" font-size="14" font-weight="700" text-anchor="middle">
+    <text x="-630" y="10">HOME GATHERING</text><text x="630" y="10">HOME GATHERING</text>
+    <text x="0" y="315">Paths and fields are schematic; building interiors remain at approved local coordinates.</text>
+  </g>
+</svg>

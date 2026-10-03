@@ -1,5 +1,5 @@
 """Siege castle kit, after references/castle-1.jpg (towers and roofs also castle-2.jpg),
-built in its own Blender scene ("Castle") from the approved layout.json v2.1.
+built in its own Blender scene ("Castle") from the approved layout.json v2.2.
 
 Run inside Blender with __file__ set, then bpy.app.driver_namespace["castle"]["build"]().
 
@@ -1594,8 +1594,8 @@ def room_shape(C):
 
 
 def validate_layout(L):
-    if L.get("meta", {}).get("version") != "2.1" or len(L["castles"]) != 2:
-        raise ValueError("Castle builder requires approved layout.json v2.1 with two castles")
+    if L.get("meta", {}).get("version") != "2.2" or len(L["castles"]) != 2:
+        raise ValueError("Castle builder requires approved layout.json v2.2 with two castles")
     A, B = L["castles"]
     for C in (A, B):
         if len(C["wall_sections"]) != 35 or len(C["towers"]) != 4:

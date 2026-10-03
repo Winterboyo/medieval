@@ -2,7 +2,7 @@
 
 This is a Blender review scene, not an FBX export. It keeps terrain, cover, and
 the exact two mirrored castle assemblies in one view, so art is judged at the
-same scale and coordinates as layout.json v2.1.
+same scale and coordinates as layout.json v2.2.
 
 Run in Blender with __file__ set, then:
     bpy.app.driver_namespace["full_preview"]["build"]()

@@ -1,18 +1,18 @@
 {
   "meta": {
-    "status": "Exterior approved for an in-game visual preview (MAP-REVISION-PROPOSAL.md); interior geometry approved 2026-10-01 (CASTLE-INTERIOR-V2-PROPOSAL.md). Subject to in-game review.",
+    "status": "Expanded exterior and paired ram routes approved 2026-10-03 (MAP-PATHS-EXPANSION-PROPOSAL.md); interior geometry approved 2026-10-01 (CASTLE-INTERIOR-V2-PROPOSAL.md). Subject to in-game review.",
     "interior_status": "APPROVED SPATIAL LAYOUT 2026-10-01. The Keep contains the stockpile room. The 2026-09-30 workshop/cannon interior and gameplay are stale; approved coordinates do not imply the new art or logic is built.",
-    "version": "2.1",
-    "date": "2026-10-01",
+    "version": "2.2",
+    "date": "2026-10-03",
     "units": "studs",
     "coords": "Roblox: ground plane (x, z), height y. Blender: (x, y, z) -> (x, -z, y).",
     "compass": "-Z = north, +X = east. Team A west, team B east.",
     "generator": "assets/map/propose_layout.js",
-    "replaces": "layout.json v1.1 (2026-09-30: 102-stud rings at x = ±370, gate lanes, interior). Older: layout.old-island.json."
+    "replaces": "layout.json v2.1 (2026-10-01: 1,040-stud island, castles at x = ±280, one 30-stud road). Older: layout.old-island.json."
   },
   "map_bounds": {
-    "min_x": -520,
-    "max_x": 520,
+    "min_x": -780,
+    "max_x": 780,
     "min_z": -340,
     "max_z": 340,
     "note": "Playable area. Everything inside is land; no water inside."
@@ -53,7 +53,7 @@
       "id": "Castle_A",
       "team": "A",
       "center": {
-        "x": -280,
+        "x": -420,
         "y": 10,
         "z": 0
       },
@@ -69,7 +69,7 @@
         "y": 10
       },
       "gate": {
-        "x": -188.2,
+        "x": -328.2,
         "y": 10,
         "z": 0,
         "id": "A_Gate",
@@ -90,25 +90,25 @@
       "towers": [
         {
           "id": "A_Tower_FN",
-          "x": -190.2,
+          "x": -330.2,
           "y": 10,
           "z": -89.8
         },
         {
           "id": "A_Tower_FS",
-          "x": -190.2,
+          "x": -330.2,
           "y": 10,
           "z": 89.8
         },
         {
           "id": "A_Tower_RN",
-          "x": -369.8,
+          "x": -509.8,
           "y": 10,
           "z": -89.8
         },
         {
           "id": "A_Tower_RS",
-          "x": -369.8,
+          "x": -509.8,
           "y": 10,
           "z": 89.8
         }
@@ -116,7 +116,7 @@
       "wall_sections": [
         {
           "id": "A_Wall_F1",
-          "x": -190.2,
+          "x": -330.2,
           "y": 10,
           "z": -81.6,
           "facing": {
@@ -126,7 +126,7 @@
         },
         {
           "id": "A_Wall_F2",
-          "x": -190.2,
+          "x": -330.2,
           "y": 10,
           "z": -61.2,
           "facing": {
@@ -136,7 +136,7 @@
         },
         {
           "id": "A_Wall_F3",
-          "x": -190.2,
+          "x": -330.2,
           "y": 10,
           "z": -40.8,
           "facing": {
@@ -146,7 +146,7 @@
         },
         {
           "id": "A_Wall_F4",
-          "x": -190.2,
+          "x": -330.2,
           "y": 10,
           "z": -20.4,
           "facing": {
@@ -156,7 +156,7 @@
         },
         {
           "id": "A_Wall_F6",
-          "x": -190.2,
+          "x": -330.2,
           "y": 10,
           "z": 20.4,
           "facing": {
@@ -166,7 +166,7 @@
         },
         {
           "id": "A_Wall_F7",
-          "x": -190.2,
+          "x": -330.2,
           "y": 10,
           "z": 40.8,
           "facing": {
@@ -176,7 +176,7 @@
         },
         {
           "id": "A_Wall_F8",
-          "x": -190.2,
+          "x": -330.2,
           "y": 10,
           "z": 61.2,
           "facing": {
@@ -186,7 +186,7 @@
         },
         {
           "id": "A_Wall_F9",
-          "x": -190.2,
+          "x": -330.2,
           "y": 10,
           "z": 81.6,
           "facing": {
@@ -196,7 +196,7 @@
         },
         {
           "id": "A_Wall_R1",
-          "x": -369.8,
+          "x": -509.8,
           "y": 10,
           "z": -81.6,
           "facing": {
@@ -206,7 +206,7 @@
         },
         {
           "id": "A_Wall_R2",
-          "x": -369.8,
+          "x": -509.8,
           "y": 10,
           "z": -61.2,
           "facing": {
@@ -216,7 +216,7 @@
         },
         {
           "id": "A_Wall_R3",
-          "x": -369.8,
+          "x": -509.8,
           "y": 10,
           "z": -40.8,
           "facing": {
@@ -226,7 +226,7 @@
         },
         {
           "id": "A_Wall_R4",
-          "x": -369.8,
+          "x": -509.8,
           "y": 10,
           "z": -20.4,
           "facing": {
@@ -236,7 +236,7 @@
         },
         {
           "id": "A_Wall_R5",
-          "x": -369.8,
+          "x": -509.8,
           "y": 10,
           "z": 0,
           "facing": {
@@ -246,7 +246,7 @@
         },
         {
           "id": "A_Wall_R6",
-          "x": -369.8,
+          "x": -509.8,
           "y": 10,
           "z": 20.4,
           "facing": {
@@ -256,7 +256,7 @@
         },
         {
           "id": "A_Wall_R7",
-          "x": -369.8,
+          "x": -509.8,
           "y": 10,
           "z": 40.8,
           "facing": {
@@ -266,7 +266,7 @@
         },
         {
           "id": "A_Wall_R8",
-          "x": -369.8,
+          "x": -509.8,
           "y": 10,
           "z": 61.2,
           "facing": {
@@ -276,7 +276,7 @@
         },
         {
           "id": "A_Wall_R9",
-          "x": -369.8,
+          "x": -509.8,
           "y": 10,
           "z": 81.6,
           "facing": {
@@ -286,7 +286,7 @@
         },
         {
           "id": "A_Wall_N1",
-          "x": -361.6,
+          "x": -501.6,
           "y": 10,
           "z": -89.8,
           "facing": {
@@ -296,7 +296,7 @@
         },
         {
           "id": "A_Wall_N2",
-          "x": -341.2,
+          "x": -481.2,
           "y": 10,
           "z": -89.8,
           "facing": {
@@ -306,7 +306,7 @@
         },
         {
           "id": "A_Wall_N3",
-          "x": -320.8,
+          "x": -460.8,
           "y": 10,
           "z": -89.8,
           "facing": {
@@ -316,7 +316,7 @@
         },
         {
           "id": "A_Wall_N4",
-          "x": -300.4,
+          "x": -440.4,
           "y": 10,
           "z": -89.8,
           "facing": {
@@ -326,7 +326,7 @@
         },
         {
           "id": "A_Wall_N5",
-          "x": -280,
+          "x": -420,
           "y": 10,
           "z": -89.8,
           "facing": {
@@ -336,7 +336,7 @@
         },
         {
           "id": "A_Wall_N6",
-          "x": -259.6,
+          "x": -399.6,
           "y": 10,
           "z": -89.8,
           "facing": {
@@ -346,7 +346,7 @@
         },
         {
           "id": "A_Wall_N7",
-          "x": -239.2,
+          "x": -379.2,
           "y": 10,
           "z": -89.8,
           "facing": {
@@ -356,7 +356,7 @@
         },
         {
           "id": "A_Wall_N8",
-          "x": -218.8,
+          "x": -358.8,
           "y": 10,
           "z": -89.8,
           "facing": {
@@ -366,7 +366,7 @@
         },
         {
           "id": "A_Wall_N9",
-          "x": -198.4,
+          "x": -338.4,
           "y": 10,
           "z": -89.8,
           "facing": {
@@ -376,7 +376,7 @@
         },
         {
           "id": "A_Wall_S1",
-          "x": -361.6,
+          "x": -501.6,
           "y": 10,
           "z": 89.8,
           "facing": {
@@ -386,7 +386,7 @@
         },
         {
           "id": "A_Wall_S2",
-          "x": -341.2,
+          "x": -481.2,
           "y": 10,
           "z": 89.8,
           "facing": {
@@ -396,7 +396,7 @@
         },
         {
           "id": "A_Wall_S3",
-          "x": -320.8,
+          "x": -460.8,
           "y": 10,
           "z": 89.8,
           "facing": {
@@ -406,7 +406,7 @@
         },
         {
           "id": "A_Wall_S4",
-          "x": -300.4,
+          "x": -440.4,
           "y": 10,
           "z": 89.8,
           "facing": {
@@ -416,7 +416,7 @@
         },
         {
           "id": "A_Wall_S5",
-          "x": -280,
+          "x": -420,
           "y": 10,
           "z": 89.8,
           "facing": {
@@ -426,7 +426,7 @@
         },
         {
           "id": "A_Wall_S6",
-          "x": -259.6,
+          "x": -399.6,
           "y": 10,
           "z": 89.8,
           "facing": {
@@ -436,7 +436,7 @@
         },
         {
           "id": "A_Wall_S7",
-          "x": -239.2,
+          "x": -379.2,
           "y": 10,
           "z": 89.8,
           "facing": {
@@ -446,7 +446,7 @@
         },
         {
           "id": "A_Wall_S8",
-          "x": -218.8,
+          "x": -358.8,
           "y": 10,
           "z": 89.8,
           "facing": {
@@ -456,7 +456,7 @@
         },
         {
           "id": "A_Wall_S9",
-          "x": -198.4,
+          "x": -338.4,
           "y": 10,
           "z": 89.8,
           "facing": {
@@ -467,13 +467,13 @@
       ],
       "tunnel_exit": {
         "id": "A_Tunnel_Exit",
-        "x": -260,
+        "x": -400,
         "y": 10,
         "z": -55
       },
       "reserved_rear_half": {
-        "min_x": -367.8,
-        "max_x": -280,
+        "min_x": -507.8,
+        "max_x": -420,
         "min_z": -87.8,
         "max_z": 87.8,
         "note": "The Keep and its internal stockpile room occupy the approved rear part of the courtyard."
@@ -483,43 +483,43 @@
         "coordinate_frame": "World Roblox studs. Local f increases toward this castle's gate; Team B mirrors Team A across x = 0.",
         "keep": {
           "id": "A_Keep",
-          "min_x": -356,
-          "max_x": -312,
+          "min_x": -496,
+          "max_x": -452,
           "min_z": -22,
           "max_z": 22,
           "y": 10,
           "front_door": {
             "id": "A_Keep_FrontDoor",
-            "x": -312,
+            "x": -452,
             "y": 10,
             "z": 0,
             "clear_width": 10
           },
           "entrance_hall": {
             "id": "A_Keep_EntranceHall",
-            "min_x": -352,
-            "max_x": -312,
+            "min_x": -492,
+            "max_x": -452,
             "min_z": -6,
             "max_z": 6,
             "y": 10
           },
           "stockpile_room": {
             "id": "A_Stockpile_Room",
-            "min_x": -352,
-            "max_x": -334,
+            "min_x": -492,
+            "max_x": -474,
             "min_z": 6,
             "max_z": 18,
             "y": 10,
             "door": {
               "id": "A_Stockpile_Room_Door",
-              "x": -343,
+              "x": -483,
               "y": 10,
               "z": 6,
               "clear_width": 8
             },
             "interaction": {
               "id": "A_Stockpile_Interaction",
-              "x": -343,
+              "x": -483,
               "y": 10,
               "z": 12
             }
@@ -527,14 +527,14 @@
         },
         "barracks": {
           "id": "A_Barracks",
-          "min_x": -350,
-          "max_x": -308,
+          "min_x": -490,
+          "max_x": -448,
           "min_z": -75,
           "max_z": -48,
           "y": 10,
           "door": {
             "id": "A_Barracks_Door",
-            "x": -329,
+            "x": -469,
             "y": 10,
             "z": -48,
             "clear_width": 10
@@ -544,14 +544,14 @@
           {
             "role": "Blacksmith",
             "id": "A_Blacksmith_Forge",
-            "min_x": -292,
-            "max_x": -264,
+            "min_x": -432,
+            "max_x": -404,
             "min_z": 47,
             "max_z": 75,
             "y": 10,
             "door": {
               "id": "A_Blacksmith_Door",
-              "x": -278,
+              "x": -418,
               "y": 10,
               "z": 47,
               "clear_width": 8
@@ -560,14 +560,14 @@
           {
             "role": "Alchemist",
             "id": "A_Alchemist",
-            "min_x": -298,
-            "max_x": -274,
+            "min_x": -438,
+            "max_x": -414,
             "min_z": -76,
             "max_z": -50,
             "y": 10,
             "door": {
               "id": "A_Alchemist_Door",
-              "x": -286,
+              "x": -426,
               "y": 10,
               "z": -50,
               "clear_width": 8
@@ -576,14 +576,14 @@
           {
             "role": "Fletcher",
             "id": "A_Fletcher",
-            "min_x": -239,
-            "max_x": -214,
+            "min_x": -379,
+            "max_x": -354,
             "min_z": -76,
             "max_z": -50,
             "y": 10,
             "door": {
               "id": "A_Fletcher_Door",
-              "x": -226.5,
+              "x": -366.5,
               "y": 10,
               "z": -50,
               "clear_width": 8
@@ -592,21 +592,21 @@
           {
             "role": "Carpenter",
             "id": "A_Carpenter",
-            "min_x": -249,
-            "max_x": -225,
+            "min_x": -389,
+            "max_x": -365,
             "min_z": 46,
             "max_z": 74,
             "y": 10,
             "door": {
               "id": "A_Carpenter_Door",
-              "x": -237,
+              "x": -377,
               "y": 10,
               "z": 46,
               "clear_width": 8
             },
             "ram_opening": {
               "id": "A_Carpenter_RamOpening",
-              "x": -225,
+              "x": -365,
               "y": 10,
               "z": 60,
               "clear_width": 12
@@ -616,37 +616,37 @@
         "spawn_points": [
           {
             "id": "A_Barracks_Spawn_1",
-            "x": -340,
+            "x": -480,
             "y": 10,
             "z": -66
           },
           {
             "id": "A_Barracks_Spawn_2",
-            "x": -330,
+            "x": -470,
             "y": 10,
             "z": -66
           },
           {
             "id": "A_Barracks_Spawn_3",
-            "x": -320,
+            "x": -460,
             "y": 10,
             "z": -66
           },
           {
             "id": "A_Barracks_Spawn_4",
-            "x": -340,
+            "x": -480,
             "y": 10,
             "z": -57
           },
           {
             "id": "A_Barracks_Spawn_5",
-            "x": -330,
+            "x": -470,
             "y": 10,
             "z": -57
           },
           {
             "id": "A_Barracks_Spawn_6",
-            "x": -320,
+            "x": -460,
             "y": 10,
             "z": -57
           }
@@ -654,8 +654,8 @@
         "surfaces": {
           "blacksmith_forecourt": {
             "id": "A_Blacksmith_Forecourt",
-            "min_x": -297,
-            "max_x": -259,
+            "min_x": -437,
+            "max_x": -399,
             "min_z": 28,
             "max_z": 47,
             "y": 10
@@ -664,56 +664,56 @@
         "clear_areas": {
           "main_gate_to_keep": {
             "id": "A_MainRoute",
-            "min_x": -312,
-            "max_x": -192.2,
+            "min_x": -452,
+            "max_x": -332.2,
             "min_z": -9,
             "max_z": 9,
             "y": 10
           },
           "tunnel_landing": {
             "id": "A_TunnelLanding",
-            "min_x": -266,
-            "max_x": -254,
+            "min_x": -406,
+            "max_x": -394,
             "min_z": -61,
             "max_z": -49,
             "y": 10
           },
           "tunnel_egress": {
             "id": "A_TunnelEgress",
-            "min_x": -266,
-            "max_x": -254,
+            "min_x": -406,
+            "max_x": -394,
             "min_z": -49,
             "max_z": -9,
             "y": 10
           },
           "ram_assembly_pad": {
             "id": "A_RamAssemblyPad",
-            "min_x": -223,
-            "max_x": -203,
+            "min_x": -363,
+            "max_x": -343,
             "min_z": 44,
             "max_z": 64,
             "y": 10
           },
           "ram_turning_area": {
             "id": "A_RamTurningArea",
-            "min_x": -223,
-            "max_x": -198,
+            "min_x": -363,
+            "max_x": -338,
             "min_z": 9,
             "max_z": 44,
             "y": 10
           },
           "keep_front_circulation": {
             "id": "A_KeepFrontCirculation",
-            "min_x": -310,
-            "max_x": -298,
+            "min_x": -450,
+            "max_x": -438,
             "min_z": -48,
             "max_z": 47,
             "y": 10
           },
           "open_south_rear_courtyard": {
             "id": "A_OpenSouthRearCourtyard",
-            "min_x": -356,
-            "max_x": -328,
+            "min_x": -496,
+            "max_x": -468,
             "min_z": 43,
             "max_z": 69,
             "y": 10
@@ -722,32 +722,32 @@
         "tower_access": [
           {
             "id": "A_Tower_Access_RN",
-            "x": -360,
+            "x": -500,
             "y": 10,
             "z": -80
           },
           {
             "id": "A_Tower_Access_RS",
-            "x": -360,
+            "x": -500,
             "y": 10,
             "z": 80
           },
           {
             "id": "A_Tower_Access_FN",
-            "x": -200,
+            "x": -340,
             "y": 10,
             "z": -80
           },
           {
             "id": "A_Tower_Access_FS",
-            "x": -200,
+            "x": -340,
             "y": 10,
             "z": 80
           }
         ],
         "ballista_mount": {
           "id": "A_Gatehouse_Ballista_Mount",
-          "x": -188.2,
+          "x": -328.2,
           "y": 31.4,
           "z": 0,
           "height_note": "Gatehouse-roof mount height is an art placeholder; verify against the final gate mesh.",
@@ -757,7 +757,7 @@
           },
           "access": {
             "id": "A_Gatehouse_Ballista_Access",
-            "x": -201,
+            "x": -341,
             "y": 10,
             "z": -23
           }
@@ -768,7 +768,7 @@
       "id": "Castle_B",
       "team": "B",
       "center": {
-        "x": 280,
+        "x": 420,
         "y": 10,
         "z": 0
       },
@@ -784,7 +784,7 @@
         "y": 10
       },
       "gate": {
-        "x": 188.2,
+        "x": 328.2,
         "y": 10,
         "z": 0,
         "id": "B_Gate",
@@ -805,25 +805,25 @@
       "towers": [
         {
           "id": "B_Tower_FN",
-          "x": 190.2,
+          "x": 330.2,
           "y": 10,
           "z": -89.8
         },
         {
           "id": "B_Tower_FS",
-          "x": 190.2,
+          "x": 330.2,
           "y": 10,
           "z": 89.8
         },
         {
           "id": "B_Tower_RN",
-          "x": 369.8,
+          "x": 509.8,
           "y": 10,
           "z": -89.8
         },
         {
           "id": "B_Tower_RS",
-          "x": 369.8,
+          "x": 509.8,
           "y": 10,
           "z": 89.8
         }
@@ -831,7 +831,7 @@
       "wall_sections": [
         {
           "id": "B_Wall_F1",
-          "x": 190.2,
+          "x": 330.2,
           "y": 10,
           "z": -81.6,
           "facing": {
@@ -841,7 +841,7 @@
         },
         {
           "id": "B_Wall_F2",
-          "x": 190.2,
+          "x": 330.2,
           "y": 10,
           "z": -61.2,
           "facing": {
@@ -851,7 +851,7 @@
         },
         {
           "id": "B_Wall_F3",
-          "x": 190.2,
+          "x": 330.2,
           "y": 10,
           "z": -40.8,
           "facing": {
@@ -861,7 +861,7 @@
         },
         {
           "id": "B_Wall_F4",
-          "x": 190.2,
+          "x": 330.2,
           "y": 10,
           "z": -20.4,
           "facing": {
@@ -871,7 +871,7 @@
         },
         {
           "id": "B_Wall_F6",
-          "x": 190.2,
+          "x": 330.2,
           "y": 10,
           "z": 20.4,
           "facing": {
@@ -881,7 +881,7 @@
         },
         {
           "id": "B_Wall_F7",
-          "x": 190.2,
+          "x": 330.2,
           "y": 10,
           "z": 40.8,
           "facing": {
@@ -891,7 +891,7 @@
         },
         {
           "id": "B_Wall_F8",
-          "x": 190.2,
+          "x": 330.2,
           "y": 10,
           "z": 61.2,
           "facing": {
@@ -901,7 +901,7 @@
         },
         {
           "id": "B_Wall_F9",
-          "x": 190.2,
+          "x": 330.2,
           "y": 10,
           "z": 81.6,
           "facing": {
@@ -911,7 +911,7 @@
         },
         {
           "id": "B_Wall_R1",
-          "x": 369.8,
+          "x": 509.8,
           "y": 10,
           "z": -81.6,
           "facing": {
@@ -921,7 +921,7 @@
         },
         {
           "id": "B_Wall_R2",
-          "x": 369.8,
+          "x": 509.8,
           "y": 10,
           "z": -61.2,
           "facing": {
@@ -931,7 +931,7 @@
         },
         {
           "id": "B_Wall_R3",
-          "x": 369.8,
+          "x": 509.8,
           "y": 10,
           "z": -40.8,
           "facing": {
@@ -941,7 +941,7 @@
         },
         {
           "id": "B_Wall_R4",
-          "x": 369.8,
+          "x": 509.8,
           "y": 10,
           "z": -20.4,
           "facing": {
@@ -951,7 +951,7 @@
         },
         {
           "id": "B_Wall_R5",
-          "x": 369.8,
+          "x": 509.8,
           "y": 10,
           "z": 0,
           "facing": {
@@ -961,7 +961,7 @@
         },
         {
           "id": "B_Wall_R6",
-          "x": 369.8,
+          "x": 509.8,
           "y": 10,
           "z": 20.4,
           "facing": {
@@ -971,7 +971,7 @@
         },
         {
           "id": "B_Wall_R7",
-          "x": 369.8,
+          "x": 509.8,
           "y": 10,
           "z": 40.8,
           "facing": {
@@ -981,7 +981,7 @@
         },
         {
           "id": "B_Wall_R8",
-          "x": 369.8,
+          "x": 509.8,
           "y": 10,
           "z": 61.2,
           "facing": {
@@ -991,7 +991,7 @@
         },
         {
           "id": "B_Wall_R9",
-          "x": 369.8,
+          "x": 509.8,
           "y": 10,
           "z": 81.6,
           "facing": {
@@ -1001,7 +1001,7 @@
         },
         {
           "id": "B_Wall_N1",
-          "x": 361.6,
+          "x": 501.6,
           "y": 10,
           "z": -89.8,
           "facing": {
@@ -1011,7 +1011,7 @@
         },
         {
           "id": "B_Wall_N2",
-          "x": 341.2,
+          "x": 481.2,
           "y": 10,
           "z": -89.8,
           "facing": {
@@ -1021,7 +1021,7 @@
         },
         {
           "id": "B_Wall_N3",
-          "x": 320.8,
+          "x": 460.8,
           "y": 10,
           "z": -89.8,
           "facing": {
@@ -1031,7 +1031,7 @@
         },
         {
           "id": "B_Wall_N4",
-          "x": 300.4,
+          "x": 440.4,
           "y": 10,
           "z": -89.8,
           "facing": {
@@ -1041,7 +1041,7 @@
         },
         {
           "id": "B_Wall_N5",
-          "x": 280,
+          "x": 420,
           "y": 10,
           "z": -89.8,
           "facing": {
@@ -1051,7 +1051,7 @@
         },
         {
           "id": "B_Wall_N6",
-          "x": 259.6,
+          "x": 399.6,
           "y": 10,
           "z": -89.8,
           "facing": {
@@ -1061,7 +1061,7 @@
         },
         {
           "id": "B_Wall_N7",
-          "x": 239.2,
+          "x": 379.2,
           "y": 10,
           "z": -89.8,
           "facing": {
@@ -1071,7 +1071,7 @@
         },
         {
           "id": "B_Wall_N8",
-          "x": 218.8,
+          "x": 358.8,
           "y": 10,
           "z": -89.8,
           "facing": {
@@ -1081,7 +1081,7 @@
         },
         {
           "id": "B_Wall_N9",
-          "x": 198.4,
+          "x": 338.4,
           "y": 10,
           "z": -89.8,
           "facing": {
@@ -1091,7 +1091,7 @@
         },
         {
           "id": "B_Wall_S1",
-          "x": 361.6,
+          "x": 501.6,
           "y": 10,
           "z": 89.8,
           "facing": {
@@ -1101,7 +1101,7 @@
         },
         {
           "id": "B_Wall_S2",
-          "x": 341.2,
+          "x": 481.2,
           "y": 10,
           "z": 89.8,
           "facing": {
@@ -1111,7 +1111,7 @@
         },
         {
           "id": "B_Wall_S3",
-          "x": 320.8,
+          "x": 460.8,
           "y": 10,
           "z": 89.8,
           "facing": {
@@ -1121,7 +1121,7 @@
         },
         {
           "id": "B_Wall_S4",
-          "x": 300.4,
+          "x": 440.4,
           "y": 10,
           "z": 89.8,
           "facing": {
@@ -1131,7 +1131,7 @@
         },
         {
           "id": "B_Wall_S5",
-          "x": 280,
+          "x": 420,
           "y": 10,
           "z": 89.8,
           "facing": {
@@ -1141,7 +1141,7 @@
         },
         {
           "id": "B_Wall_S6",
-          "x": 259.6,
+          "x": 399.6,
           "y": 10,
           "z": 89.8,
           "facing": {
@@ -1151,7 +1151,7 @@
         },
         {
           "id": "B_Wall_S7",
-          "x": 239.2,
+          "x": 379.2,
           "y": 10,
           "z": 89.8,
           "facing": {
@@ -1161,7 +1161,7 @@
         },
         {
           "id": "B_Wall_S8",
-          "x": 218.8,
+          "x": 358.8,
           "y": 10,
           "z": 89.8,
           "facing": {
@@ -1171,7 +1171,7 @@
         },
         {
           "id": "B_Wall_S9",
-          "x": 198.4,
+          "x": 338.4,
           "y": 10,
           "z": 89.8,
           "facing": {
@@ -1182,13 +1182,13 @@
       ],
       "tunnel_exit": {
         "id": "B_Tunnel_Exit",
-        "x": 260,
+        "x": 400,
         "y": 10,
         "z": -55
       },
       "reserved_rear_half": {
-        "min_x": 280,
-        "max_x": 367.8,
+        "min_x": 420,
+        "max_x": 507.8,
         "min_z": -87.8,
         "max_z": 87.8,
         "note": "The Keep and its internal stockpile room occupy the approved rear part of the courtyard."
@@ -1198,43 +1198,43 @@
         "coordinate_frame": "World Roblox studs. Local f increases toward this castle's gate; Team B mirrors Team A across x = 0.",
         "keep": {
           "id": "B_Keep",
-          "min_x": 312,
-          "max_x": 356,
+          "min_x": 452,
+          "max_x": 496,
           "min_z": -22,
           "max_z": 22,
           "y": 10,
           "front_door": {
             "id": "B_Keep_FrontDoor",
-            "x": 312,
+            "x": 452,
             "y": 10,
             "z": 0,
             "clear_width": 10
           },
           "entrance_hall": {
             "id": "B_Keep_EntranceHall",
-            "min_x": 312,
-            "max_x": 352,
+            "min_x": 452,
+            "max_x": 492,
             "min_z": -6,
             "max_z": 6,
             "y": 10
           },
           "stockpile_room": {
             "id": "B_Stockpile_Room",
-            "min_x": 334,
-            "max_x": 352,
+            "min_x": 474,
+            "max_x": 492,
             "min_z": 6,
             "max_z": 18,
             "y": 10,
             "door": {
               "id": "B_Stockpile_Room_Door",
-              "x": 343,
+              "x": 483,
               "y": 10,
               "z": 6,
               "clear_width": 8
             },
             "interaction": {
               "id": "B_Stockpile_Interaction",
-              "x": 343,
+              "x": 483,
               "y": 10,
               "z": 12
             }
@@ -1242,14 +1242,14 @@
         },
         "barracks": {
           "id": "B_Barracks",
-          "min_x": 308,
-          "max_x": 350,
+          "min_x": 448,
+          "max_x": 490,
           "min_z": -75,
           "max_z": -48,
           "y": 10,
           "door": {
             "id": "B_Barracks_Door",
-            "x": 329,
+            "x": 469,
             "y": 10,
             "z": -48,
             "clear_width": 10
@@ -1259,14 +1259,14 @@
           {
             "role": "Blacksmith",
             "id": "B_Blacksmith_Forge",
-            "min_x": 264,
-            "max_x": 292,
+            "min_x": 404,
+            "max_x": 432,
             "min_z": 47,
             "max_z": 75,
             "y": 10,
             "door": {
               "id": "B_Blacksmith_Door",
-              "x": 278,
+              "x": 418,
               "y": 10,
               "z": 47,
               "clear_width": 8
@@ -1275,14 +1275,14 @@
           {
             "role": "Alchemist",
             "id": "B_Alchemist",
-            "min_x": 274,
-            "max_x": 298,
+            "min_x": 414,
+            "max_x": 438,
             "min_z": -76,
             "max_z": -50,
             "y": 10,
             "door": {
               "id": "B_Alchemist_Door",
-              "x": 286,
+              "x": 426,
               "y": 10,
               "z": -50,
               "clear_width": 8
@@ -1291,14 +1291,14 @@
           {
             "role": "Fletcher",
             "id": "B_Fletcher",
-            "min_x": 214,
-            "max_x": 239,
+            "min_x": 354,
+            "max_x": 379,
             "min_z": -76,
             "max_z": -50,
             "y": 10,
             "door": {
               "id": "B_Fletcher_Door",
-              "x": 226.5,
+              "x": 366.5,
               "y": 10,
               "z": -50,
               "clear_width": 8
@@ -1307,21 +1307,21 @@
           {
             "role": "Carpenter",
             "id": "B_Carpenter",
-            "min_x": 225,
-            "max_x": 249,
+            "min_x": 365,
+            "max_x": 389,
             "min_z": 46,
             "max_z": 74,
             "y": 10,
             "door": {
               "id": "B_Carpenter_Door",
-              "x": 237,
+              "x": 377,
               "y": 10,
               "z": 46,
               "clear_width": 8
             },
             "ram_opening": {
               "id": "B_Carpenter_RamOpening",
-              "x": 225,
+              "x": 365,
               "y": 10,
               "z": 60,
               "clear_width": 12
@@ -1331,37 +1331,37 @@
         "spawn_points": [
           {
             "id": "B_Barracks_Spawn_1",
-            "x": 340,
+            "x": 480,
             "y": 10,
             "z": -66
           },
           {
             "id": "B_Barracks_Spawn_2",
-            "x": 330,
+            "x": 470,
             "y": 10,
             "z": -66
           },
           {
             "id": "B_Barracks_Spawn_3",
-            "x": 320,
+            "x": 460,
             "y": 10,
             "z": -66
           },
           {
             "id": "B_Barracks_Spawn_4",
-            "x": 340,
+            "x": 480,
             "y": 10,
             "z": -57
           },
           {
             "id": "B_Barracks_Spawn_5",
-            "x": 330,
+            "x": 470,
             "y": 10,
             "z": -57
           },
           {
             "id": "B_Barracks_Spawn_6",
-            "x": 320,
+            "x": 460,
             "y": 10,
             "z": -57
           }
@@ -1369,8 +1369,8 @@
         "surfaces": {
           "blacksmith_forecourt": {
             "id": "B_Blacksmith_Forecourt",
-            "min_x": 259,
-            "max_x": 297,
+            "min_x": 399,
+            "max_x": 437,
             "min_z": 28,
             "max_z": 47,
             "y": 10
@@ -1379,56 +1379,56 @@
         "clear_areas": {
           "main_gate_to_keep": {
             "id": "B_MainRoute",
-            "min_x": 192.2,
-            "max_x": 312,
+            "min_x": 332.2,
+            "max_x": 452,
             "min_z": -9,
             "max_z": 9,
             "y": 10
           },
           "tunnel_landing": {
             "id": "B_TunnelLanding",
-            "min_x": 254,
-            "max_x": 266,
+            "min_x": 394,
+            "max_x": 406,
             "min_z": -61,
             "max_z": -49,
             "y": 10
           },
           "tunnel_egress": {
             "id": "B_TunnelEgress",
-            "min_x": 254,
-            "max_x": 266,
+            "min_x": 394,
+            "max_x": 406,
             "min_z": -49,
             "max_z": -9,
             "y": 10
           },
           "ram_assembly_pad": {
             "id": "B_RamAssemblyPad",
-            "min_x": 203,
-            "max_x": 223,
+            "min_x": 343,
+            "max_x": 363,
             "min_z": 44,
             "max_z": 64,
             "y": 10
           },
           "ram_turning_area": {
             "id": "B_RamTurningArea",
-            "min_x": 198,
-            "max_x": 223,
+            "min_x": 338,
+            "max_x": 363,
             "min_z": 9,
             "max_z": 44,
             "y": 10
           },
           "keep_front_circulation": {
             "id": "B_KeepFrontCirculation",
-            "min_x": 298,
-            "max_x": 310,
+            "min_x": 438,
+            "max_x": 450,
             "min_z": -48,
             "max_z": 47,
             "y": 10
           },
           "open_south_rear_courtyard": {
             "id": "B_OpenSouthRearCourtyard",
-            "min_x": 328,
-            "max_x": 356,
+            "min_x": 468,
+            "max_x": 496,
             "min_z": 43,
             "max_z": 69,
             "y": 10
@@ -1437,32 +1437,32 @@
         "tower_access": [
           {
             "id": "B_Tower_Access_RN",
-            "x": 360,
+            "x": 500,
             "y": 10,
             "z": -80
           },
           {
             "id": "B_Tower_Access_RS",
-            "x": 360,
+            "x": 500,
             "y": 10,
             "z": 80
           },
           {
             "id": "B_Tower_Access_FN",
-            "x": 200,
+            "x": 340,
             "y": 10,
             "z": -80
           },
           {
             "id": "B_Tower_Access_FS",
-            "x": 200,
+            "x": 340,
             "y": 10,
             "z": 80
           }
         ],
         "ballista_mount": {
           "id": "B_Gatehouse_Ballista_Mount",
-          "x": 188.2,
+          "x": 328.2,
           "y": 31.4,
           "z": 0,
           "height_note": "Gatehouse-roof mount height is an art placeholder; verify against the final gate mesh.",
@@ -1472,7 +1472,7 @@
           },
           "access": {
             "id": "B_Gatehouse_Ballista_Access",
-            "x": 201,
+            "x": 341,
             "y": 10,
             "z": -23
           }
@@ -1480,31 +1480,79 @@
       }
     }
   ],
-  "central_road": {
-    "id": "Central_Road",
-    "surface": "dirt",
-    "from": {
-      "x": -188.2,
-      "z": 0
+  "ram_routes": [
+    {
+      "id": "North_Ram_Route",
+      "surface": "worn_earth_and_stone",
+      "width": 18,
+      "centerline": [
+        {
+          "x": -328.2,
+          "z": 0
+        },
+        {
+          "x": -260,
+          "z": -20
+        },
+        {
+          "x": -180,
+          "z": -42
+        },
+        {
+          "x": 180,
+          "z": -42
+        },
+        {
+          "x": 260,
+          "z": -20
+        },
+        {
+          "x": 328.2,
+          "z": 0
+        }
+      ],
+      "note": "18-stud collision-clear route from gate to gate. Stone and dirt color can vary within the route; no props, nodes, trees or grass tall enough to obstruct a ram."
     },
-    "to": {
-      "x": 188.2,
-      "z": 0
-    },
-    "width": 30,
-    "min_x": -188.2,
-    "max_x": 188.2,
-    "min_z": -15,
-    "max_z": 15,
-    "note": "Collision-clear 30 studs: no props, nodes or trees. The dirt colour may meander and widen at the gates."
-  },
+    {
+      "id": "South_Ram_Route",
+      "surface": "worn_earth_and_stone",
+      "width": 18,
+      "centerline": [
+        {
+          "x": -328.2,
+          "z": 0
+        },
+        {
+          "x": -260,
+          "z": 20
+        },
+        {
+          "x": -180,
+          "z": 42
+        },
+        {
+          "x": 180,
+          "z": 42
+        },
+        {
+          "x": 260,
+          "z": 20
+        },
+        {
+          "x": 328.2,
+          "z": 0
+        }
+      ],
+      "note": "18-stud collision-clear route from gate to gate. Stone and dirt color can vary within the route; no props, nodes, trees or grass tall enough to obstruct a ram."
+    }
+  ],
   "resource_node_slots": [
     {
       "id": "Node_A1",
       "side": "A",
       "mirror_pair": "Node_B1",
       "position": {
-        "x": -420,
+        "x": -560,
         "y": 9,
         "z": -190
       },
@@ -1520,7 +1568,7 @@
       "side": "B",
       "mirror_pair": "Node_A1",
       "position": {
-        "x": 420,
+        "x": 560,
         "y": 9,
         "z": -190
       },
@@ -1536,7 +1584,7 @@
       "side": "A",
       "mirror_pair": "Node_B2",
       "position": {
-        "x": -420,
+        "x": -560,
         "y": 9,
         "z": 195
       },
@@ -1552,7 +1600,7 @@
       "side": "B",
       "mirror_pair": "Node_A2",
       "position": {
-        "x": 420,
+        "x": 560,
         "y": 9,
         "z": 195
       },
@@ -1568,7 +1616,7 @@
       "side": "A",
       "mirror_pair": "Node_B3",
       "position": {
-        "x": -250,
+        "x": -390,
         "y": 8,
         "z": -190
       },
@@ -1584,7 +1632,7 @@
       "side": "B",
       "mirror_pair": "Node_A3",
       "position": {
-        "x": 250,
+        "x": 390,
         "y": 8,
         "z": -190
       },
@@ -1600,7 +1648,7 @@
       "side": "A",
       "mirror_pair": "Node_B4",
       "position": {
-        "x": -260,
+        "x": -400,
         "y": 8,
         "z": 185
       },
@@ -1616,7 +1664,7 @@
       "side": "B",
       "mirror_pair": "Node_A4",
       "position": {
-        "x": 260,
+        "x": 400,
         "y": 8,
         "z": 185
       },
@@ -1632,47 +1680,39 @@
       "side": "A",
       "mirror_pair": "Node_B5",
       "position": {
-        "x": -125,
+        "x": -250,
         "y": 6,
-        "z": 125
+        "z": 135
       },
       "ring": "mid",
       "allowed_types": [
         "Stone",
         "Grain"
       ],
-      "pad_radius": 50.5,
-      "moved_2026_10_01_from": {
-        "x": -170,
-        "z": 0
-      }
+      "pad_radius": 50.5
     },
     {
       "id": "Node_B5",
       "side": "B",
       "mirror_pair": "Node_A5",
       "position": {
-        "x": 125,
+        "x": 250,
         "y": 6,
-        "z": 125
+        "z": 135
       },
       "ring": "mid",
       "allowed_types": [
         "Stone",
         "Grain"
       ],
-      "pad_radius": 50.5,
-      "moved_2026_10_01_from": {
-        "x": 170,
-        "z": 0
-      }
+      "pad_radius": 50.5
     },
     {
       "id": "Node_A6",
       "side": "A",
       "mirror_pair": "Node_B6",
       "position": {
-        "x": -120,
+        "x": -190,
         "y": 6,
         "z": -235
       },
@@ -1688,7 +1728,7 @@
       "side": "B",
       "mirror_pair": "Node_A6",
       "position": {
-        "x": 120,
+        "x": 190,
         "y": 6,
         "z": -235
       },
@@ -1704,7 +1744,7 @@
       "side": "A",
       "mirror_pair": "Node_B7",
       "position": {
-        "x": -115,
+        "x": -185,
         "y": 6,
         "z": 245
       },
@@ -1720,7 +1760,7 @@
       "side": "B",
       "mirror_pair": "Node_A7",
       "position": {
-        "x": 115,
+        "x": 185,
         "y": 6,
         "z": 245
       },
@@ -1738,7 +1778,7 @@
       "position": {
         "x": 0,
         "y": 4,
-        "z": -110
+        "z": -140
       },
       "ring": "center",
       "allowed_types": [
@@ -1753,7 +1793,7 @@
       "position": {
         "x": 0,
         "y": 4,
-        "z": 110
+        "z": 140
       },
       "ring": "center",
       "allowed_types": [
@@ -1774,7 +1814,7 @@
       "id": "A_Crater_1",
       "x": -105,
       "y": 4,
-      "z": -65,
+      "z": 0,
       "outer_radius": 18,
       "floor_radius": 9,
       "floor_depth": 1.5,
@@ -1785,29 +1825,7 @@
       "id": "B_Crater_1",
       "x": 105,
       "y": 4,
-      "z": -65,
-      "outer_radius": 18,
-      "floor_radius": 9,
-      "floor_depth": 1.5,
-      "rim_height": 1.5,
-      "placeholder_profile": true
-    },
-    {
-      "id": "A_Crater_2",
-      "x": -55,
-      "y": 4,
-      "z": 48,
-      "outer_radius": 18,
-      "floor_radius": 9,
-      "floor_depth": 1.5,
-      "rim_height": 1.5,
-      "placeholder_profile": true
-    },
-    {
-      "id": "B_Crater_2",
-      "x": 55,
-      "y": 4,
-      "z": 48,
+      "z": 0,
       "outer_radius": 18,
       "floor_radius": 9,
       "floor_depth": 1.5,
@@ -1817,40 +1835,40 @@
   ],
   "barricades": [
     {
-      "id": "A_Barricade_N",
-      "x": -125,
+      "id": "A_Barricade_Outer",
+      "x": -155,
       "y": 4,
-      "z": -37,
+      "z": 0,
       "length_x": 12,
       "depth_z": 4,
       "height": 3.5,
       "yaw_deg": 0
     },
     {
-      "id": "B_Barricade_N",
-      "x": 125,
+      "id": "B_Barricade_Outer",
+      "x": 155,
       "y": 4,
-      "z": -37,
+      "z": 0,
       "length_x": 12,
       "depth_z": 4,
       "height": 3.5,
       "yaw_deg": 0
     },
     {
-      "id": "A_Barricade_S",
-      "x": -125,
+      "id": "A_Barricade_Inner",
+      "x": -45,
       "y": 4,
-      "z": 37,
+      "z": 0,
       "length_x": 12,
       "depth_z": 4,
       "height": 3.5,
       "yaw_deg": 0
     },
     {
-      "id": "B_Barricade_S",
-      "x": 125,
+      "id": "B_Barricade_Inner",
+      "x": 45,
       "y": 4,
-      "z": 37,
+      "z": 0,
       "length_x": 12,
       "depth_z": 4,
       "height": 3.5,
@@ -1860,49 +1878,49 @@
   "cover_zones": [
     {
       "id": "A_Cover_N",
-      "purpose": "gate-side cover north of the road",
-      "min_x": -177,
-      "max_x": -132,
+      "purpose": "gate-side cover north of the north ram route",
+      "min_x": -317,
+      "max_x": -272,
       "min_z": -68,
       "max_z": -40
     },
     {
       "id": "B_Cover_N",
-      "purpose": "gate-side cover north of the road",
-      "min_x": 132,
-      "max_x": 177,
+      "purpose": "gate-side cover north of the north ram route",
+      "min_x": 272,
+      "max_x": 317,
       "min_z": -68,
       "max_z": -40
     },
     {
       "id": "A_Cover_S",
-      "purpose": "gate-side cover south of the road",
-      "min_x": -177,
-      "max_x": -132,
+      "purpose": "gate-side cover south of the south ram route",
+      "min_x": -317,
+      "max_x": -272,
       "min_z": 40,
       "max_z": 68
     },
     {
       "id": "B_Cover_S",
-      "purpose": "gate-side cover south of the road",
-      "min_x": 132,
-      "max_x": 177,
+      "purpose": "gate-side cover south of the south ram route",
+      "min_x": 272,
+      "max_x": 317,
       "min_z": 40,
       "max_z": 68
     },
     {
       "id": "A_Cover_Tunnel",
       "purpose": "hides the tunnel entrance",
-      "min_x": -105,
-      "max_x": -65,
+      "min_x": -245,
+      "max_x": -205,
       "min_z": -138,
       "max_z": -102
     },
     {
       "id": "B_Cover_Tunnel",
       "purpose": "hides the tunnel entrance",
-      "min_x": 65,
-      "max_x": 105,
+      "min_x": 205,
+      "max_x": 245,
       "min_z": -138,
       "max_z": -102
     }
@@ -1912,15 +1930,15 @@
       "id": "A_Tunnel",
       "team": "A",
       "entrance": {
-        "x": -85,
+        "x": -225,
         "z": -120
       },
       "bend": {
-        "x": -260,
+        "x": -400,
         "z": -120
       },
       "exit": {
-        "x": -260,
+        "x": -400,
         "z": -55
       },
       "cover_zone": "A_Cover_Tunnel",
@@ -1935,15 +1953,15 @@
       "id": "B_Tunnel",
       "team": "B",
       "entrance": {
-        "x": 85,
+        "x": 225,
         "z": -120
       },
       "bend": {
-        "x": 260,
+        "x": 400,
         "z": -120
       },
       "exit": {
-        "x": 260,
+        "x": 400,
         "z": -55
       },
       "cover_zone": "B_Cover_Tunnel",
@@ -1963,7 +1981,7 @@
     ],
     "round_canopy_trees": "Wood node pads only",
     "never_in": [
-      "central_road",
+      "ram_routes",
       "pads",
       "craters",
       "barricades"

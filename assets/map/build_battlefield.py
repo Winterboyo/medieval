@@ -1,4 +1,4 @@
-"""The mirrored battlefield exterior (layout.json v2.1), in its own Blender scene
+"""The mirrored battlefield exterior (layout.json v2.2), in its own Blender scene
 ("Battlefield"), for the first in-game visual review.
 
 Run inside Blender with __file__ set, then bpy.app.driver_namespace["battlefield"]["build"]().
@@ -9,8 +9,8 @@ carries a "traces_to" property and audit() lists anything that does not.
 
 What it builds:
 - Ground: low-poly constrained-Delaunay island, flat castle pads (y 10) and node pads,
-  near-flat meadow (y ~4), one central dirt road gate to gate whose 30-stud middle is
-  kept clear, four shallow craters, a cliffed faceted shoreline of chunky rock, sea.
+  near-flat meadow (y ~4), two 18-stud ram paths gate to gate, two shallow craters,
+  a cliffed faceted shoreline of chunky rock, sea.
 - Castle shells: the castle kit's wall bay, corner tower, gatehouse and banners
   (assets/castle/build_castle.py), scaled to avatar proportions measured against a 5-stud
   soldier in the concept image (TARGET-LAYOUT-PROPOSAL.md option C): walls 20.4, tower
@@ -47,15 +47,21 @@ KIT = _load("bf_castle_kit", os.path.normpath(os.path.join(_HERE, "..", "castle"
 
 SEED = 20261001
 SRGB = {
-    "GRASS": (88, 123, 56),        # deeper greens, sampled against the user's forest screenshot
-    "GRASS_2": (82, 116, 53),
-    "GRASS_SHADE": (74, 106, 50),
-    "MEADOW": (97, 132, 62),
-    "BLADE_DARK": (38, 83, 33),
-    "BLADE_MID": (55, 103, 42),
-    "BLADE_LIGHT": (72, 122, 51),
-    "DIRT": (130, 112, 72),        # road and crater walls (round 3: toward the concept's olive-tan path, was 134,108,70)
-    "DIRT_DARK": (104, 86, 62),    # crater floors
+    "GRASS": (104, 130, 62),       # olive meadow base, guided by the selected Wild West field
+    "GRASS_2": (91, 117, 52),
+    "GRASS_SHADE": (78, 102, 46),
+    "MEADOW": (122, 143, 65),
+    "BLADE_DARK": (60, 83, 31),
+    "BLADE_MID": (91, 112, 43),
+    "BLADE_LIGHT": (130, 142, 57),
+    "BLADE_GOLD": (188, 169, 57),
+    "BLADE_GOLD_LIGHT": (219, 196, 82),
+    "DIRT": (119, 98, 69),
+    "DIRT_LIGHT": (143, 120, 84),
+    "DIRT_DARK": (91, 74, 56),
+    "PATH_STONE": (137, 131, 115),
+    "PATH_STONE_LIGHT": (161, 151, 131),
+    "PATH_STONE_DARK": (103, 100, 90),
     "ROCK": (104, 100, 124),       # cliff faces, boulders: muted purple-grey
     "ROCK_DARK": (80, 78, 102),
     "SEA_DEEP": (70, 96, 138),
@@ -76,6 +82,7 @@ MARKER = {"castle": (235, 40, 40), "gate": (255, 215, 0), "road": (255, 215, 0),
           "interior": (220, 80, 180), "stockpile": (255, 180, 40), "clear_route": (255, 245, 90)}
 TEAM_COL = {"A": (184, 65, 58), "B": (58, 95, 184)}
 
+# Recomputed from layout.json bounds in load_layout(), with terrain beyond the coast.
 HALF_X, HALF_Y = 672.0, 480.0
 RELIEF = 1.5
 PAD_BLEND = 40.0
@@ -83,8 +90,7 @@ GRASS_2_SHARE = 0.18
 CLIFF = 12.0                 # land drops to the waterline over this many studs inland of the coast
 SHORE_LOW, SEABED = -2.0, -22.0
 SEA_HALF = 1000.0
-ROAD_WOBBLE = 1.6            # dirt edge meanders up to ~3 beyond the clear 30
-ROAD_GATE_WIDEN = 9.0        # and widens by this much at the gates
+PATH_EDGE_WOBBLE = 3.0      # worn edge meanders outside each 18-stud clear corridor
 WALL_SZ = 1.4                # wall bay scaled up: top of merlons 14.55 -> 20.4 (measured 20-23)
 TOWER_S = 1.12               # corner tower, uniform: battlement 27.6 -> 30.9, roof tip 43.7 -> 48.9
                              # (measured 31-35 / 42-45 plus spike; was 1.33 = tip 62 from the proposal)
@@ -117,8 +123,8 @@ def load_layout():
         cx, cy, _ = rb(s["position"]["x"], 0, s["position"]["z"])
         pads.append(dict(kind="node", id=s["id"], ring=s["ring"], cx=cx, cy=cy, shape="circle",
                          r=s["pad_radius"], inner=s["pad_radius"] - 8.0, h=s["position"]["y"]))
-    r = L["central_road"]
-    road = dict(id=r["id"], x0=r["min_x"], x1=r["max_x"], half=r["width"] / 2)
+    routes = [dict(id=r["id"], width=r["width"], points=[(p["x"], -p["z"]) for p in r["centerline"]])
+              for r in L["ram_routes"]]
     craters = [dict(id=c["id"], cx=c["x"], cy=-c["z"], r=c["outer_radius"], rf=c["floor_radius"],
                     depth=c["floor_depth"], rim=c["rim_height"]) for c in L["craters"]]
     barricades = [dict(id=b["id"], cx=b["x"], cy=-b["z"], lx=b["length_x"], dz=b["depth_z"], h=b["height"]) for b in L["barricades"]]
@@ -130,7 +136,12 @@ def load_layout():
                             width=t["width"], cover=t["cover_zone"]))
     b = L["map_bounds"]
     bounds = dict(x0=b["min_x"], x1=b["max_x"], y0=-b["max_z"], y1=-b["min_z"])
-    return dict(L=L, pads=pads, road=road, craters=craters, barricades=barricades, cover=cover, tunnels=tunnels, bounds=bounds)
+    global HALF_X, HALF_Y
+    HALF_X = max(abs(bounds["x0"]), abs(bounds["x1"])) + 152.0
+    HALF_Y = max(abs(bounds["y0"]), abs(bounds["y1"])) + 140.0
+    MAP.HALF_X, MAP.HALF_Y, MAP.TILES = HALF_X, HALF_Y, 6
+    return dict(L=L, pads=pads, routes=routes, craters=craters, barricades=barricades,
+                cover=cover, tunnels=tunnels, bounds=bounds)
 
 
 def pad_dist(p, x, y):
@@ -141,20 +152,40 @@ def in_rect(z, x, y, grow=0.0):
     return z["x0"] - grow <= x <= z["x1"] + grow and z["y0"] - grow <= y <= z["y1"] + grow
 
 
-def road_half(R, x):
-    """Half width of the dirt (not the clear strip, which is R['half'] everywhere)."""
-    ax = abs(x)
-    wob = ROAD_WOBBLE * (1.0 + 0.6 * math.sin(ax / 23.0 + 0.4) + 0.4 * math.sin(ax / 9.7 + 1.1))
-    widen = ROAD_GATE_WIDEN * (1.0 - smooth(0.0, 45.0, R["x1"] - ax))
-    return R["half"] + max(0.0, wob) + widen
+def path_y_at_x(route, x):
+    """Centerline y for monotonic-x ram routes, including their gate endpoints."""
+    points = route["points"]
+    for (x0, y0), (x1, y1) in zip(points, points[1:]):
+        if x0 <= x <= x1:
+            t = (x - x0) / (x1 - x0)
+            return y0 + (y1 - y0) * t
+    return points[0][1] if x < points[0][0] else points[-1][1]
 
 
-def in_road_dirt(R, x, y):
-    return abs(x) <= R["x1"] + 4.0 and abs(y) <= road_half(R, x)
+def nearest_path(D, x, y):
+    """Distance and closest point on either route centerline."""
+    best = (float("inf"), x, y)
+    for route in D["routes"]:
+        for (x0, y0), (x1, y1) in zip(route["points"], route["points"][1:]):
+            dx, dy = x1 - x0, y1 - y0
+            t = max(0.0, min(1.0, ((x - x0) * dx + (y - y0) * dy) / (dx * dx + dy * dy)))
+            px, py = x0 + t * dx, y0 + t * dy
+            d = math.hypot(x - px, y - py)
+            if d < best[0]:
+                best = (d, px, py)
+    return best
 
 
-def in_road_clear(R, x, y, grow=0.0):
-    return abs(x) <= R["x1"] and abs(y) <= R["half"] + grow
+def in_route_clear(D, x, y, grow=0.0):
+    d, _, _ = nearest_path(D, x, y)
+    return d <= D["routes"][0]["width"] / 2 + grow
+
+
+def in_path_paint(D, x, y):
+    d, _, _ = nearest_path(D, x, y)
+    edge = PATH_EDGE_WOBBLE * (0.5 + 0.25 * math.sin(x / 13.0 + y / 9.0)
+                               + 0.25 * math.sin(x / 5.7 - y / 17.0))
+    return d <= D["routes"][0]["width"] / 2 + edge
 
 
 def crater_profile(c, d):
@@ -171,7 +202,7 @@ def crater_profile(c, d):
 
 # ------------------------------------------------------------------ height
 def make_height(D, inland):
-    pads, R, craters = D["pads"], D["road"], D["craters"]
+    pads, craters = D["pads"], D["craters"]
 
     def base(x, y, und=1.0):
         best, bd, wsum, hsum = None, 1e9, 0.0, 0.0
@@ -192,11 +223,11 @@ def make_height(D, inland):
         if s < 0:
             return SHORE_LOW + (SEABED - SHORE_LOW) * smooth(0, 30, -s)
         h = base(x, y)
-        if abs(x) <= R["x1"] + 12:
-            hw = road_half(R, x)
-            w = 1.0 - smooth(hw, hw + 14.0, abs(y))
-            if w > 0:
-                h = h * (1 - w) + base(x, 0.0, 0.0) * w
+        d, px, py = nearest_path(D, x, y)
+        half = D["routes"][0]["width"] / 2
+        w = 1.0 - smooth(half, half + 14.0, d)
+        if w > 0:
+            h = h * (1 - w) + base(px, py, 0.0) * w
         for c in craters:
             d = math.hypot(x - c["cx"], y - c["cy"])
             if d < c["r"]:
@@ -235,17 +266,22 @@ def west_constraints(D):
             elif abs(p["cx"]) < 1e-6:
                 start = n // 4
                 poly([ring[(start + k) % n] for k in range(n // 2 + 1)], closed=False)
-    # the road's dirt outline, west half, open at the axis
-    R = D["road"]
-    xs = [0.0]
-    x = 0.0
-    while x > -(R["x1"] + 4.0) + 10:
-        x -= 10.0
-        xs.append(x)
-    xs.append(-(R["x1"] + 4.0))
-    top = [(x, road_half(R, x)) for x in xs]
-    bot = [(x, -road_half(R, x)) for x in reversed(xs)]
-    poly(top + bot, closed=False)
+    # Explicit path edges keep stone/earth routes readable with smaller ground facets.
+    # The two lanes meet at each gate and fork before x=-297; model their outer
+    # silhouette continuously and add inner edges only after they separate.
+    route = D["routes"][0]                 # north: positive Blender y
+    gate_x = route["points"][0][0]
+    half = route["width"] / 2
+    n = int(math.ceil(-gate_x / 8.0))
+    xs = [gate_x + (-gate_x) * k / n for k in range(n + 1)]
+    edge = half + PATH_EDGE_WOBBLE * 0.5
+    poly([(x, path_y_at_x(route, x) + edge) for x in xs], closed=False)
+    poly([(x, -path_y_at_x(route, x) - edge) for x in xs], closed=False)
+    first_leg_end_x, first_leg_end_y = route["points"][1]
+    split_x = gate_x + half * (first_leg_end_x - gate_x) / first_leg_end_y
+    inner_xs = [split_x] + [x for x in xs if x > split_x]
+    poly([(x, path_y_at_x(route, x) - half) for x in inner_xs], closed=False)
+    poly([(x, -path_y_at_x(route, x) + half) for x in inner_xs], closed=False)
     # collision cell lines: no triangle may cross one, so every ground piece stays cell-sized
     # (large flat pad triangles spilling across cells made 200-stud pieces, 0.9 studs off)
     xs, ys = terrain_cells(D)
@@ -293,8 +329,9 @@ def face_col(D, inland, V, tri):
             return "DIRT"
         if d < c["r"]:
             return "GRASS_2"
-    if in_road_dirt(D["road"], cx, cy):
-        return "DIRT"
+    if in_path_paint(D, cx, cy):
+        swath = math.sin(cx / 27.0 + 0.5 * math.cos(cy / 8.0))
+        return "DIRT_LIGHT" if swath > 0.45 else "DIRT"
     for pd in D["pads"]:
         if pd["kind"] == "node" and pad_dist(pd, cx, cy) == 0.0:
             return "MEADOW" if MAP.facet_hash(cx, cy) < 0.7 else "GRASS"
@@ -361,9 +398,9 @@ def build_ground(coll, D, height, inland, rng, mat):
     from mathutils import geometry
     cpts, cedges = west_constraints(D)
     cell_xs, cell_ys = terrain_cells(D)
-    spacing_at = lambda x, y: MAP.SPACING if inland(x, y) > -40 else MAP.SPACING_SEA
+    spacing_at = lambda x, y: (4.8 if in_route_clear(D, x, y, grow=4.0)
+                               else MAP.SPACING if inland(x, y) > -40 else MAP.SPACING_SEA)
     free = MAP.poisson_points(rng, -HALF_X + 2, -2, -HALF_Y + 2, HALF_Y - 2, spacing_at, 60000)
-    R = D["road"]
 
     def near_outline(x, y):
         for p in D["pads"]:
@@ -371,7 +408,8 @@ def build_ground(coll, D, height, inland, rng, mat):
                  else abs(max(abs(x - p["cx"]), abs(y - p["cy"])) - p["half"]))
             if d < 3.0:
                 return True
-        if abs(x) <= R["x1"] + 7 and abs(abs(y) - road_half(R, x)) < 3.0:
+        d, _, _ = nearest_path(D, x, y)
+        if abs(d - (D["routes"][0]["width"] / 2 + PATH_EDGE_WOBBLE / 2)) < 2.5:
             return True
         if any(abs(x - b) < 2.5 for b in cell_xs) or any(abs(y - b) < 2.5 for b in cell_ys):
             return True
@@ -411,7 +449,7 @@ def build_ground(coll, D, height, inland, rng, mat):
         # named by Roblox-facing cell indices; a crater's cell also carries the crater id
         name = "BF_Terrain_%02d_%02d" % key + ("_" + crater_cells[key] if key in crater_cells else "")
         me = MAP.colour_mesh(name, tv, tf, [SRGB[c] for _, c in items], [False] * len(tf), mat)
-        MAP.add_object(coll, name, me, "layout.json v2: ground around pads, road, craters (AGENTS §6)")
+        MAP.add_object(coll, name, me, "layout.json v2.2: ground around pads, twin paths, craters (AGENTS §6)")
         stats[name] = len(tf)
     return stats, V3, tris
 
@@ -421,13 +459,13 @@ def build_groundcover(coll, D, height, inland, mat):
     """Visual-only, mirrored grass tufts. Terrain tiles remain the walkable floor.
 
     Five narrow double-sided blades per tuft provide a silhouette at avatar
-    height without textures or alpha sorting. Castle routes, the road, structures,
+    height without textures or alpha sorting. Castle routes, the ram paths, structures,
     resource pads, craters, and tunnel mouths retain their gameplay readability.
     """
     rng = random.Random(SEED + 317)
     stride = 3.8
     buckets = {}
-    counts = {"tufts": 0, "field": 0, "castle": 0, "node": 0}
+    counts = {"tufts": 0, "field": 0, "castle": 0, "node": 0, "gold": 0}
 
     def box_contains(rect, x, y, margin):
         return (rect["min_x"] - margin <= x <= rect["max_x"] + margin and
@@ -447,9 +485,8 @@ def build_groundcover(coll, D, height, inland, mat):
         return False
 
     def bucket_for(x, y):
-        # Smaller than terrain collision cells' budget but few enough parts to
-        # stream efficiently in Roblox (8 columns x 8 rows over the island).
-        return (min(7, max(0, int((x + HALF_X) / (2 * HALF_X / 8)))),
+        # The longer island uses 12 columns to keep each visual tile below 15k tris.
+        return (min(11, max(0, int((x + HALF_X) / (2 * HALF_X / 12)))),
                 min(7, max(0, int((y + HALF_Y) / (2 * HALF_Y / 8)))))
 
     for i in range(int(HALF_X / stride)):
@@ -458,9 +495,7 @@ def build_groundcover(coll, D, height, inland, mat):
             y = -HALF_Y + (j + 0.5) * stride + rng.uniform(-0.9, 0.9)
             if x > -2.5 or inland(x, y) < CLIFF + 5:
                 continue
-            if in_road_dirt(D["road"], x, y) or (
-                    abs(x) <= D["road"]["x1"] + 5 and
-                    abs(y) < road_half(D["road"], x) + 1.5):
+            if in_route_clear(D, x, y, grow=2.0) or in_path_paint(D, x, y):
                 continue
             if any(math.hypot(x - c["cx"], y - c["cy"]) < c["r"] + 0.5
                    for c in D["craters"]):
@@ -483,12 +518,19 @@ def build_groundcover(coll, D, height, inland, mat):
                     continue
                 kind, low, high = "node", 0.45, 0.95
             else:
-                kind, low, high = "field", 0.75, 1.6
+                kind, low, high = "field", 1.05, 2.35
             if any(in_rect(z, x, y) for z in D["cover"]):
-                low, high = max(low, 1.1), max(high, 2.1)
-            if abs(x) <= D["road"]["x1"] + 6 and \
-                    road_half(D["road"], x) + 1.5 < abs(y) < road_half(D["road"], x) + 10:
-                low, high = max(low, 0.95), max(high, 1.75)
+                low, high = max(low, 1.25), max(high, 2.65)
+            if in_route_clear(D, x, y, grow=10.0):
+                low, high = max(low, 1.15), max(high, 2.45)
+
+            # Broad warm patches match the reference's olive field and bright
+            # yellow-green islands without assigning random colour per blade.
+            swath = (0.62 * math.sin(abs(x) / 61.0 + 0.4) * math.cos(y / 53.0 - 0.2)
+                     + 0.38 * math.sin((abs(x) + 0.6 * y) / 89.0))
+            golden = kind == "field" and swath > 0.48
+            if golden:
+                high = max(high, 2.8)
 
             z = height(x, y) + 0.015
             h = rng.uniform(low, high)
@@ -497,16 +539,20 @@ def build_groundcover(coll, D, height, inland, mat):
             for blade in range(5):
                 a = rot + blade * 2 * math.pi / 5 + rng.uniform(-0.2, 0.2)
                 ax, ay = math.cos(a), math.sin(a)
-                spread = rng.uniform(0.08, 0.56)
+                spread = rng.uniform(0.08, 0.62)
                 bx, by = x + ax * spread, y + ay * spread
                 bh = h * rng.uniform(0.68, 1.14)
-                width = rng.uniform(0.18, 0.36) * (0.7 + 0.3 * bh)
+                width = rng.uniform(0.20, 0.42) * (0.7 + 0.3 * bh)
                 side = (-ay, ax)
                 v0 = (bx - side[0] * width / 2, by - side[1] * width / 2, z)
                 v1 = (bx + side[0] * width / 2, by + side[1] * width / 2, z)
-                tip = (bx + ax * bh * 0.30, by + ay * bh * 0.30, z + bh)
-                tone = rng.choices(("BLADE_DARK", "BLADE_MID", "BLADE_LIGHT"),
-                                   weights=(3, 4, 1), k=1)[0]
+                tip = (bx + ax * bh * 0.19, by + ay * bh * 0.19, z + bh)
+                if golden:
+                    tone = rng.choices(("BLADE_MID", "BLADE_GOLD", "BLADE_GOLD_LIGHT"),
+                                       weights=(1, 5, 2), k=1)[0]
+                else:
+                    tone = rng.choices(("BLADE_DARK", "BLADE_MID", "BLADE_LIGHT"),
+                                       weights=(2, 4, 2), k=1)[0]
                 blades.append(((v0, v1, tip), tone))
             for mx in (x, -x):
                 tris = buckets.setdefault(bucket_for(mx, y), [])
@@ -517,6 +563,8 @@ def build_groundcover(coll, D, height, inland, mat):
                                  ((v1, v0, tip), tone)))
             counts["tufts"] += 2
             counts[kind] += 2
+            if golden:
+                counts["gold"] += 2
 
     stats = {}
     for key, tris in sorted(buckets.items()):
@@ -528,6 +576,70 @@ def build_groundcover(coll, D, height, inland, mat):
     if max(stats.values(), default=0) >= 15000:
         raise AssertionError("A grass tile exceeded the 15k triangle target")
     return stats, counts
+
+
+# ---------------------------------------------------------- route surface detail
+def build_path_stones(coll, D, height, mat):
+    """Thin visual-only stone faces over worn earth; the terrain owns collision.
+
+    Generated on the west half, then reflected so neither team gets a more
+    readable route. Broad uneven pieces interrupt the dirt rather than tiling
+    it into a uniform cobblestone grid.
+    """
+    rng = random.Random(SEED + 503)
+    buckets, count = {}, 0
+    west_gate = D["routes"][0]["points"][0][0]
+    for route_index, route in enumerate(D["routes"]):
+        x = west_gate + 2.2
+        while x < -2.5:
+            cy = path_y_at_x(route, x)
+            # The two branches overlap right at the gate; a second layer there
+            # would z-fight and needlessly double the exported surface.
+            if route_index == 1 and abs(cy) < route["width"] / 2 + 1:
+                x += 2.8
+                continue
+            for offset in (-6.2, -3.1, 0.0, 3.1, 6.2):
+                if rng.random() < 0.22:
+                    continue
+                sx = x + rng.uniform(-1.0, 1.0)
+                sy = cy + offset + rng.uniform(-0.65, 0.65)
+                if not in_route_clear(D, sx, sy, grow=-1.0):
+                    continue
+                rx, ry = rng.uniform(1.15, 1.85), rng.uniform(1.0, 1.65)
+                rot = rng.uniform(0, math.pi)
+                n = rng.choice((5, 6, 7))
+                rim = []
+                for k in range(n):
+                    a = rot + 2 * math.pi * k / n
+                    jitter = rng.uniform(0.84, 1.12)
+                    vx = sx + rx * math.cos(a) * jitter
+                    vy = sy + ry * math.sin(a) * jitter
+                    rim.append((vx, vy, height(vx, vy) + 0.025))
+                middle = (sx, sy, height(sx, sy) + 0.028)
+                tone = rng.choices(("PATH_STONE", "PATH_STONE_LIGHT", "PATH_STONE_DARK"),
+                                   weights=(5, 2, 2), k=1)[0]
+                for mirror_x in (False, True):
+                    verts = (middle, *rim)
+                    if mirror_x:
+                        verts = tuple((-vx, vy, vz) for vx, vy, vz in verts)
+                        key = MAP.tile_of(-sx, sy)
+                    else:
+                        key = MAP.tile_of(sx, sy)
+                    target = buckets.setdefault(key, [])
+                    for k in range(n):
+                        a, b = verts[k + 1], verts[(k + 1) % n + 1]
+                        target.append(((verts[0], b, a) if mirror_x else (verts[0], a, b), tone))
+                count += 2
+            x += 2.8
+    stats = {}
+    for key, tris in sorted(buckets.items()):
+        name = "BF_Path_Stones_%02d_%02d" % key
+        stats[name] = MAP.tri_object(coll, name, tris, mat,
+                                     "layout.json ram_routes: thin visual stone detail; no collision", SRGB)
+        bpy.data.objects[name]["visual_only"] = True
+    if max(stats.values(), default=0) >= 15000:
+        raise AssertionError("A stone-detail tile exceeded the 15k triangle target")
+    return stats, count
 
 
 # ------------------------------------------------------------------ sea and shore
@@ -643,7 +755,7 @@ def pine(x, y, z, s, rot, tone):
 
 
 def build_pines(coll, D, height, inland, rng, mat):
-    B, R = D["bounds"], D["road"]
+    B = D["bounds"]
     belt = D["L"]["decoration_rules"]["edge_belt_depth"]
 
     def edge_depth(x, y):
@@ -654,7 +766,7 @@ def build_pines(coll, D, height, inland, rng, mat):
             return True
         if any(pad_dist(p, x, y) < cr + 2 for p in D["pads"]):
             return True
-        if in_road_clear(R, x, y, grow=cr + 4) or in_road_dirt(R, x, y):
+        if in_route_clear(D, x, y, grow=cr + 4) or in_path_paint(D, x, y):
             return True
         if any(math.hypot(x - c["cx"], y - c["cy"]) < c["r"] + cr for c in D["craters"]):
             return True
@@ -931,7 +1043,8 @@ def build_markers(coll, D, mat, height):
     def emit(name, t, why):
         stats["BF_" + name] = MAP.tri_object(coll, "BF_" + name, t, mat, why, MARKER)
 
-    emit("Marker_Origin_Axis", post(0, 0, 0, 2.5, 40, MARKER["origin"]) + strip(0, -400, 0, 400, 2, MARKER["axis"], 1.0),
+    emit("Marker_Origin_Axis", post(0, 0, 0, 2.5, 40, MARKER["origin"]) +
+         strip(0, D["bounds"]["y0"] - 60, 0, D["bounds"]["y1"] + 60, 2, MARKER["axis"], 1.0),
          "layout.json mirror_axis")
     for c in L["castles"]:
         x, y, z = rb(c["center"]["x"], c["pad"]["y"], c["center"]["z"])
@@ -963,8 +1076,11 @@ def build_markers(coll, D, mat, height):
             continue
         emit("Marker_" + p["id"], post(p["cx"], p["cy"], p["h"], 1.5, 24, MARKER[p["ring"]]) + ring(p["cx"], p["cy"], p["r"], 1.6, MARKER[p["ring"]]),
              "layout.json resource_node_slots " + p["id"])
-    R = D["road"]
-    emit("Marker_Road_Clear", rect(R["x0"], -R["half"], R["x1"], R["half"], 2.0, MARKER["road"], 1.0), "layout.json central_road")
+    for route in D["routes"]:
+        trace = []
+        for (x0, y0), (x1, y1) in zip(route["points"], route["points"][1:]):
+            trace += strip(x0, y0, x1, y1, route["width"], MARKER["road"], 1.0)
+        emit("Marker_" + route["id"], trace, "layout.json ram_routes " + route["id"])
     t = []
     for c in D["craters"]:
         t += ring(c["cx"], c["cy"], c["r"], 1.2, MARKER["crater"], 24, 2.2)
@@ -1003,7 +1119,6 @@ def build_markers(coll, D, mat, height):
 def verify(B):
     scene, D, height, inland = B["scene"], B["D"], B["height"], B["inland"]
     by_id = {o.get("export_name", o.name): o for o in scene.objects}
-    dg = bpy.context.evaluated_depsgraph_get()
     terrain = [o for o in scene.objects if o.name.startswith("BF_Terrain_")]   # tiles and crater pieces
 
     def ground(x, y):
@@ -1029,37 +1144,49 @@ def verify(B):
                     pts.append((p["cx"] + math.cos(a) * p["inner"] * f, p["cy"] + math.sin(a) * p["inner"] * f))
         zs = [ground(x, y) for x, y in pts]
         pad_dev.append((p["id"], round(max(abs(z - p["h"]) for z in zs if z is not None), 4), sum(z is None for z in zs)))
-    # road: clear of every placed object's footprint (castle pieces at the gates excepted), and
-    # nothing above its surface at avatar and ram height
-    R = D["road"]
-    road_objects = []
-    for o in scene.objects:
-        if o.type != "MESH" or o.name.startswith(("BF_Terrain", "BF_Sea", "BF_Marker", "BF_Shore")) or o.users_collection[0].name == "BF_Preview":
-            continue
-        if o.name.startswith(("BF_Pines", "BF_Cover_Rocks")) or o.users_collection[0].name == "BF_Castles":
-            continue                          # trees are checked below; the road ends AT the castles' gates
-        ws = [o.matrix_world @ Vector(c) for c in o.bound_box]
-        x0, x1 = min(v.x for v in ws), max(v.x for v in ws)
-        y0, y1 = min(v.y for v in ws), max(v.y for v in ws)
-        if x1 > -R["x1"] and x0 < R["x1"] and y1 > -R["half"] and y0 < R["half"]:
-            road_objects.append(o.name)
-    blocked = []
-    for k in range(0, int(2 * R["x1"]) + 1, 2):
-        x = -R["x1"] + k
-        for y in (-R["half"] + 1, -6, 0, 6, R["half"] - 1):
-            g = ground(x, y)
-            origin = Vector((x, y, (g or 0) + 0.3))
-            hit, loc, _, _, ob, _ = scene.ray_cast(dg, origin, Vector((0, 0, 1)))
-            if hit and loc.z - origin.z < 12 and not ob.name.startswith(("BF_Marker", "BF_Terrain")) and not ob.get("export_name", ob.name).endswith("_Gate"):
-                blocked.append((round(x), y, ob.name))
-    road_slope = max(abs((ground(x + 4, 0) or 0) - (ground(x, 0) or 0)) / 4 for x in range(-180, 176, 4))
+    # Sample the actual mesh along each ram corridor, including both sides.
+    # Stone faces and grass are visual only; terrain tiles are the walking floor.
+    blocked, grades, missing_route_ground = [], [], 0
+    for route in D["routes"]:
+        half = route["width"] / 2
+        last = None
+        for (x0, y0), (x1, y1) in zip(route["points"], route["points"][1:]):
+            dx, dy = x1 - x0, y1 - y0
+            length = math.hypot(dx, dy)
+            nx, ny = -dy / length, dx / length
+            n = max(1, int(math.ceil(length / 6)))
+            for k in range(n + 1):
+                px, py = x0 + dx * k / n, y0 + dy * k / n
+                for lateral in (-half + 1, 0, half - 1):
+                    x, y = px + nx * lateral, py + ny * lateral
+                    z = ground(x, y)
+                    if z is None:
+                        missing_route_ground += 1
+                    for p in D["pads"]:
+                        if p["kind"] == "node" and pad_dist(p, x, y) == 0:
+                            blocked.append((route["id"], round(x), round(y), p["id"]))
+                    for c in D["craters"]:
+                        if math.hypot(x - c["cx"], y - c["cy"]) < c["r"]:
+                            blocked.append((route["id"], round(x), round(y), c["id"]))
+                    for b in D["barricades"]:
+                        if abs(x - b["cx"]) <= b["lx"] / 2 and abs(y - b["cy"]) <= b["dz"] / 2:
+                            blocked.append((route["id"], round(x), round(y), b["id"]))
+                    for cover in D["cover"]:
+                        if in_rect(cover, x, y):
+                            blocked.append((route["id"], round(x), round(y), cover["id"]))
+                center_z = ground(px, py)
+                step = math.hypot(px - last[0], py - last[1]) if last is not None else 0
+                if step > 1e-6 and center_z is not None:
+                    grades.append(abs(center_z - last[2]) / step)
+                if center_z is not None:
+                    last = (px, py, center_z)
     # trees: rules and clearances
     trees = B["trees"]
     belt = D["L"]["decoration_rules"]["edge_belt_depth"]
     Bd = D["bounds"]
     edge = lambda x, y: min(x - Bd["x0"], Bd["x1"] - x, y - Bd["y0"], Bd["y1"] - y)
     tree_rule = [(round(x), round(y)) for x, y, cr, why in trees if edge(x, y) > belt and not any(in_rect(z, x, y) for z in D["cover"])]
-    tree_road = [(round(x), round(y)) for x, y, cr, why in trees if in_road_clear(R, x, y, grow=cr)]
+    tree_road = [(round(x), round(y)) for x, y, cr, why in trees if in_route_clear(D, x, y, grow=cr)]
     tree_pad = [(round(x), round(y), p["id"]) for x, y, cr, why in trees for p in D["pads"] if pad_dist(p, x, y) < cr]
     tree_crater = [(round(x), round(y)) for x, y, cr, why in trees for c in D["craters"] if math.hypot(x - c["cx"], y - c["cy"]) < c["r"] + cr]
     unmirrored = sum(1 for x, y, cr, why in trees if not any(abs(-x - x2) < 1e-6 and abs(y - y2) < 1e-6 for x2, y2, _, _ in trees))
@@ -1112,8 +1239,8 @@ def verify(B):
     wet = [(round(x), round(y)) for x in xs for y in ys if (ground(x, y) or 0) <= 0.05]
     wall_min_inland = min(inland(x, y) for x, y in B["boundary_pts"])
     return dict(pads_max_dev=max(d for _, d, _ in pad_dev), pads_missing=sum(m for _, _, m in pad_dev), pads=pad_dev,
-                road_objects_over_clear_strip=road_objects, road_blocked=blocked[:10], road_blocked_count=len(blocked),
-                road_max_grade=round(road_slope, 3), trees=len(trees), trees_outside_rules=tree_rule, trees_in_road=tree_road,
+                route_blocked=blocked[:10], route_blocked_count=len(blocked), route_missing_ground=missing_route_ground,
+                route_max_grade=round(max(grades, default=0), 3), trees=len(trees), trees_outside_rules=tree_rule, trees_in_routes=tree_road,
                 trees_on_pads=tree_pad, trees_in_craters=tree_crater, unmirrored_trees=unmirrored,
                 craters_floor_rim_depth=crater_meas, barricades_height_len_depth=bar_meas, tunnels_entrance_exit_err_incover_exitz=tun,
                 castle_missing=missing, castle_misplaced=misplaced, terrain_mirror=(round(err, 6), miss),
@@ -1268,6 +1395,8 @@ def build():
     stats.update(g)
     grass, grass_counts = build_groundcover(colls["BF_Groundcover"], D, height, inland, mat)
     stats.update(grass)
+    stones, stone_count = build_path_stones(colls["BF_Groundcover"], D, height, mat)
+    stats.update(stones)
     stats.update(build_sea(colls["BF_Sea"], outline, inland, rng, mat))
     sh, n_rocks = build_shore(colls["BF_Shore"], outline, inland, rng, mat)
     stats.update(sh)
@@ -1288,15 +1417,15 @@ def build():
     sun["traces_to"] = "preview lighting"
     P.objects.link(sun)
     dummy = make_dummy(kmat)
-    b = next(b for b in D["barricades"] if b["id"] == "A_Barricade_N")
-    place(P, "BF_Dummy_Barricade", dummy, (b["cx"] - 1.0, b["cy"] + 3.2, height(b["cx"] - 1.0, b["cy"] + 3.2)), 90.0, "preview: 5-stud avatar behind A_Barricade_N")
+    b = next(b for b in D["barricades"] if b["id"] == "A_Barricade_Outer")
+    place(P, "BF_Dummy_Barricade", dummy, (b["cx"] - 1.0, b["cy"] + 3.2, height(b["cx"] - 1.0, b["cy"] + 3.2)), 90.0, "preview: 5-stud avatar behind A_Barricade_Outer")
     c = next(c for c in D["craters"] if c["id"] == "A_Crater_1")
     place(P, "BF_Dummy_Crater", dummy, (c["cx"], c["cy"], height(c["cx"], c["cy"])), 90.0, "preview: 5-stud avatar standing in A_Crater_1")
     gA = D["L"]["castles"][0]["gate"]
     place(P, "BF_Dummy_Gate", dummy, (gA["x"] + 22, 6, height(gA["x"] + 22, 6)), 90.0, "preview: 5-stud avatar at A_Gate")
     mk, boundary_pts = build_markers(colls["BF_Layout_Markers"], D, mmat, height)
     scene.view_layers[0].update()
-    return dict(scene=scene, stats=stats, markers=mk, D=D, renamed_in_other_scenes=renamed, inland=inland, height=height, base=base, trees=trees, grass_counts=grass_counts, V3=V3, tris=tris,
+    return dict(scene=scene, stats=stats, markers=mk, D=D, renamed_in_other_scenes=renamed, inland=inland, height=height, base=base, trees=trees, grass_counts=grass_counts, path_stones=stone_count, V3=V3, tris=tris,
                 boundary_pts=boundary_pts, castle_meshes=castle_meshes, prop_meshes=prop_meshes, shore_rocks=n_rocks, cover_rocks=rocks)
 
 

@@ -1,7 +1,7 @@
-// Generates the mirrored battlefield layout (layout.json v2.1, the exterior from
-// MAP-REVISION-PROPOSAL.md and the approved interior from
+// Generates the mirrored battlefield layout (layout.json v2.2, the exterior from
+// MAP-PATHS-EXPANSION-PROPOSAL.md and the approved interior from
 // CASTLE-INTERIOR-V2-PROPOSAL.md) and checks it:
-// pad gaps, the central road clear, crater/barricade/cover clearances, the L tunnels,
+// pad gaps, both ram paths clear, crater/barricade/cover clearances, the L tunnels,
 // pads inside bounds, exact mirroring, steepest pad-to-pad ramp, walking times.
 // Team A is authored on the west (x < 0); team B is its mirror across x = 0.
 // Roblox coordinates: ground plane (x, z), height y. Studs. -Z is north.
@@ -20,9 +20,9 @@ const BAYS = 9; // per side
 const RING = BAYS * BAY; // 183.6, outer face to outer face
 const WALL_T = 4.0; // castle kit wall thickness
 const PAD_MARGIN = 8.2; // pad edge beyond the ring: 200 x 200 pad
-const ROAD = { width: 30, z: 0 };
+const ROUTE_WIDTH = 18;
 const EDGE_BELT = 60;
-const BOUNDS = { min_x: -520, max_x: 520, min_z: -340, max_z: 340 };
+const BOUNDS = { min_x: -780, max_x: 780, min_z: -340, max_z: 340 };
 const BOUNDARY_OFFSET = 30; // invisible wall this far outside map_bounds
 const FIELD_Y = 4;
 // Largest measured footprint per type on the old map, rounded (layout.old-island.json).
@@ -33,37 +33,37 @@ const padRadius = (types) => Math.max(...types.map((t) => FOOTPRINT[t])) / 2 + N
 // Minimum clearances the checks enforce. The proposal's own audit measured the closest
 // pads at 11.9 (node-node) and 9.9 (node-castle) and accepted them, so the pad rule is
 // "a ramp's width apart", not the older 20.
-const MIN = { pad_gap: 8, road_to_pad: 40, road_to_crater: 15, road_to_barricade: 20, road_to_cover: 10,
+const MIN = { pad_gap: 8, route_to_pad: 40, route_to_crater: 15, route_to_barricade: 20, route_to_cover: 10,
   crater_to_pad: 20, cover_to_pad: 0, tunnel_portal_to_pad: 10, tunnel_exit_to_wall: 10 };
 
-const castleA = { id: "Castle_A", team: "A", center: { x: -280, y: 10, z: 0 } };
+const castleA = { id: "Castle_A", team: "A", center: { x: -420, y: 10, z: 0 } };
 // Home: behind and beside the castle. Mid: flanks. Forward: toward the axis. Center: ON
-// the axis, so each mirrors onto itself (shared, contested). Only slot 5 moved from v1.1:
-// (-170, 0) would sit on the enlarged castle pad and the road.
+// the axis, so each mirrors onto itself (shared, contested). Their positions
+// preserve gathering on both sides of the two clear ram routes.
 const slotsA = [
-  { n: 1, ring: "home", types: ["Wood", "Grain"], x: -420, z: -190, y: 9 },
-  { n: 2, ring: "home", types: ["Wool", "Grain"], x: -420, z: 195, y: 9 },
-  { n: 3, ring: "mid", types: ["Stone", "Wood"], x: -250, z: -190, y: 8 },
-  { n: 4, ring: "mid", types: ["Stone", "Wool"], x: -260, z: 185, y: 8 },
-  { n: 5, ring: "mid", types: ["Stone", "Grain"], x: -125, z: 125, y: 6, moved_from: { x: -170, z: 0 } },
-  { n: 6, ring: "forward", types: ["Ore", "Stone"], x: -120, z: -235, y: 6 },
-  { n: 7, ring: "forward", types: ["Ore", "Wood"], x: -115, z: 245, y: 6 },
+  { n: 1, ring: "home", types: ["Wood", "Grain"], x: -560, z: -190, y: 9 },
+  { n: 2, ring: "home", types: ["Wool", "Grain"], x: -560, z: 195, y: 9 },
+  { n: 3, ring: "mid", types: ["Stone", "Wood"], x: -390, z: -190, y: 8 },
+  { n: 4, ring: "mid", types: ["Stone", "Wool"], x: -400, z: 185, y: 8 },
+  { n: 5, ring: "mid", types: ["Stone", "Grain"], x: -250, z: 135, y: 6 },
+  { n: 6, ring: "forward", types: ["Ore", "Stone"], x: -190, z: -235, y: 6 },
+  { n: 7, ring: "forward", types: ["Ore", "Wood"], x: -185, z: 245, y: 6 },
 ];
 const center = [
-  { id: "Node_C1", ring: "center", types: ["Ore"], x: 0, z: -110, y: 4 },
-  { id: "Node_C2", ring: "center", types: ["Ore"], x: 0, z: 110, y: 4 },
+  { id: "Node_C1", ring: "center", types: ["Ore"], x: 0, z: -140, y: 4 },
+  { id: "Node_C2", ring: "center", types: ["Ore"], x: 0, z: 140, y: 4 },
 ];
 // Team A's battlefield features; B mirrors them.
-const CRATERS_A = [{ n: 1, x: -105, z: -65 }, { n: 2, x: -55, z: 48 }];
+const CRATERS_A = [{ n: 1, x: -105, z: 0 }];
 const CRATER = { outer_radius: 18, floor_radius: 9, floor_depth: 1.5, rim_height: 1.5 };
-const BARRICADES_A = [{ n: "N", x: -125, z: -37 }, { n: "S", x: -125, z: 37 }];
+const BARRICADES_A = [{ n: "Outer", x: -155, z: 0 }, { n: "Inner", x: -45, z: 0 }];
 const BARRICADE = { length_x: 12, depth_z: 4, height: 3.5 };
 const COVER_A = [
-  { id: "A_Cover_N", purpose: "gate-side cover north of the road", min_x: -177, max_x: -132, min_z: -68, max_z: -40 },
-  { id: "A_Cover_S", purpose: "gate-side cover south of the road", min_x: -177, max_x: -132, min_z: 40, max_z: 68 },
-  { id: "A_Cover_Tunnel", purpose: "hides the tunnel entrance", min_x: -105, max_x: -65, min_z: -138, max_z: -102 },
+  { id: "A_Cover_N", purpose: "gate-side cover north of the north ram route", min_x: -317, max_x: -272, min_z: -68, max_z: -40 },
+  { id: "A_Cover_S", purpose: "gate-side cover south of the south ram route", min_x: -317, max_x: -272, min_z: 40, max_z: 68 },
+  { id: "A_Cover_Tunnel", purpose: "hides the tunnel entrance", min_x: -245, max_x: -205, min_z: -138, max_z: -102 },
 ];
-const TUNNEL_A = { entrance: { x: -85, z: -120 }, bend: { x: -260, z: -120 }, exit: { x: -260, z: -55 } };
+const TUNNEL_A = { entrance: { x: -225, z: -120 }, bend: { x: -400, z: -120 }, exit: { x: -400, z: -55 } };
 const TUNNEL = { width: 6, clear_height: 3.5, one_traveller: true };
 const BARRACKS_SPAWNS = [[-60, -66], [-50, -66], [-40, -66], [-60, -57], [-50, -57], [-40, -57]];
 
@@ -183,9 +183,15 @@ for (const s of center) {
 
 // ---------------------------------------------------------------- the battlefield
 const [cA, cB] = castles;
-const road = { id: "Central_Road", surface: "dirt", from: { x: cA.gate.x, z: ROAD.z }, to: { x: cB.gate.x, z: ROAD.z },
-  width: ROAD.width, min_x: cA.gate.x, max_x: cB.gate.x, min_z: ROAD.z - ROAD.width / 2, max_z: ROAD.z + ROAD.width / 2,
-  note: "Collision-clear 30 studs: no props, nodes or trees. The dirt colour may meander and widen at the gates." };
+const routePoints = (sign) => [
+  { x: cA.gate.x, z: 0 }, { x: -260, z: sign * 20 }, { x: -180, z: sign * 42 },
+  { x: 180, z: sign * 42 }, { x: 260, z: sign * 20 }, { x: cB.gate.x, z: 0 },
+];
+const routes = [["North", -1], ["South", 1]].map(([name, sign]) => ({
+  id: `${name}_Ram_Route`, surface: "worn_earth_and_stone", width: ROUTE_WIDTH,
+  centerline: routePoints(sign),
+  note: "18-stud collision-clear route from gate to gate. Stone and dirt color can vary within the route; no props, nodes, trees or grass tall enough to obstruct a ram.",
+}));
 const craters = [];
 for (const k of CRATERS_A) for (const [side, sx] of [["A", 1], ["B", -1]])
   craters.push({ id: `${side}_Crater_${k.n}`, x: sx * k.x, y: FIELD_Y, z: k.z, ...CRATER, placeholder_profile: true });
@@ -207,13 +213,13 @@ const tunnels = [["A", 1], ["B", -1]].map(([side, sx]) => {
 
 const layout = {
   meta: {
-    status: "Exterior approved for an in-game visual preview (MAP-REVISION-PROPOSAL.md); interior geometry approved 2026-10-01 (CASTLE-INTERIOR-V2-PROPOSAL.md). Subject to in-game review.",
+    status: "Expanded exterior and paired ram routes approved 2026-10-03 (MAP-PATHS-EXPANSION-PROPOSAL.md); interior geometry approved 2026-10-01 (CASTLE-INTERIOR-V2-PROPOSAL.md). Subject to in-game review.",
     interior_status: "APPROVED SPATIAL LAYOUT 2026-10-01. The Keep contains the stockpile room. The 2026-09-30 workshop/cannon interior and gameplay are stale; approved coordinates do not imply the new art or logic is built.",
-    version: "2.1", date: "2026-10-01", units: "studs",
+    version: "2.2", date: "2026-10-03", units: "studs",
     coords: "Roblox: ground plane (x, z), height y. Blender: (x, y, z) -> (x, -z, y).",
     compass: "-Z = north, +X = east. Team A west, team B east.",
     generator: "assets/map/propose_layout.js",
-    replaces: "layout.json v1.1 (2026-09-30: 102-stud rings at x = ±370, gate lanes, interior). Older: layout.old-island.json.",
+    replaces: "layout.json v2.1 (2026-10-01: 1,040-stud island, castles at x = ±280, one 30-stud road). Older: layout.old-island.json.",
   },
   map_bounds: { ...BOUNDS, note: "Playable area. Everything inside is land; no water inside." },
   mirror_axis: { type: "plane", x: 0, note: "Team B = team A with x negated. Slots on x = 0 mirror onto themselves." },
@@ -225,7 +231,7 @@ const layout = {
   teams: [{ id: "A", side: "west", castle: "Castle_A", banner_color_placeholder: "#B8413A" },
           { id: "B", side: "east", castle: "Castle_B", banner_color_placeholder: "#3A5FB8" }],
   castles,
-  central_road: road,
+  ram_routes: routes,
   resource_node_slots: slots,
   node_footprints: FOOTPRINT,
   craters,
@@ -233,7 +239,7 @@ const layout = {
   cover_zones: cover,
   tunnels,
   decoration_rules: { edge_belt_depth: EDGE_BELT, pines_only_in: ["edge belt", "cover_zones"], round_canopy_trees: "Wood node pads only",
-    never_in: ["central_road", "pads", "craters", "barricades"] },
+    never_in: ["ram_routes", "pads", "craters", "barricades"] },
   zone: null,
   zone_note: "No shrinking zone in the current two-team design. DESIGN.md parks the old free-for-all zone.",
 };
@@ -263,10 +269,14 @@ const outline = (a) => {
 const gap = (a, b) => Math.min(Math.min(...outline(a).map(([x, z]) => distTo(b, x, z))), Math.min(...outline(b).map(([x, z]) => distTo(a, x, z))));
 const rect = (o, id) => ({ id: id || o.id, kind: "rect", min_x: o.min_x, max_x: o.max_x, min_z: o.min_z, max_z: o.max_z });
 const circ = (id, x, z, r) => ({ id, kind: "circle", x, z, r });
-const roadR = rect(road);
 const craterC = craters.map((c) => circ(c.id, c.x, c.z, c.outer_radius));
 const barrR = barricades.map((b) => rect({ min_x: b.x - b.length_x / 2, max_x: b.x + b.length_x / 2, min_z: b.z - b.depth_z / 2, max_z: b.z + b.depth_z / 2 }, b.id));
 const coverR = cover.map((c) => rect(c));
+const routeSamples = (route) => route.centerline.slice(1).flatMap((b, i) => {
+  const a = route.centerline[i], n = Math.ceil(Math.hypot(b.x - a.x, b.z - a.z));
+  return [...Array(n + 1).keys()].map((k) => ({ x: a.x + (b.x - a.x) * k / n, z: a.z + (b.z - a.z) * k / n }));
+});
+const routeGap = (route, shape) => Math.min(...routeSamples(route).map((p) => distTo(shape, p.x, p.z))) - route.width / 2;
 const report = {};
 const need = (label, value, min) => {
   report[label] = r1(value);
@@ -281,23 +291,24 @@ for (let i = 0; i < pads.length; i++) for (let j = i + 1; j < pads.length; j++) 
 }
 need("min_pad_gap", minPad, MIN.pad_gap);
 report.min_pad_gap_between = minPadPair;
-// road: no pad on it except the castles it joins (whose gates are its ends)
-need("road_to_nearest_node_pad", Math.min(...pads.filter((p) => p.kind === "circle").map((p) => gap(p, roadR))), MIN.road_to_pad);
-for (const c of castles) {
-  const p = pads.find((q) => q.id === c.id);
-  // the road starts at the gate, so it crosses only the pad's apron outside the ring
-  const apron = Math.min(p.max_x, roadR.max_x) - Math.max(p.min_x, roadR.min_x);
-  if (apron > PAD_MARGIN + 1e-6) problems.push(`road runs ${r1(apron)} into ${c.id}'s pad, past its gate`);
-  report.road_over_castle_pad_apron = r1(apron);
-  if (Math.abs(c.gate.x - (c.team === "A" ? road.min_x : road.max_x)) > 1e-6 || c.gate.z !== road.from.z) problems.push(`road does not end at ${c.id}'s gate`);
+// Each path must carry a ram, stay clear of resources/cover, and end at both gates.
+for (const route of routes) {
+  if (route.width < 18) problems.push(`${route.id} is narrower than the approved 18-stud corridor`);
+  const first = route.centerline[0], last = route.centerline.at(-1);
+  if (first.x !== cA.gate.x || first.z !== cA.gate.z || last.x !== cB.gate.x || last.z !== cB.gate.z)
+    problems.push(`${route.id} does not join both facing gates`);
+  need(`${route.id}_to_nearest_node_pad`, Math.min(...pads.filter((p) => p.kind === "circle").map((p) => routeGap(route, p))), MIN.route_to_pad);
+  need(`${route.id}_to_nearest_crater`, Math.min(...craterC.map((c) => routeGap(route, c))), MIN.route_to_crater);
+  need(`${route.id}_to_nearest_barricade`, Math.min(...barrR.map((b) => routeGap(route, b))), MIN.route_to_barricade);
+  need(`${route.id}_to_nearest_cover_zone`, Math.min(...coverR.map((c) => routeGap(route, c))), MIN.route_to_cover);
+  report[`${route.id}_length`] = r1(route.centerline.slice(1).reduce((sum, p, i) =>
+    sum + Math.hypot(p.x - route.centerline[i].x, p.z - route.centerline[i].z), 0));
 }
-need("road_to_nearest_crater", Math.min(...craterC.map((c) => gap(c, roadR))), MIN.road_to_crater);
-need("road_to_nearest_barricade", Math.min(...barrR.map((b) => gap(b, roadR))), MIN.road_to_barricade);
-need("road_to_nearest_cover_zone", Math.min(...coverR.map((c) => gap(c, roadR))), MIN.road_to_cover);
-// gate-to-gate clear line: sample the road at avatar (2) and ram (12, placeholder) half widths
-for (const hw of [2, 6, ROAD.width / 2]) for (let x = road.min_x; x <= road.max_x; x += 2) for (const dz of [-hw, 0, hw]) {
-  for (const o of [...craterC, ...barrR, ...coverR, ...pads.filter((p) => p.kind === "circle")])
-    if (distTo(o, x, dz) === 0) { problems.push(`road blocked by ${o.id} at x ${r1(x)}`); x = 1e9; break; }
+if (routes.length !== 2 || routes[0].centerline.length !== routes[1].centerline.length)
+  problems.push("there must be two equal waypoint lists for the ram routes");
+else for (let i = 0; i < routes[0].centerline.length; i++) {
+  const n = routes[0].centerline[i], s = routes[1].centerline[i];
+  if (n.x !== s.x || n.z !== -s.z) problems.push(`ram routes diverge asymmetrically at waypoint ${i}`);
 }
 // craters, barricades, cover vs pads and each other
 need("crater_to_nearest_pad", Math.min(...craterC.flatMap((c) => pads.map((p) => gap(c, p)))), MIN.crater_to_pad);
@@ -414,7 +425,12 @@ for (const a of interiorRects(cA)) {
       || b.max_z !== a.max_z || b.y !== a.y) problems.push(`interior footprint ${a.id} is not mirrored`);
 }
 if (cA.center.x !== -cB.center.x || cA.pad.size !== cB.pad.size) problems.push("castles are not mirrored");
-if (road.min_x !== -road.max_x) problems.push("road is not centred on the mirror axis");
+for (const route of routes) {
+  const pts = route.centerline;
+  for (let i = 0; i < pts.length; i++)
+    if (pts[i].x !== -pts[pts.length - 1 - i].x || pts[i].z !== pts[pts.length - 1 - i].z)
+      problems.push(`${route.id} is not mirrored across x = 0`);
+}
 // counts and ids
 for (const c of castles) {
   if (c.wall_sections.length !== 4 * BAYS - 1) problems.push(`${c.id} has ${c.wall_sections.length} wall sections, not ${4 * BAYS - 1}`);
@@ -438,6 +454,7 @@ const t = (x, z) => r1(Math.hypot(x - cA.gate.x, z - cA.gate.z) / WALK);
 const travel = {
   gate_to_enemy_gate_s: r1((cB.gate.x - cA.gate.x) / WALK),
   gate_to_center_s: t(0, 0),
+  ram_route_s_at_walk_speed: r1(report[`${routes[0].id}_length`] / WALK),
   per_slot_from_A_gate_s: Object.fromEntries(slots.filter((s) => s.side !== "B").map((s) => [s.id, t(s.position.x, s.position.z)])),
 };
 const counts = {};
