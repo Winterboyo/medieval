@@ -255,9 +255,12 @@ local function buildCastle(into: Instance, c: any, team: Team)
 		spawn.AllowTeamChangeOnTouch = false
 		spawn.TeamColor = team.TeamColor
 		spawn.Color = team.TeamColor.Color
-		spawn.Transparency = 0.4
+		spawn.Transparency = if Workspace:FindFirstChild("Battlefield") then 1 else 0.4
 		spawn.Duration = 3
 		spawn.Material = Enum.Material.SmoothPlastic
+		if Workspace:FindFirstChild("Battlefield") then
+			spawn.CanCollide = false
+		end
 		spawn:SetAttribute("Temporary", c.interior == nil and c.spawn_points == nil)
 		spawn.Parent = castle
 	end

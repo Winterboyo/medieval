@@ -52,3 +52,18 @@ Observations captured during task-oriented work.
 **Suggested improvement:** Store a stable source identifier in a custom object property, use that property for mirror and export checks, and treat the Blender display name as advisory. Validate openings and passages with geometric rays after building.
 
 **Principle:** When a tool may rewrite display names, keep machine-readable source IDs separate from presentation names.
+
+### Observation 4: Check the final asset-import path before a large 3D build
+
+**Status:** OPEN
+**Date:** 2026-10-02
+**Session context:** Building mirrored Blender castle interiors and integrating them with a live Roblox Studio place.
+**Skill:** New skill candidate: Blender-to-Roblox asset handoff
+**Type:** open-source
+**Phase/Area:** Pipeline capability check
+
+**Issue:** The Blender bridge could build, inspect, and export the meshes, while the Studio bridge could edit scripts and inspect the place but could not select a local FBX in Studio's 3D Importer. The art and in-game lighting could be completed independently, but the final visual integration required a human UI import.
+
+**Suggested improvement:** Verify both screenshot capability and the final Studio import mechanism at the start of a 3D asset task. If the import is UI-only, export a small test asset first, write an idempotent alignment script based on two layout anchors, and communicate the exact one-step handoff before undertaking a large batch.
+
+**Principle:** A verified export is not an in-game asset until the import and alignment path has been exercised.

@@ -110,8 +110,10 @@ def build():
     for team in ("A", "B"):
         required = (team + "_Keep", team + "_Blacksmith_Forge",
                     team + "_Blacksmith_Forge_Roof", team + "_Blacksmith_Forge_Detail",
-                    team + "_Fletcher",
-                    team + "_Alchemist", team + "_Carpenter",
+                    team + "_Blacksmith_Forecourt",
+                    team + "_Fletcher", team + "_Fletcher_Detail",
+                    team + "_Alchemist", team + "_Alchemist_Detail",
+                    team + "_Carpenter", team + "_Carpenter_Detail",
                     team + "_Barracks", team + "_Gate_Door")
         missing = set(required) - ids
         if missing:
@@ -125,5 +127,61 @@ def show(scene):
     BF.show(scene, markers=False)
 
 
+def export_interior_fbx(scene, path):
+    """Export only the mirrored castle interiors at layout world coordinates.
+
+    The exterior walls and terrain already live in battlefield.fbx. The export
+    deliberately excludes them so Studio receives no duplicate geometry.
+    """
+    coll = bpy.data.collections["Full_Preview_Castles"]
+    interiors = ("Keep", "Stockpile_Contents", "Barracks", "Blacksmith_Forge",
+                 "Blacksmith_Forecourt", "Fletcher", "Alchemist", "Carpenter",
+                 "Ballista", "Tower_Access")
+    objs = [o for o in coll.objects if any(o.get("layout_id", "").startswith(team + "_" + role)
+            for team in ("A", "B") for role in interiors)]
+    if len(objs) != 40:
+        raise AssertionError("Interior export count changed: %d" % len(objs))
+    layer = scene.view_layers[0]
+    win = bpy.context.window
+    previous_scene = win.scene
+    previous_selection = [o for o in layer.objects if o.select_get(view_layer=layer)]
+    previous_active = layer.objects.active
+    renamed = []
+    try:
+        win.scene = scene
+        for o in objs:
+            wanted = o["layout_id"]
+            holder = bpy.data.objects.get(wanted)
+            if holder is not None and holder is not o:
+                holder.name = wanted + "__export_swap"
+            renamed.append((o, o.name, holder, wanted))
+            o.name = wanted
+        for o in previous_selection:
+            o.select_set(False, view_layer=layer)
+        for o in objs:
+            o.select_set(True, view_layer=layer)
+        layer.objects.active = objs[0]
+        with bpy.context.temp_override(window=win, scene=scene, view_layer=layer):
+            bpy.ops.export_scene.fbx(
+                filepath=path, use_selection=True, object_types={"MESH"},
+                axis_forward="-Z", axis_up="Y", bake_space_transform=True,
+                apply_scale_options="FBX_SCALE_ALL", mesh_smooth_type="FACE",
+                colors_type="SRGB", use_mesh_modifiers=True,
+                add_leaf_bones=False, bake_anim=False, path_mode="STRIP")
+    finally:
+        for o, old_name, holder, wanted in reversed(renamed):
+            o.name = old_name
+            if holder is not None:
+                holder.name = wanted
+        for o in objs:
+            o.select_set(False, view_layer=layer)
+        for o in previous_selection:
+            o.select_set(True, view_layer=layer)
+        layer.objects.active = previous_active
+        win.scene = previous_scene
+    return len(objs)
+
+
 bpy.app.driver_namespace["full_preview"] = dict(build=build, show=show,
-                                                 orbit=BF.MAP.orbit, look=BF.MAP.look)
+                                                 orbit=BF.MAP.orbit, look=BF.MAP.look,
+                                                 export_interior_fbx=export_interior_fbx)

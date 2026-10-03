@@ -58,6 +58,16 @@ SRGB = {
     "FORGE_CANOPY_LIGHT": (211, 179, 100),
     "FORGE_ROOF": (95, 74, 58),
     "FORGE_ROOF_LIGHT": (116, 88, 68),
+    "LEATHER": (116, 76, 47),
+    "PARCHMENT": (217, 200, 154),
+    "HERB": (84, 123, 66),
+    "GLASS_GREEN": (87, 145, 109),
+    "GLASS_BLUE": (91, 136, 161),
+    "GLASS_RED": (181, 82, 65),
+    "FEATHER": (218, 211, 178),
+    "COURT_STONE": (118, 111, 103),
+    "COURT_LIGHT": (139, 131, 120),
+    "COURT_DARK": (97, 93, 88),
 }
 TEAM_A = (184, 65, 58)              # layout.json teams[0].banner_color_placeholder, preview only
 TEAM_B = (58, 95, 184)
@@ -935,19 +945,6 @@ def build_specialist(mat, role, hx, hy, door_side, ram_side=0, state="intact"):
             beam((x, -13, 10.5), (x, 0, 16.0), 0.55)
             beam((x, 0, 16.0), (x, 13, 10.5), 0.55)
             p.box(x - 0.28, x + 0.28, -12.5, 12.5, 10.3, 10.85, "FORGE_WOOD")
-    elif role == "Fletcher":
-        p.box(-hx + 2, hx - 2, back_y - 1.2, back_y + 1.2, 2.3, 2.7, "TIMBER")
-        for x in (-hx + 4, -hx + 8, -hx + 12):
-            p.box(x - 0.12, x + 0.12, back_y - 0.15, back_y + 0.15, 2.7, 6.5, "TIMBER")
-    elif role == "Alchemist":
-        p.box(-hx + 2, hx - 2, back_y - 1.2, back_y + 1.2, 2.3, 2.7, "TIMBER")
-        for x in (-hx + 4, -hx + 8, -hx + 12):
-            p.frustum(x, back_y, 2.7, 0.6, 3.4, 0.4, 8, "IRON")
-            p.cone(x, back_y, 3.4, 0.4, 3.8, 8, "STONE")
-    elif role == "Carpenter":
-        p.box(-hx + 2, 1.0, back_y - 1.3, back_y + 1.3, 2.2, 2.7, "TIMBER")
-        for y in (back_y - 1.4, back_y, back_y + 1.4):
-            p.along_x(-hx + 2, y, 0.95, 7.0, 0.5, 0.5, 6, "TIMBER")
     return p.finish(role + suffix(state), mat)
 
 
@@ -1077,6 +1074,191 @@ def build_blacksmith_detail(mat, state="intact"):
                (-8.15, 7.75), (-8.35, 6.95), (-9.35, 6.95),
                (-9.6, 7.75), (-10.4, 7.75)], 13.8, 13.95, "IRON")
     return p.finish("Blacksmith_Detail" + suffix(state), mat)
+
+
+def build_blacksmith_forecourt(mat):
+    """Paved, gently tiered approach within the approved 38 x 19 footprint."""
+    p = Piece()
+    p.box(-19, 19, -9.5, 9.5, 0.04, 0.22, "COURT_DARK")
+    # Broad treads at the shop entrance; leave the 8-stud doorway unobstructed.
+    for x0, x1, y0, y1, z0, z1 in (
+        (-16, 16, -9.4, -6.7, 0.22, 0.50),
+        (-14, 14, -9.4, -8.0, 0.50, 0.75),
+    ):
+        p.box(x0, x1, y0, y1, z0, z1, "COURT_STONE")
+    for row in range(5):
+        y0 = -6.4 + row * 3.1
+        for col in range(10):
+            x0 = -18.35 + col * 3.68 + (0.42 if row % 2 else 0.0)
+            x1 = min(18.3, x0 + 3.35)
+            if x0 >= x1:
+                continue
+            tone = ("COURT_STONE", "COURT_LIGHT", "COURT_STONE", "COURT_DARK")[(row * 3 + col) % 4]
+            p.box(x0, x1, y0, y0 + 2.70, 0.22, 0.31, tone)
+    return p.finish("Blacksmith_Forecourt", mat)
+
+
+def build_specialist_detail(mat, role, hx, hy, door_side, state="intact"):
+    """Role-specific workstations with a clear path from the approved door."""
+    p = Piece()
+    if state == "rubble":
+        p.rubble(-hx + 1, hx - 1, -hy + 1, hy - 1, 14, 0.7, 0.5,
+                 seed=510 + len(role), cols=("TIMBER", "STONE"))
+        return p.finish(role + "_Detail_Rubble", mat)
+
+    def beam(a, b, width, col="TIMBER"):
+        va, vb = Vector(a), Vector(b)
+        d = vb - va
+        m = Matrix.Translation((va + vb) / 2) @ d.to_track_quat("Z", "Y").to_matrix().to_4x4()
+        p.box(-width / 2, width / 2, -width / 2, width / 2,
+              -d.length / 2, d.length / 2, col, m)
+
+    def bench(x0, x1, y0, y1, top=2.7):
+        p.box(x0, x1, y0, y1, top - 0.32, top, "TIMBER")
+        for x in (x0 + 0.35, x1 - 0.35):
+            for y in (y0 + 0.35, y1 - 0.35):
+                p.box(x - 0.22, x + 0.22, y - 0.22, y + 0.22,
+                      0.75, top - 0.2, "FRAME")
+
+    rear = -door_side * (hy - 3.9)
+    side_y = -door_side * (hy - 7.4)
+    # Full plank floor, raised only a fraction above the stone foundation.
+    # Boards are staggered in length so the floor does not read as one slab.
+    for i in range(int((2 * hx - 2.2) / 1.55)):
+        x0 = -hx + 1.1 + 1.55 * i
+        joint = (-2.5 if i % 2 else 2.5)
+        for ya, yb in ((-hy + 1.15, joint - 0.08),
+                       (joint + 0.08, hy - 1.15)):
+            p.box(x0, x0 + 1.4, ya, yb, 0.72, 0.81,
+                  "FORGE_WOOD" if i % 3 == 0 else "TIMBER")
+    # Exposed rafters and corner braces remain visible when the roof fades.
+    for y in (-hy + 2.2, 0, hy - 2.2):
+        p.box(-hx + 0.8, hx - 0.8, y - 0.22, y + 0.22,
+              9.65, 10.2, "FRAME")
+    for x in (-hx + 0.7, hx - 0.7):
+        for y in (-hy + 1.1, hy - 1.1):
+            p.box(x - 0.2, x + 0.2, y - 0.2, y + 0.2,
+                  0.8, 9.9, "FRAME")
+    rear_wall = -door_side * (hy - 1.05)
+    p.box(-hx + 1.1, hx - 1.1, rear_wall - 0.15, rear_wall + 0.15,
+          2.0, 2.35, "FRAME")
+    for x in (-hx + 4, -hx / 3, hx / 3, hx - 4):
+        p.box(x - 0.16, x + 0.16, rear_wall - 0.17, rear_wall + 0.17,
+              2.25, 9.7, "FRAME")
+    # One hanging lantern gives the workshop a warm focal point after import.
+    p.box(-0.05, 0.05, -0.05, 0.05, 8.9, 10.0, "IRON")
+    p.box(-0.65, 0.65, -0.65, 0.65, 7.95, 8.18, "FRAME")
+    p.box(-0.42, 0.42, -0.42, 0.42, 6.75, 7.96, "FIRE")
+    p.box(-0.65, 0.65, -0.65, 0.65, 6.62, 6.85, "IRON")
+    for x in (-0.56, 0.56):
+        for y in (-0.56, 0.56):
+            p.box(x - 0.08, x + 0.08, y - 0.08, y + 0.08,
+                  6.8, 8.06, "IRON")
+
+    if role == "Fletcher":
+        bench(-hx + 1.7, -4.1, rear - 1.7, rear + 1.5)
+        # Arrow shafts, fletching and a compact rack behind the table.
+        for i in range(8):
+            x = -hx + 2.2 + i * 0.85
+            p.box(x - 0.08, x + 0.08, rear - 0.8, rear + 0.95,
+                  2.73, 2.83, "FORGE_WOOD")
+            p.box(x - 0.2, x + 0.2, rear + 0.75, rear + 1.1,
+                  2.8, 2.92, "FEATHER")
+        shelf_y = rear + door_side * 3.05
+        p.box(-hx + 1.6, -4.0, shelf_y - 0.28, shelf_y + 0.28,
+              5.6, 5.95, "FRAME")
+        for i in range(6):
+            x = -hx + 2.1 + 1.1 * i
+            p.box(x - 0.09, x + 0.09, shelf_y - 0.18, shelf_y + 0.18,
+                  3.0, 6.5, "TIMBER")
+            p.cone(x, shelf_y, 6.5, 0.24, 6.9, 5, "FEATHER")
+        # Two hung bow staves and a quiver make the room legible from the door.
+        for x in (hx - 4.3, hx - 2.0):
+            points = [(x, side_y - 0.5, 2.3), (x - 0.45, side_y - 0.5, 3.35),
+                      (x - 0.6, side_y - 0.5, 4.4), (x - 0.45, side_y - 0.5, 5.5),
+                      (x, side_y - 0.5, 6.5)]
+            for a, b in zip(points, points[1:]):
+                beam(a, b, 0.18, "FORGE_WOOD")
+            beam(points[0], points[-1], 0.06, "PARCHMENT")
+        p.frustum(hx - 3.1, side_y + 3.3, 0.78, 1.15, 3.15, 0.8, 8, "LEATHER")
+        for i in range(5):
+            x = hx - 3.7 + 0.28 * i
+            p.box(x - 0.055, x + 0.055, side_y + 3.1, side_y + 3.3,
+                  2.7, 5.3, "TIMBER")
+            p.cone(x, side_y + 3.2, 5.2, 0.17, 5.55, 5, "FEATHER")
+        # Finished bundles ready to carry, stored clear of the central aisle.
+        for i in range(3):
+            y = side_y - 2.5 + i * 1.7
+            p.box(-hx + 1.1, -hx + 0.75, y - 0.55, y + 0.55,
+                  0.9, 2.6, "LEATHER")
+            p.box(-hx + 0.7, -hx + 0.45, y - 0.3, y + 0.3,
+                  1.4, 1.65, "FRAME")
+    elif role == "Alchemist":
+        bench(-hx + 1.6, -4.1, rear - 1.6, rear + 1.7)
+        # Glassware on the mixing table and on two wall shelves.
+        bottles = ((-hx + 2.5, "GLASS_BLUE"), (-hx + 4.1, "GLASS_GREEN"),
+                   (-hx + 5.8, "GLASS_RED"), (-hx + 7.2, "GLASS_BLUE"))
+        for x, col in bottles:
+            p.frustum(x, rear, 2.75, 0.48, 3.75, 0.28, 8, col)
+            p.box(x - 0.15, x + 0.15, rear - 0.15, rear + 0.15,
+                  3.75, 4.05, "PARCHMENT")
+        for z in (4.7, 6.4):
+            p.box(4.2, hx - 1.2, rear - 0.6, rear + 0.15, z, z + 0.28, "FRAME")
+            for i, col in enumerate(("GLASS_GREEN", "GLASS_BLUE", "GLASS_RED")):
+                x = 5.1 + i * 1.85
+                p.frustum(x, rear - 0.2, z + 0.3, 0.35, z + 1.15, 0.22, 7, col)
+        # Cauldron, hanging herbs, mortar and parchment are static room cues.
+        p.frustum(6.6, side_y, 0.8, 1.6, 3.2, 2.05, 10, "IRON")
+        p.frustum(6.6, side_y, 3.2, 2.05, 3.4, 1.9, 10, "GLASS_GREEN")
+        for x in (hx - 3.5, hx - 2.2, hx - 1.0):
+            p.box(x - 0.05, x + 0.05, side_y + 3.7, side_y + 4.0,
+                  6.0, 8.4, "TIMBER")
+            p.cone(x, side_y + 3.8, 5.1, 0.45, 6.3, 5, "HERB")
+        p.frustum(-5.0, side_y + 4.0, 0.8, 0.9, 2.2, 0.9, 8, "STONE")
+        p.box(-hx + 2.2, -hx + 4.6, rear - 0.6, rear + 0.6,
+              2.71, 2.77, "PARCHMENT")
+        # Low storage chest with an iron latch near the entrance.
+        front_y = door_side * (hy - 4.0)
+        p.box(hx - 5.0, hx - 1.5, front_y - 1.4, front_y + 1.4,
+              0.84, 2.2, "FORGE_WOOD")
+        p.box(hx - 5.15, hx - 1.35, front_y - 1.55, front_y + 1.55,
+              2.15, 2.4, "FRAME")
+        p.box(hx - 3.5, hx - 3.1, front_y + door_side * 1.55 - 0.08,
+              front_y + door_side * 1.55 + 0.08, 1.35, 1.8, "IRON")
+    elif role == "Carpenter":
+        bench(-hx + 1.8, -3.9, rear - 1.8, rear + 1.8)
+        # Vice, half-cut board and saw blade on the bench.
+        p.box(-hx + 3.5, -4.4, rear - 0.42, rear + 0.42,
+              2.72, 3.07, "FORGE_WOOD")
+        for x in (-hx + 2.7, -hx + 1.9):
+            p.box(x - 0.16, x + 0.16, rear - 0.6, rear + 0.6,
+                  2.74, 3.7, "IRON")
+        p.profile([(-hx + 4.4, 3.2), (-hx + 7.6, 3.55),
+                   (-hx + 7.1, 3.9), (-hx + 4.2, 3.55)],
+                  rear + 0.4, rear + 0.52, "IRON")
+        # Boards and round timber sorted on trestles down the right wall.
+        for y in (side_y - 3.4, side_y, side_y + 3.4):
+            for z in (1.3, 2.5):
+                p.along_x(hx - 4.0, y, z, 5.8, 0.52, 0.52, 6, "TIMBER")
+        for i in range(4):
+            x = hx - 6.6 + i * 1.0
+            p.box(x - 0.37, x + 0.37, rear - 2.4, rear + 2.7,
+                  0.82, 1.16, "FORGE_WOOD")
+        # Mallets and square on the back wall.
+        p.box(4.1, hx - 1.4, rear - 0.3, rear + 0.3, 5.7, 6.0, "FRAME")
+        for x in (5.2, 7.2, 9.2):
+            p.box(x - 0.1, x + 0.1, rear - 0.4, rear + 0.4,
+                  3.65, 5.7, "TIMBER")
+            p.box(x - 0.42, x + 0.42, rear - 0.4, rear + 0.4,
+                  3.6, 4.05, "IRON")
+        # A handcart-sized material stack inside the approved footprint.
+        for i in range(4):
+            p.box(hx - 7.2, hx - 1.4,
+                  side_y - 3.3 + i * 1.35, side_y - 2.7 + i * 1.35,
+                  0.9 + i * 0.22, 1.3 + i * 0.22, "TIMBER")
+    else:
+        raise ValueError("No detail model for " + role)
+    return p.finish(role + "_Detail" + suffix(state), mat)
 
 
 def build_ballista(mat, state="intact"):
@@ -1400,6 +1582,12 @@ def validate_layout(L):
                 or a["max_x"] != -b["min_x"] or a["min_z"] != b["min_z"]
                 or a["max_z"] != b["max_z"]):
             raise ValueError("Specialist footprint is not mirrored: " + a["role"])
+    fa = A["interior"]["surfaces"]["blacksmith_forecourt"]
+    fb = B["interior"]["surfaces"]["blacksmith_forecourt"]
+    if (fa["max_x"] - fa["min_x"] != 38 or fa["max_z"] - fa["min_z"] != 19
+            or fa["min_x"] != -fb["max_x"] or fa["max_x"] != -fb["min_x"]
+            or fa["min_z"] != fb["min_z"] or fa["max_z"] != fb["max_z"]):
+        raise ValueError("Blacksmith forecourts must be approved 38 x 19 mirrored footprints")
     return A, B
 
 
@@ -1426,6 +1614,9 @@ def build_meshes(mat, bmat, C, tunnel_width):
             meshes[name + suffix(state)] = me
             roof = build_specialist_roof(mat, name, hx, hy, state)
             meshes[name + "_Roof" + suffix(state)] = roof
+            if role != "Blacksmith":
+                meshes[name + "_Detail" + suffix(state)] = build_specialist_detail(
+                    mat, name, hx, hy, door_side, state)
         meshes["Blacksmith_Detail" + suffix(state)] = build_blacksmith_detail(mat, state)
         # From the approved south-facing approach, the working forge reads on
         # the left and the enclosed shop on the right, as in the user reference.
@@ -1439,6 +1630,7 @@ def build_meshes(mat, bmat, C, tunnel_width):
         me = fn(mat)
         meshes[name] = me
     meshes["Tunnel_Exit_Portal"] = build_tunnel_exit(mat, tunnel_width)
+    meshes["Blacksmith_Forecourt"] = build_blacksmith_forecourt(mat)
     meshes["Banner"] = build_banner(bmat)
     return meshes
 
@@ -1518,6 +1710,10 @@ def build():
         place(A, s["id"] + "_Roof", meshes[name + "_Roof"], rect_c(s), 0)
         if s["role"] == "Blacksmith":
             place(A, s["id"] + "_Detail", meshes["Blacksmith_Detail"], rect_c(s), 0)
+        else:
+            place(A, s["id"] + "_Detail", meshes[name + "_Detail"], rect_c(s), 0)
+    court = I["surfaces"]["blacksmith_forecourt"]
+    place(A, court["id"], meshes["Blacksmith_Forecourt"], rect_c(court), 0)
     c = I["ballista_mount"]
     place(A, c["id"], meshes["Ballista"], loc(c, c["y"] - gy),
           plus_x_rot(c["aim"]["x"], c["aim"]["z"]))

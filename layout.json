@@ -651,6 +651,16 @@
             "z": -57
           }
         ],
+        "surfaces": {
+          "blacksmith_forecourt": {
+            "id": "A_Blacksmith_Forecourt",
+            "min_x": -297,
+            "max_x": -259,
+            "min_z": 28,
+            "max_z": 47,
+            "y": 10
+          }
+        },
         "clear_areas": {
           "main_gate_to_keep": {
             "id": "A_MainRoute",
@@ -1356,6 +1366,16 @@
             "z": -57
           }
         ],
+        "surfaces": {
+          "blacksmith_forecourt": {
+            "id": "B_Blacksmith_Forecourt",
+            "min_x": 259,
+            "max_x": 297,
+            "min_z": 28,
+            "max_z": 47,
+            "y": 10
+          }
+        },
         "clear_areas": {
           "main_gate_to_keep": {
             "id": "B_MainRoute",
