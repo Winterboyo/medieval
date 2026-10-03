@@ -47,12 +47,26 @@ local theta = math.atan2(-wanted.Z, wanted.X) - math.atan2(-span.Z, span.X)
 local transform = CFrame.new(targetA.Position) * CFrame.Angles(0, theta, 0) * CFrame.new(-newA.Position)
 imported:PivotTo(transform * imported:GetPivot())
 
--- Validate the full four-piece alignment before removing the old geometry.
+-- Validate anchors before removing the old geometry. The updated visual detail
+-- spans more of the forge floor, so its bounding-box center differs from the
+-- old mesh even when the floor and shell are correctly aligned.
 for _, id in ids do
 	local old = piece(existing, id)
 	local replacement = piece(imported, id)
-	assert((old.Position - replacement.Position).Magnitude < 0.15,
-		id .. " did not align with the existing castle")
+	if id:find("_Forge_Detail") then
+		local side = id:sub(1, 1)
+		local oldShell = piece(existing, side .. "_Blacksmith_Forge")
+		local newShell = piece(imported, side .. "_Blacksmith_Forge")
+		assert(math.abs((old.Position - oldShell.Position).Y -
+			(replacement.Position - newShell.Position).Y) < 0.15,
+			id .. " is at the wrong floor height")
+		assert(math.abs(replacement.Position.X - newShell.Position.X) < 1 and
+			math.abs(replacement.Position.Z - newShell.Position.Z) < 1,
+			id .. " is outside the forge shell")
+	else
+		assert((old.Position - replacement.Position).Magnitude < 0.15,
+			id .. " did not align with the existing castle")
+	end
 	assert(replacement.Size.X > 1 and replacement.Size.Z > 1,
 		id .. " has an invalid import scale")
 end
