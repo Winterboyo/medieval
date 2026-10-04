@@ -2,11 +2,12 @@
 -- datamodel (command bar or MCP). Works on the v2.0 battlefield import (Workspace.Battlefield).
 --
 -- What it does, all reversible (set MODE = "revert" and run again):
---   * voxel Terrain over x -364..-28, z -152..136, sampled by raycast from the mesh ground it
+--   * voxel Terrain over x -440..-28, z -152..136, sampled by raycast from the mesh ground it
 --     replaces (the BF_Terrain cells and crater wedges there are hidden, not deleted);
---     grass / leafy grass / bare dirt / road / crater mud / courtyard cobble / slope rock;
+--     grass / leafy grass / bare dirt / road / crater mud / slope rock; inside Castle A a light
+--     packed courtyard with worn patches, grass verges and forge mud (paths: assets/map/build_village_paths.py);
 --   * Castle A shell: Cobblestone, darkened by the Color multiply on the vertex colours;
---     barricades WoodPlanks, banners Fabric, tunnel mouths and rocks Slate, pines darker;
+--     barricades WoodPlanks, banners Fabric, tunnel mouths and rocks Rock, pines Grass texture;
 --   * two braziers and two gate torches (warm local light, no collision).
 -- Every changed property is stored first as a Proof_* attribute on the instance it belongs to.
 -- Terrain grass decoration (Workspace.Terrain.Decoration) cannot be set from scripts; tick it
@@ -19,7 +20,7 @@ local T = Workspace.Terrain
 local bf = Workspace:FindFirstChild("Battlefield")
 assert(bf, "needs Workspace.Battlefield (the v2.0 battlefield import)")
 
-local X0, X1, Z0, Z1 = -364, -28, -152, 136 -- multiples of 4
+local X0, X1, Z0, Z1 = -440, -28, -152, 136 -- multiples of 4; all of Castle A and the ground behind it
 local RES = 4
 local GRASS_PIECES = { "BF_Grass_02_03", "BF_Grass_02_04", "BF_Grass_03_03", "BF_Grass_03_04" }
 
@@ -27,6 +28,15 @@ local GRASS_PIECES = { "BF_Grass_02_03", "BF_Grass_02_04", "BF_Grass_03_03", "BF
 local CASTLE = { x = -280, z = 0, half = 91.8 }
 local ROAD = { x0 = -188.2, x1 = 188.2, half = 15 }
 local CRATERS = { { x = -105, z = -65, r = 18, rf = 9 }, { x = -55, z = 48, r = 18, rf = 9 } }
+-- Castle A buildings (v2.1 interior as imported: Workspace.CastleInteriors footprints)
+local BUILDINGS = {
+	{ x = -334, z = 0, hx = 23, hz = 23 }, -- Keep
+	{ x = -329, z = -61, hx = 22, hz = 14.5 }, -- Barracks
+	{ x = -286, z = -63, hx = 12.5, hz = 13.5 }, -- Alchemist
+	{ x = -227, z = -63, hx = 13, hz = 13.5 }, -- Fletcher
+	{ x = -278, z = 61, hx = 14.5, hz = 14.5, mud = true }, -- Blacksmith forge
+	{ x = -237, z = 60, hx = 12.5, hz = 14.5 }, -- Carpenter
+}
 
 -- base colours multiply the material textures; tuned under the Gritty preset until the eye-level
 -- samples hit REALISM-TARGET.md (grass lum ~105-115, road ~125, walls ~90, roofs ~35, pines ~32)
@@ -37,6 +47,8 @@ local TERRAIN_COLOURS = {
 	[Enum.Material.Mud] = Color3.fromRGB(120, 104, 90),
 	[Enum.Material.Cobblestone] = Color3.fromRGB(160, 150, 138),
 	[Enum.Material.Rock] = Color3.fromRGB(110, 104, 100),
+	-- courtyard ground, tuned to The Forge's plaza ground: lum ~137 (ours 132-146)
+	[Enum.Material.Concrete] = Color3.fromRGB(150, 144, 138),
 }
 local STONE = Color3.fromRGB(170, 170, 175) -- multiplies the baked light-grey stone and blue roofs
 local WOOD = Color3.fromRGB(170, 150, 130)
@@ -190,9 +202,31 @@ for i = 1, NX do -- fill misses from the nearest sampled neighbour
 end
 
 -- 2. materials per column
+-- The courtyard follows The Forge's plaza: a light, plain packed ground with worn patches. The paved
+-- streets are a separate crisp-edged mesh on top (assets/map/build_village_paths.py): terrain blends
+-- materials across its 4-stud voxels, so it cannot draw a clean paving edge. (Also measured: Brick
+-- terrain fills its whole voxel at any occupancy; Pavement and Concrete snap to whole studs.)
+local function courtyard(x: number, z: number): Enum.Material
+	for _, b in BUILDINGS do
+		local edge = math.max(math.abs(x - b.x) - b.hx, math.abs(z - b.z) - b.hz)
+		if b.mud and edge <= 9 + 3 * math.noise(x / 6, z / 6, 5.5) then
+			return Enum.Material.Mud -- smithy grime
+		end
+	end
+	-- grass survives along the foot of the walls, away from traffic
+	local toWall = CASTLE.half - math.max(math.abs(x - CASTLE.x), math.abs(z - CASTLE.z))
+	if toWall < 15 + 5 * math.noise(x / 17, z / 17, 2.2) then
+		return Enum.Material.Grass
+	end
+	if math.noise(x / 23, z / 23, 9.7) + 0.4 * math.noise(x / 7, z / 7, 3.3) > 0.3 then
+		return Enum.Material.Ground -- worn dirt patches
+	end
+	return Enum.Material.Concrete -- light packed ground
+end
+
 local function material(x: number, z: number, slope: number): Enum.Material
 	if math.abs(x - CASTLE.x) <= CASTLE.half and math.abs(z - CASTLE.z) <= CASTLE.half then
-		return Enum.Material.Cobblestone
+		return courtyard(x, z)
 	end
 	for _, c in CRATERS do
 		local d = math.sqrt((x - c.x) ^ 2 + (z - c.z) ^ 2)
