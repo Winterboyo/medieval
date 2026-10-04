@@ -20,8 +20,9 @@ The first list is parked. The 2026-10-01 entries below are user-chosen direction
 ## Later specialist ideas — not in the first playable siege
 
 - **Mason:** a possible stoneworking and wall-repair role. Decide whether it adds enough beyond direct player repairs before including it.
-- **Cook:** a possible use for Grain through food or stamina supplies. Effects and recipes are undecided.
+- **Cook:** a possible later use for Grain through food or stamina supplies. Grain is parked, not one of the four first-playable gathered resources; effects and recipes are undecided.
 - **Weaver:** a possible use for Wool/Cloth through fabric, padding, or clothing. Effects and recipes are undecided.
+- **Bolt pouch:** proposed Wool + Wood recipe at the Fletcher that would increase carried bolt capacity without enlarging the 20-unit raw-resource bag. The user has not chosen it for the first playable siege; ammo capacity and item-slot rules would need a separate decision.
 
 ## Later progression idea
 
