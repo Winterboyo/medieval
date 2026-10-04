@@ -50,28 +50,31 @@ local function setWeather(preset: string)
 	Lighting.ClockTime = 16.4 -- the painted sky's sun position; long, warm late-afternoon shadows
 	Lighting.GlobalShadows = true
 	Lighting.ShadowSoftness = if overcast then 0.45 else 0.25
-	Lighting.Brightness = if overcast then 1.8 else 2.6
-	Lighting.ExposureCompensation = if overcast then -0.13 else 0
-	Lighting.Ambient = if overcast then Color3.fromRGB(77, 82, 88) else Color3.fromRGB(70, 72, 84)
-	Lighting.OutdoorAmbient = if overcast then Color3.fromRGB(122, 130, 136) else Color3.fromRGB(128, 124, 134)
-	Lighting.ColorShift_Top = if overcast then Color3.fromRGB(224, 229, 232) else Color3.fromRGB(255, 226, 186)
+	Lighting.Brightness = if overcast then 1.8 else 2.0
+	Lighting.ExposureCompensation = if overcast then -0.13 else -0.2
+	Lighting.Ambient = if overcast then Color3.fromRGB(77, 82, 88) else Color3.fromRGB(70, 76, 92)
+	-- cool sky fill: shadows go blue-grey like the references, not saturated green
+	Lighting.OutdoorAmbient = if overcast then Color3.fromRGB(122, 130, 136) else Color3.fromRGB(136, 148, 176)
+	Lighting.ColorShift_Top = if overcast then Color3.fromRGB(224, 229, 232) else Color3.fromRGB(255, 222, 180)
 	Lighting.ColorShift_Bottom = Color3.fromRGB(0, 0, 0)
 	-- the skybox lights the scene too: warm from the sun side, cool from the open sky
 	Lighting.EnvironmentDiffuseScale = 1
-	Lighting.EnvironmentSpecularScale = 0.35
-	atmosphere.Density = if overcast then 0.30 else 0.26
+	-- no sky reflections: the references are matte; this was putting a plastic sheen on the grass
+	Lighting.EnvironmentSpecularScale = 0
+	atmosphere.Density = if overcast then 0.30 else 0.2
 	atmosphere.Offset = if overcast then 0.04 else 0.1
-	atmosphere.Haze = if overcast then 0.9 else 0.55
-	atmosphere.Glare = if overcast then 0.03 else 0.25
-	atmosphere.Color = if overcast then Color3.fromRGB(183, 194, 200) else Color3.fromRGB(222, 212, 196)
-	atmosphere.Decay = if overcast then Color3.fromRGB(114, 125, 135) else Color3.fromRGB(164, 172, 196)
+	atmosphere.Haze = if overcast then 0.9 else 0.1 -- thin, so the sea and sky keep their blue
+	atmosphere.Glare = if overcast then 0.03 else 0.1
+	atmosphere.Color = if overcast then Color3.fromRGB(183, 194, 200) else Color3.fromRGB(204, 206, 210)
+	atmosphere.Decay = if overcast then Color3.fromRGB(114, 125, 135) else Color3.fromRGB(120, 140, 170)
 	grade.Brightness = 0
-	grade.Contrast = if overcast then 0.08 else 0.12
-	grade.Saturation = if overcast then -0.08 else 0.12
-	grade.TintColor = if overcast then Color3.fromRGB(230, 236, 239) else Color3.fromRGB(255, 244, 228)
-	bloom.Intensity = if overcast then 0.16 else 0.35
+	grade.Contrast = if overcast then 0.08 else 0.04
+	-- the baked mesh greens are brighter than the references; pull them toward olive
+	grade.Saturation = if overcast then -0.08 else -0.16
+	grade.TintColor = if overcast then Color3.fromRGB(230, 236, 239) else Color3.fromRGB(255, 246, 234)
+	bloom.Intensity = if overcast then 0.16 else 0.25
 	bloom.Size = 28
-	bloom.Threshold = if overcast then 1.75 else 1.15
+	bloom.Threshold = if overcast then 1.75 else 1.3
 	sunRays.Intensity = if overcast then 0.025 else 0.07
 	sunRays.Spread = 0.75
 	-- a soft far blur gives the island the concept's painted, miniature distance
