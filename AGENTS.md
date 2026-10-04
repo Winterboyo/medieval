@@ -87,21 +87,24 @@ Rules: no wall-breach messages; no kill or elimination counters; M opens a large
 
 ## 9. Art direction
 
-The target is the FAMILY of the reference images in /references/, not their texture detail. The style block below is the ONLY copy.
+The target is the FAMILY of the reference images in /references/. The style block below is the ONLY copy. Direction changed 2026-10-03 (user-approved) from flat stylised low-poly to the textured, low-key look of *The Forge*; measurements and reasoning are in REALISM-TARGET.md.
 
 References (private reference only; never import, copy, or reproduce them). /references/ is gitignored. Files (renamed to these names 2026-09-29):
-- terrain-meadow.jpg: PRIMARY ground target (soft green meadow, muted purple-grey faceted rock, blue haze, pines, long soft shadows). Ignore its mountains and lake: this map is an island in a sea.
-- castle-1.jpg: castle target (warm grey stone, thick round towers, overhanging battlement band, tall conical dark-slate roofs, crenellations, banners, arched gate).
+- "Screenshot 2026-10-03 192433.png", "Screenshot 2026-10-03 192103.png", "Screenshot 2026-10-03 192052.png" (The Forge, Roblox): PRIMARY look reference since 2026-10-03: textured surfaces, low-key values with saturated darks, overcast daylight, firelit interiors. Palette numbers in REALISM-TARGET.md.
+- castle-1.jpg: castle SILHOUETTE only (thick round towers, overhanging battlement band, tall conical roofs, crenellations, banners, arched gate). No longer a colour target.
+- terrain-meadow.jpg: retired as a colour target (2026-10-03); pine and rock shapes only.
+- concepts/roman-battlefield-mirrored-castles.png: island COMPOSITION only (castle prominence, cliffs, pines at the edges); not a colour target.
 - castle-2.jpg: tower and roof shapes and colors only (city-scale; ignore its layout).
 - village-cliff.png: faceted cliff bands, boulders, shoreline rocks.
 - village-overhead.jpg: later village/props reference.
 
 STYLE BLOCK
-- Overall: stylized low-poly, chunky proportions, flat-shaded faces, warm and saturated, readable at a distance. Detail comes from silhouette and a few layered forms, not texture.
-- Castle: warm light-grey stone. Tower = cylinder body, wider overhanging battlement band, tall conical dark-slate roof. Box crenellations on wall tops. Team-colored banners. Arched gate with wooden door. Suggest stonework with a few offset boxes per wall face, never per-brick modeling.
-- Terrain: soft near-flat green ground. Rocks and shoreline cliffs hard flat-shaded facets, muted purple-grey. Cliff bands: bright grass top, olive-brown dirt side, grey rock below. Pines as stacked faceted cones on thin brown trunks. Sea: flat faceted grey-blue, outside the playable area only.
-- Palette: SAMPLE actual colors from the reference images. PIL is not installed; use Blender's image loader or install Pillow. Max 8 flat colors per asset. Rough targets only: grass #7DAE3F, leaf #A5C93A (Wood-node canopies only), dirt #6B4A2B, stone #A9A79E, slate #4D5563, rock #6F7C8A, terracotta #C8542B, timber #6B3A22, plaster #E8DCB8, water #7A8794.
-- Roblox lighting carries half the look. Before judging any art: Future lighting, Atmosphere, warm sun angle, light ColorCorrection, Bloom.
+- Overall: grounded stylised in the family of *The Forge* (Roblox): low-poly shapes kept, but every surface textured (Roblox materials or MaterialVariants; Terrain for ground). Low-key values with saturated darks; light, low-saturation ground; warm light sources against cool shadow.
+- Castle: dark textured stone (lum ~60-110), slate or wood roofs (lum ~30-40), wooden doors and props with grain, warm lanterns, team banners. Tower = cylinder body, wider overhanging battlement band, tall conical roof; arched gate.
+- Terrain: Roblox Terrain with textured dry grass, dirt, gravel and rock; grass decoration; slate-grey textured rock; deep-green and rust pines (stacked faceted cones). Sea outside the playable area only.
+- Lighting: overcast warm-grey daylight as default (golden-hour as an option); torch-lit, near-black interiors and tunnels.
+- Palette: measured in REALISM-TARGET.md; SAMPLE actual colors from the references (Blender's image loader; PIL is not installed). Max 8 colours per asset still applies to base colours, not texture detail.
+- Roblox lighting carries half the look. Before judging any art: Unified Lighting with LightingStyle Realistic (Lighting.Technology no longer exists), Atmosphere, the weather preset in src/server/VisualQuality.server.luau, ColorCorrection, Bloom.
 - Aim for the same family now, not a 1:1 match. Fine detail is the user's hand-refinement pass.
 
 ## 10. Asset run contract (Blender)

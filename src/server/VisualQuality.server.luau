@@ -31,22 +31,86 @@ local clouds = owned("Clouds", "Clouds", Workspace.Terrain) :: Clouds
 -- painted where the sun stands at ClockTime 16.4 (latitude -12): low in the north-west,
 -- behind Castle A from the field. Change the clock and the glow no longer matches.
 -- All six faces must be the same size; a smaller one breaks environment lighting (magenta).
+-- The "Gritty" preset swaps in the overcast warm-grey deck from the same script
+-- (build("overcast")) and hides the sun disc.
+local GOLDEN_SKY = {
+	Ft = "rbxassetid://125025616651962",
+	Bk = "rbxassetid://115298958132412",
+	Lf = "rbxassetid://118607207189786",
+	Rt = "rbxassetid://136975032525324",
+	Up = "rbxassetid://85577216608863",
+	Dn = "rbxassetid://127934957660455",
+}
+local OVERCAST_SKY = {
+	Ft = "rbxassetid://109973027061798",
+	Bk = "rbxassetid://140555260418044",
+	Lf = "rbxassetid://83772241168916",
+	Rt = "rbxassetid://89259834518061",
+	Up = "rbxassetid://134389785252545",
+	Dn = "rbxassetid://102841679008854",
+}
 local sky = owned("Sky", "Sky", Lighting) :: Sky
-sky.SkyboxFt = "rbxassetid://125025616651962"
-sky.SkyboxBk = "rbxassetid://115298958132412"
-sky.SkyboxLf = "rbxassetid://118607207189786"
-sky.SkyboxRt = "rbxassetid://136975032525324"
-sky.SkyboxUp = "rbxassetid://85577216608863"
-sky.SkyboxDn = "rbxassetid://127934957660455"
-sky.CelestialBodiesShown = true
 sky.SunAngularSize = 12
 sky.MoonAngularSize = 9
 sky.StarCount = 0
 
+local function setSky(faces: { [string]: string }, sunShown: boolean)
+	sky.SkyboxFt = faces.Ft
+	sky.SkyboxBk = faces.Bk
+	sky.SkyboxLf = faces.Lf
+	sky.SkyboxRt = faces.Rt
+	sky.SkyboxUp = faces.Up
+	sky.SkyboxDn = faces.Dn
+	sky.CelestialBodiesShown = sunShown
+end
+
+-- "Gritty": the overcast warm-grey daylight from REALISM-TARGET.md (The Forge's outdoor look).
+-- Low, diffuse light, a warm-grey cloud deck hiding the painted sky, near-black interiors so
+-- torches and braziers carry them, saturation kept in the darks, a little contrast.
+local function setGritty()
+	pcall(function() Lighting.LightingStyle = Enum.LightingStyle.Realistic end)
+	setSky(OVERCAST_SKY, false)
+	Lighting.ClockTime = 14.2
+	Lighting.GlobalShadows = true
+	Lighting.ShadowSoftness = 0.9
+	Lighting.Brightness = 1.0 -- the sun is behind the deck: soft shadows; the warm-grey fill does most of the lighting
+	Lighting.ExposureCompensation = -0.05
+	Lighting.Ambient = Color3.fromRGB(34, 32, 32)
+	Lighting.OutdoorAmbient = Color3.fromRGB(185, 178, 166)
+	Lighting.ColorShift_Top = Color3.fromRGB(214, 202, 184)
+	Lighting.ColorShift_Bottom = Color3.fromRGB(0, 0, 0)
+	Lighting.EnvironmentDiffuseScale = 0.8
+	Lighting.EnvironmentSpecularScale = 0.25
+	atmosphere.Density = 0.36
+	atmosphere.Offset = 0.05
+	atmosphere.Haze = 1.4
+	atmosphere.Glare = 0
+	atmosphere.Color = Color3.fromRGB(181, 172, 156)
+	atmosphere.Decay = Color3.fromRGB(150, 140, 126)
+	grade.Brightness = 0
+	grade.Contrast = 0.1
+	grade.Saturation = 0
+	grade.TintColor = Color3.fromRGB(255, 248, 238)
+	bloom.Intensity = 0.45
+	bloom.Size = 24
+	bloom.Threshold = 1.1
+	sunRays.Intensity = 0
+	depth.FarIntensity = 0.12
+	depth.FocusDistance = 140
+	depth.InFocusRadius = 160
+	depth.NearIntensity = 0
+	clouds.Enabled = false -- the overcast skybox is the cloud deck
+end
+
 local function setWeather(preset: string)
+	if preset == "Gritty" then
+		setGritty()
+		return
+	end
 	local wet = preset == "Rain"
 	local overcast = wet or preset == "Overcast"
 	pcall(function() Lighting.LightingStyle = Enum.LightingStyle.Realistic end)
+	setSky(GOLDEN_SKY, true)
 	Lighting.ClockTime = 16.4 -- the painted sky's sun position; long, warm late-afternoon shadows
 	Lighting.GlobalShadows = true
 	Lighting.ShadowSoftness = if overcast then 0.45 else 0.25

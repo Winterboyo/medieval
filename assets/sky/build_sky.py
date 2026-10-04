@@ -2,6 +2,7 @@
 
 Run inside Blender with __file__ set, then bpy.app.driver_namespace["sky"]["build"]()
 and bpy.app.driver_namespace["sky"]["render"](out_dir). Writes Ft/Bk/Lf/Rt/Up/Dn.png.
+build("overcast") makes the warm-grey overcast deck for the "Gritty" lighting preset instead.
 
 Look: the concept image's golden-hour family. A smooth painted gradient (warm cream at
 the horizon to soft blue overhead), a golden glow where Roblox's sun actually is, a cooler
@@ -68,6 +69,38 @@ def sky_colour(d):
     return base
 
 
+# Overcast style ("Gritty" preset, REALISM-TARGET.md): a warm-grey cloud deck, sky lum ~173 at
+# The Forge's (181,172,156). Brighter where the hidden sun is, darker toward the zenith and in
+# soft cloud bands; no sun disc (the preset turns celestial bodies off).
+OVC_HORIZON = (186, 178, 164)
+OVC_MID = (178, 170, 156)
+OVC_ZENITH = (160, 154, 146)
+OVC_BRIGHT = (212, 204, 188)     # thinner cloud toward the sun
+OVC_DARK = (132, 126, 120)       # heavier cloud underside
+OVC_SUN = Vector((-0.55, 0.35, 0.76)).normalized()   # Blender space; only a soft brightening
+
+
+def overcast_colour(d):
+    from mathutils import noise
+    e = math.degrees(math.asin(max(-1.0, min(1.0, d.z))))
+    if e < 0:
+        base = OVC_HORIZON
+    elif e < 30:
+        base = mix(OVC_HORIZON, OVC_MID, smooth(e / 30.0))
+    else:
+        base = mix(OVC_MID, OVC_ZENITH, smooth((e - 30) / 60.0))
+    # cloud mottling: large soft billows, flattened toward the horizon like a real deck
+    p = Vector((d.x, d.y, d.z * 2.2 + 0.4)) * 2.6
+    n = noise.fractal(p, 0.55, 2.1, 5) * 0.5
+    n2 = noise.noise(p * 0.45 + Vector((7.1, 3.3, 1.9)))
+    fade = smooth(max(0.0, e) / 6.0)
+    base = mix(base, OVC_DARK, max(0.0, n * 0.9 + n2 * 0.35) * 0.55 * fade)
+    base = mix(base, OVC_BRIGHT, max(0.0, -n * 0.8) * 0.35 * fade)
+    c = max(0.0, d.dot(OVC_SUN))
+    base = mix(base, OVC_BRIGHT, (c ** 6) * 0.6)
+    return base
+
+
 def emission_material(name):
     m = bpy.data.materials.get(name) or bpy.data.materials.new(name)
     try:
@@ -95,9 +128,10 @@ def colour_layer(me, colours_per_loop):
     attr.data.foreach_set("color_srgb", flat)
 
 
-def build_dome(coll, mat):
+def build_dome(coll, mat, colour=None, segments=(192, 96)):
+    colour = colour or sky_colour
     bm = bmesh.new()
-    bmesh.ops.create_uvsphere(bm, u_segments=192, v_segments=96, radius=4000.0)
+    bmesh.ops.create_uvsphere(bm, u_segments=segments[0], v_segments=segments[1], radius=4000.0)
     bmesh.ops.reverse_faces(bm, faces=bm.faces)
     me = bpy.data.meshes.new("Sky_Dome")
     bm.to_mesh(me)
@@ -106,7 +140,7 @@ def build_dome(coll, mat):
     for poly in me.polygons:
         for li in range(poly.loop_start, poly.loop_start + poly.loop_total):
             v = me.vertices[me.loops[li].vertex_index].co.normalized()
-            cols.append(sky_colour(v))
+            cols.append(colour(v))
     colour_layer(me, cols)
     me.polygons.foreach_set("use_smooth", [True] * len(me.polygons))
     me.materials.append(mat)
@@ -190,18 +224,23 @@ def camera_matrix(forward, up):
     return m.to_4x4()
 
 
-def build():
+def build(style="golden"):
+    """style "golden": the painted golden-hour sky; "overcast": the warm-grey cloud deck."""
     old = bpy.data.scenes.get("Skybox")
     if old:
         for o in list(old.objects):
             bpy.data.objects.remove(o)
         bpy.data.scenes.remove(old)
     scene = bpy.data.scenes.new("Skybox")
+    scene["style"] = style
     coll = scene.collection
     mat = emission_material("Sky_Emission")
     rng = random.Random(SEED)
-    build_dome(coll, mat)
-    build_clouds(coll, mat, rng)
+    if style == "overcast":
+        build_dome(coll, mat, overcast_colour, (384, 192))
+    else:
+        build_dome(coll, mat)
+        build_clouds(coll, mat, rng)
     cam_data = bpy.data.cameras.new("Sky_Camera")
     cam_data.type = "PERSP"
     cam_data.sensor_fit = "HORIZONTAL"
@@ -250,7 +289,7 @@ def render(out_dir):
     # Dn: one colour, the under-horizon tone (the sea always covers it). Full SIZE like the
     # other faces: a smaller face broke Roblox's environment-lighting cubemap (magenta cast).
     img = bpy.data.images.new("Sky_Dn", SIZE, SIZE, alpha=False)
-    c = [v / 255 for v in BELOW]
+    c = [v / 255 for v in (OVC_HORIZON if scene.get("style") == "overcast" else BELOW)]
     img.pixels = [c[0], c[1], c[2], 1.0] * (SIZE * SIZE)
     img.filepath_raw = os.path.join(out_dir, "Dn.png")
     img.file_format = "PNG"
@@ -259,4 +298,4 @@ def render(out_dir):
     return sorted(os.listdir(out_dir))
 
 
-bpy.app.driver_namespace["sky"] = dict(build=build, render=render, sky_colour=sky_colour)
+bpy.app.driver_namespace["sky"] = dict(build=build, render=render, sky_colour=sky_colour, overcast_colour=overcast_colour)
