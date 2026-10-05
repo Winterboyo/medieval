@@ -55,6 +55,27 @@ Palette.FONT_STRONG = Enum.Font.GothamBold
 Palette.FONT_LABEL = Enum.Font.GothamMedium
 Palette.FONT_BODY = Enum.Font.Gotham
 
+-- ---------------------------------------------------------------- HUD (2026-10-03)
+-- The two-team HUD follows the world's new low-key look (REALISM-TARGET.md): near-black
+-- translucent panels with a thin warm-grey edge, light text, and colour kept for meaning:
+-- fire orange for attention, red for danger and health, team colours for teams.
+Palette.HUD = {
+	PANEL = Color3.fromRGB(16, 14, 13),
+	PANEL_ALPHA = 0.32, -- BackgroundTransparency
+	EDGE = Color3.fromRGB(122, 112, 98),
+	EDGE_ALPHA = 0.5,
+	TEXT = Color3.fromRGB(234, 226, 212),
+	TEXT_DIM = Color3.fromRGB(162, 152, 138),
+	TRACK = Color3.fromRGB(58, 52, 48),
+	HEALTH = Color3.fromRGB(178, 60, 48),
+	STAMINA = Color3.fromRGB(206, 178, 98),
+	ACCENT = Color3.fromRGB(230, 146, 72), -- fire: prompts, warnings
+	DANGER = Color3.fromRGB(206, 84, 62),
+	LAND = Color3.fromRGB(70, 74, 58), -- map ground
+	SEA = Color3.fromRGB(30, 38, 46),
+	CORNER = 4,
+}
+
 -- Corner radii in use across the project: panels 8, chips and readouts 6,
 -- buttons 5. Named so a new surface does not invent a fourth.
 Palette.CORNER_PANEL = 8

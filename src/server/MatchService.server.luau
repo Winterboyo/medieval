@@ -200,6 +200,8 @@ local function describeLength(seconds: number): string
 end
 
 local function endMatch(reason: string)
+	-- the HUD's event feed reads the result from here; set before the state flips to Ended
+	Workspace:SetAttribute("MatchResult", reason)
 	enter("Ended", if TWO_TEAM then ENDED_SECONDS else math.huge)
 	setZoneVisible(false)
 	announce(reason)

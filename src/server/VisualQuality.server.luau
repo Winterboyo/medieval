@@ -178,9 +178,8 @@ local function lantern(name: string, position: Vector3, color: Color3, brightnes
 	return p
 end
 
-local function forge(team: string, x: number)
-	-- The visual fire table is six studs east of A's forge centre (mirrored on B).
-	local p = lantern(team .. "_ForgeFire", Vector3.new(x, 14.5, 67),
+local function forge(team: string, x: number, z: number)
+	local p = lantern(team .. "_ForgeFire", Vector3.new(x, 14.5, z),
 		Color3.fromRGB(255, 158, 93), 0.95, 16)
 	local smoke = owned("ParticleEmitter", "Smoke", p) :: ParticleEmitter
 	smoke.Texture = "rbxasset://textures/particles/smoke_main.dds"
@@ -215,12 +214,26 @@ local function forge(team: string, x: number)
 	sparks.LightEmission = 0.65
 end
 
-for _, side in { { "A", -1 }, { "B", 1 } } do
-	local team, sign = side[1] :: string, side[2] :: number
-	forge(team, sign * 272)
-	lantern(team .. "_FletcherLantern", Vector3.new(sign * 226.5, 17.2, -63), Color3.fromRGB(255, 204, 136), 0.72, 14)
-	lantern(team .. "_AlchemistLantern", Vector3.new(sign * 286, 17.2, -63), Color3.fromRGB(246, 204, 145), 0.72, 14)
-	lantern(team .. "_CarpenterLantern", Vector3.new(sign * 237, 17.2, 60), Color3.fromRGB(255, 204, 136), 0.72, 14)
+-- Placed from layout.json's interior (each specialist building's centre), so the lights follow the
+-- castles when the layout moves; the forge fire stands six studs gate-side of the forge centre and
+-- six deeper in from its door, where the fire table is.
+local Layout = require(game:GetService("ServerStorage"):WaitForChild("Layout")) :: any
+local LANTERN = {
+	Fletcher = Color3.fromRGB(255, 204, 136),
+	Alchemist = Color3.fromRGB(246, 204, 145),
+	Carpenter = Color3.fromRGB(255, 204, 136),
+}
+for _, castle in Layout.castles do
+	local team = castle.team :: string
+	local toGate = math.sign(castle.gate.x - castle.center.x)
+	for _, s in (castle.interior and castle.interior.specialists) or {} do
+		local cx, cz = (s.min_x + s.max_x) / 2, (s.min_z + s.max_z) / 2
+		if s.role == "Blacksmith" then
+			forge(team, cx + 6 * toGate, cz + 6 * math.sign(cz - s.door.z))
+		elseif LANTERN[s.role] then
+			lantern(team .. "_" .. s.role .. "Lantern", Vector3.new(cx, 17.2, cz), LANTERN[s.role], 0.72, 14)
+		end
+	end
 end
 
 if Workspace:GetAttribute("WeatherPreset") == nil then
