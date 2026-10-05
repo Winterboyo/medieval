@@ -13,8 +13,9 @@
 -- Only a team's own players can deposit at its vault. Nobody can withdraw, and the enemy cannot
 -- take anything out: no code path moves goods out of a vault.
 --
--- KNOCKDOWN keeps the bag (DESIGN.md, decided 2026-10-05). The bag is a Player child, not a
--- Character child, so respawning leaves it untouched; nothing here may empty it on death.
+-- KNOCKDOWN is NOT BUILT YET. DESIGN.md "fallen cargo": the carried materials move once into a
+-- 30-second bag at the knockdown spot that either team can ransack. Until that exists, the bag
+-- is a Player child and simply survives respawn, which is a gap, not the design.
 --
 -- OPEN in DESIGN.md, so deliberately NOT decided here:
 --   * OVERLOAD SLOWDOWN. Above Cargo.NORMAL_LOAD the bag publishes Overloaded = true, but no speed
