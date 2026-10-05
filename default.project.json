@@ -54,6 +54,9 @@
         },
         "NegotiationAct": {
           "$className": "RemoteEvent"
+        },
+        "VaultDeposit": {
+          "$className": "RemoteEvent"
         }
       }
     },

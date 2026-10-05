@@ -41,6 +41,9 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 -- TwoTeam (CLAUDE.md §4): goods are the TEAM's pooled stockpile, held on the Team
 -- by CastleService, not per-player leaderstats; and nobody can hit a teammate.
 local TWO_TEAM = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("GameMode")).TwoTeam
+-- TwoTeam gathering fills the player's carried bag (CargoStore), never the team vault directly.
+local CargoStore = if TWO_TEAM then require(script.Parent:WaitForChild("CargoStore")) else nil
+local Cargo = require(ReplicatedStorage.Shared:WaitForChild("Cargo"))
 
 -- Declared in default.project.json rather than created here, so the remote is
 -- version-controlled instead of appearing at runtime.
@@ -2440,6 +2443,28 @@ local function attemptSwing(player: Player, tool: Tool)
 		-- straight multiplier on the whole economy.
 		local bite = YIELD_PER_SWING + researchTier(player, "Toolcraft")
 		local taken = math.min(bite, node.amount)
+
+		if CargoStore then
+			-- TwoTeam: gathered goods go into the gatherer's own weighted bag, not the team's
+			-- vault (DESIGN.md). The node gives up only the whole units the bag accepted.
+			taken = CargoStore.give(player, node.resource, taken)
+			if taken <= 0 then
+				spawnChips(impactPoint, away, 2, node.config.debris)
+				if not Cargo.carries(node.resource) then
+					-- Grain is parked (DESIGN.md) but v2.2 still places Grain nodes
+					notifyPlayer(player, ("%s isn't used yet"):format(node.resource), 3)
+				else
+					-- a bag with free points can still be too full for a heavy good
+					notifyPlayer(player, ("No room for %s in your bag"):format(node.resource), 3)
+				end
+				return
+			end
+			node.amount -= taken
+			refreshNode(node)
+			spawnChips(impactPoint, away, 7, node.config.debris)
+			return
+		end
+
 		node.amount -= taken
 		refreshNode(node)
 
