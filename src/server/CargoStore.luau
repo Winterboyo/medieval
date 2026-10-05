@@ -182,8 +182,8 @@ function CargoStore.deposit(player: Player, selection: any?): ({ [string]: numbe
 	return chosen, nil
 end
 
--- Empty a bag without crediting anyone: the match reset. (Knockdown is NOT routed here; what
--- happens to carried materials on knockdown is an open design question, see CargoService.)
+-- Empty a bag without crediting anyone: the match reset only. Knockdown never comes here; a
+-- knocked-down player keeps their bag (DESIGN.md, decided 2026-10-05).
 function CargoStore.empty(player: Player)
 	local bag = CargoStore.bag(player)
 	for _, resource in Cargo.ORDER do

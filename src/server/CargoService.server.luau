@@ -13,10 +13,10 @@
 -- Only a team's own players can deposit at its vault. Nobody can withdraw, and the enemy cannot
 -- take anything out: no code path moves goods out of a vault.
 --
+-- KNOCKDOWN keeps the bag (DESIGN.md, decided 2026-10-05). The bag is a Player child, not a
+-- Character child, so respawning leaves it untouched; nothing here may empty it on death.
+--
 -- OPEN in DESIGN.md, so deliberately NOT decided here:
---   * KNOCKDOWN. What happens to carried materials when a player is knocked down (drop
---     unclaimably, stay with the player, or vanish) awaits the user's answer. This script does
---     nothing on knockdown; because the bag is a Player child, it currently survives respawn.
 --   * OVERLOAD SLOWDOWN. Above Cargo.NORMAL_LOAD the bag publishes Overloaded = true, but no speed
 --     change is applied: the amount and its interaction with sprint are open.
 --   * DEPOSIT TIMING. Deposits are instant (no hold).
