@@ -1,30 +1,10 @@
 --!strict
--- Medieval Land - Conquest match lifecycle and the shrinking zone.
--- Lives in ServerScriptService alongside ResourceService.
---
--- DESIGN.md: Conquest is ~12 players, one generated map, one 45-60 minute match,
--- last player/team standing. The playable area shrinks over the timer, which the
--- doc says does two jobs at once - it raises scarcity late without scripted
--- stockpile step-downs, and it forces surviving factions into contact so the
--- match resolves inside the window instead of stalling in mutual turtling.
---
--- This file owns the clock, the boundary, and from Stage 3 the squads and the
--- win condition. It still does NOT own bases or nodes, and it still talks to
--- ResourceService through attributes published on instances rather than a shared
--- module.
---
---   Workspace.MatchState   "Lobby" | "Running" | "Ended"
---   Workspace.MatchClock   seconds left in the current phase
---   Workspace.ZoneHalf     half-extent of the playable square, in studs
---   Player.Eliminated      their keep fell; they are somebody's worker now
---   Player.Squad           which squad they belong to
---
--- ResourceService reads ZoneHalf to stop nodes outside the boundary yielding.
---
--- Elimination needs NO change in ResourceService. It already publishes Fallen on
--- a base the moment its keep is razed, and it already publishes Owner, so this
--- file can watch that one attribute and resolve the rest. The cheapest seam is
--- the one that already exists.
+-- Medieval Land match lifecycle. TwoTeam is current; Conquest below the mode
+-- flag is retained as dormant legacy behavior.
+-- Workspace.MatchState: Lobby | Running | Ended
+-- Workspace.MatchPhase in TwoTeam: Regulation | Overtime (nil outside a match)
+-- Workspace.MatchClock: seconds left in the current phase
+-- Each castle publishes VaultHealth; KeepHealth exists only in overtime.
 
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
@@ -33,6 +13,7 @@ local ServerScriptService = game:GetService("ServerScriptService")
 local Teams = game:GetService("Teams")
 
 local FoldWeighting = require(ServerScriptService:WaitForChild("FoldWeighting"))
+local SiegeMatchRules = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("SiegeMatchRules"))
 
 local notifyRemote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("Notify")
 
@@ -41,10 +22,9 @@ local notifyRemote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("Not
 local TWO_TEAM = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("GameMode")).TwoTeam
 
 local LOBBY_SECONDS = 15
--- TwoTeam: a short match with a hard cap (CLAUDE.md §5 placeholder 12-15 min),
--- then a short Ended phase and back to the lobby. Conquest kept its 45 minutes
--- and never came back from Ended; that is part of what stays dormant.
-local TWO_TEAM_MATCH_LENGTH = 13 * 60
+-- TwoTeam runs regulation, optional overtime, then Ended and the next lobby.
+-- Conquest keeps its old 45-minute clock behind the mode flag.
+local TWO_TEAM_MATCH_LENGTH = SiegeMatchRules.REGULATION_SECONDS
 local ENDED_SECONDS = 12
 
 -- The doc says 45-60 minutes. Overridable by a Workspace attribute set before
@@ -202,6 +182,9 @@ end
 local function endMatch(reason: string)
 	-- the HUD's event feed reads the result from here; set before the state flips to Ended
 	Workspace:SetAttribute("MatchResult", reason)
+	if TWO_TEAM then
+		Workspace:SetAttribute("MatchPhase", nil)
+	end
 	enter("Ended", if TWO_TEAM then ENDED_SECONDS else math.huge)
 	setZoneVisible(false)
 	announce(reason)
@@ -229,19 +212,6 @@ local function castleOf(team: Team): Instance?
 	return if castles and typeof(id) == "string" then castles:FindFirstChild(id) else nil
 end
 
-local function stockpileOf(team: Team): number
-	local total = 0
-	local goods = team:FindFirstChild("Goods")
-	if goods then
-		for _, counter in goods:GetChildren() do
-			if counter:IsA("IntValue") then
-				total += counter.Value
-			end
-		end
-	end
-	return total
-end
-
 -- Even sides at the start of every match: shuffle, then deal alternately.
 local function balanceTeams()
 	local sides = castleTeams()
@@ -259,22 +229,32 @@ local function balanceTeams()
 	end
 end
 
--- A castle that falls ends the match for the other side (CLAUDE.md §4). The
--- Fallen attribute is set by whatever runs the siege (Phase 3); this only listens.
+-- The vault is the regulation win target. Overtime adds a separate Keep exterior
+-- target; both health values live on the castle model until siege hitboxes are wired.
 local function watchCastles()
 	local function hook(castle: Instance)
-		castle:GetAttributeChangedSignal("Fallen"):Connect(function()
-			if castle:GetAttribute("Fallen") ~= true or state ~= "Running" then
+		local function checkObjective(attribute: string, objective: string)
+			if state ~= "Running" or (attribute == "KeepHealth" and Workspace:GetAttribute("MatchPhase") ~= "Overtime") then
+				return
+			end
+			local health = castle:GetAttribute(attribute)
+			if typeof(health) ~= "number" or health ~= health or health > 0 then
 				return
 			end
 			local loser = castle:GetAttribute("Team")
 			for _, team in castleTeams() do
 				if team.Name ~= loser then
-					endMatch(("%s has fallen. %s takes the field."):format(tostring(loser), team.Name))
+					endMatch(("%s's %s has fallen. %s wins."):format(tostring(loser), objective, team.Name))
 					return
 				end
 			end
-			endMatch(("%s has fallen."):format(tostring(loser)))
+			endMatch(("%s's %s has fallen."):format(tostring(loser), objective))
+		end
+		castle:GetAttributeChangedSignal("VaultHealth"):Connect(function()
+			checkObjective("VaultHealth", "vault")
+		end)
+		castle:GetAttributeChangedSignal("KeepHealth"):Connect(function()
+			checkObjective("KeepHealth", "Keep")
 		end)
 	end
 	-- Castles are rebuilt whole between matches, so watch the folder, not one set.
@@ -295,36 +275,45 @@ local function watchCastles()
 	end)
 end
 
--- At the cap: highest total structure HP, then the largest stockpile (CLAUDE.md
--- §5, placeholder tiebreaker).
+-- At the 15-minute cap: remaining vault health, then Keep exterior health.
 local function endTwoTeamByTimer()
 	local sides = castleTeams()
-	local function score(team: Team): (number, number)
-		local castle = castleOf(team)
-		local hp = castle and castle:GetAttribute("StructureHP")
-		return (if typeof(hp) == "number" then hp else 0), stockpileOf(team)
-	end
-	table.sort(sides, function(a, b)
-		local ha, sa = score(a)
-		local hb, sb = score(b)
-		if ha ~= hb then
-			return ha > hb
-		end
-		return sa > sb
-	end)
 	if #sides < 2 then
 		endMatch("Time.")
 		return
 	end
-	local h1, s1 = score(sides[1])
-	local h2, s2 = score(sides[2])
-	if h1 == h2 and s1 == s2 then
-		endMatch("Time. Neither castle gave ground - a draw.")
-	elseif h1 ~= h2 then
-		endMatch(("Time. %s held more of its castle."):format(sides[1].Name))
+	local first = castleOf(sides[1])
+	local second = castleOf(sides[2])
+	local vault1 = first and first:GetAttribute("VaultHealth")
+	local vault2 = second and second:GetAttribute("VaultHealth")
+	local keep1 = first and first:GetAttribute("KeepHealth")
+	local keep2 = second and second:GetAttribute("KeepHealth")
+	local v1 = if typeof(vault1) == "number" then vault1 else SiegeMatchRules.VAULT_MAX_HEALTH
+	local v2 = if typeof(vault2) == "number" then vault2 else SiegeMatchRules.VAULT_MAX_HEALTH
+	local k1 = if typeof(keep1) == "number" then keep1 else SiegeMatchRules.KEEP_OVERTIME_MAX_HEALTH
+	local k2 = if typeof(keep2) == "number" then keep2 else SiegeMatchRules.KEEP_OVERTIME_MAX_HEALTH
+	local winner = SiegeMatchRules.winnerAtCap(v1, k1, v2, k2)
+	if winner == 0 then
+		endMatch("Time. Both vaults and Keeps held equally - a draw.")
 	else
-		endMatch(("Time. Walls even; %s held the bigger stockpile."):format(sides[1].Name))
+		local decidingObjective = if v1 ~= v2 then "vault" else "Keep"
+		endMatch(("Time. %s wins on remaining %s health."):format(sides[winner].Name, decidingObjective))
 	end
+end
+
+local function beginOvertime()
+	Workspace:SetAttribute("MatchPhase", "Overtime")
+	for _, team in castleTeams() do
+		local castle = castleOf(team)
+		if castle then
+			castle:SetAttribute("KeepMaxHealth", SiegeMatchRules.KEEP_OVERTIME_MAX_HEALTH)
+			castle:SetAttribute("KeepHealth", SiegeMatchRules.KEEP_OVERTIME_MAX_HEALTH)
+		end
+	end
+	local overtimeLength = Workspace:GetAttribute("OvertimeLength")
+	enter("Running", if typeof(overtimeLength) == "number" and overtimeLength > 0
+		then overtimeLength else SiegeMatchRules.OVERTIME_SECONDS)
+	announce("Overtime. Both Keep exteriors are now vulnerable; shared structure repair is disabled.")
 end
 
 -- Everyone back to their own barracks at the start of a match.
@@ -552,6 +541,17 @@ local function beginMatch()
 	if TWO_TEAM then
 		matchLength = Workspace:GetAttribute("MatchLength") or TWO_TEAM_MATCH_LENGTH
 		balanceTeams()
+		Workspace:SetAttribute("MatchResult", nil)
+		Workspace:SetAttribute("MatchPhase", "Regulation")
+		for _, team in castleTeams() do
+			local castle = castleOf(team)
+			if castle then
+				castle:SetAttribute("VaultMaxHealth", SiegeMatchRules.VAULT_MAX_HEALTH)
+				castle:SetAttribute("VaultHealth", SiegeMatchRules.VAULT_MAX_HEALTH)
+				castle:SetAttribute("KeepMaxHealth", nil)
+				castle:SetAttribute("KeepHealth", nil)
+			end
+		end
 		enter("Running", matchLength)
 		respawnAll()
 		announce(("The siege has begun - %s"):format(describeLength(matchLength)))
@@ -621,7 +621,11 @@ task.spawn(function()
 
 		elseif state == "Running" and TWO_TEAM then
 			if remaining <= 0 then
-				endTwoTeamByTimer()
+				if Workspace:GetAttribute("MatchPhase") == "Overtime" then
+					endTwoTeamByTimer()
+				else
+					beginOvertime()
+				end
 			end
 			publish()
 
