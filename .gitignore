@@ -22,3 +22,6 @@ medieval-land.rbxl
 # Private art references (CLAUDE.md section 9): never import, copy or reproduce them,
 # so they stay out of the repo.
 references/
+
+# Blender auto-backups
+*.blend1
