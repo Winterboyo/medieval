@@ -57,6 +57,12 @@
         },
         "VaultDeposit": {
           "$className": "RemoteEvent"
+        },
+        "CrossbowFire": {
+          "$className": "RemoteEvent"
+        },
+        "CrossbowReload": {
+          "$className": "RemoteEvent"
         }
       }
     },

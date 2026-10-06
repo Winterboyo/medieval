@@ -96,7 +96,7 @@ These are chosen outputs and material types; numeric quantities are first-playte
 
 ## Combat, movement, and onboarding (revised 2026-10-04)
 
-- **Controls:** WASD moves; Shift sprints; Ctrl crouches; F blocks; left click swings. Crossbow firing/reload, interaction, and mobile equivalents need explicit mappings before implementation. Crouching must work behind crater rims and barricades at normal gameplay camera height.
+- **Controls:** WASD moves; Shift sprints; Ctrl crouches; F blocks; left click swings. **Decided 2026-10-05:** with the Crossbow equipped, left click fires and R reloads; each shot consumes one carried Crossbow Bolt. Interaction and mobile/gamepad equivalents still need explicit mappings. Crouching must work behind crater rims and barricades at normal gameplay camera height.
 - **First-playtest priority:** direct sword combat, basic ranged combat, sprint, crouch, and block are desired in the first playable when feasible. The user wants every named combat and movement mechanic eventually, but polish such as the armor equip animation and any unscoped dodge move must not block a playable siege. Exact stamina, block, damage, and animation timings remain open.
 - **Barracks respawn:** a briefly protected spawn area must prevent enemy camping immediately after respawn. Protection duration, whether it ends on leaving or attacking, and how enemies are kept out need explicit rules before coding. This does not change the decided match-wide no-friendly-fire rule.
 - **Onboarding:** the first playtest should communicate gathering, crafting, contribution, defending, and vault assault through visible world cues and contextual prompts. An introductory tutorial comes after observing real players' stuck points.
