@@ -182,8 +182,24 @@ function CargoStore.deposit(player: Player, selection: any?): ({ [string]: numbe
 	return chosen, nil
 end
 
--- Empty a bag without crediting anyone: the match reset only. Knockdown must not come here: it
--- moves the goods into a ransackable fallen bag (DESIGN.md "fallen cargo"), not built yet.
+-- Move everything out of the bag and hand it to the caller, which must put every unit somewhere
+-- (knockdown: into the fallen bag). Returns only goods with a count above zero.
+function CargoStore.drain(player: Player): { [string]: number }
+	local bag = CargoStore.bag(player)
+	local taken = {}
+	for _, resource in Cargo.ORDER do
+		local c = counter(bag, resource)
+		if c.Value > 0 then
+			taken[resource] = c.Value
+			c.Value = 0
+		end
+	end
+	publishLoad(player, bag)
+	return taken
+end
+
+-- Empty a bag without crediting anyone: the match reset only. Knockdown goes through drain, into
+-- a ransackable fallen bag (DESIGN.md "fallen cargo").
 function CargoStore.empty(player: Player)
 	local bag = CargoStore.bag(player)
 	for _, resource in Cargo.ORDER do

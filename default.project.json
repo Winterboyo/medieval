@@ -63,6 +63,9 @@
         },
         "CrossbowReload": {
           "$className": "RemoteEvent"
+        },
+        "FallenBag": {
+          "$className": "RemoteEvent"
         }
       }
     },

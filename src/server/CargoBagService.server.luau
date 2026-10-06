@@ -4,7 +4,8 @@
 --
 -- The template is ServerStorage.CargoBag (built in Studio from fallen_bag.fbx): three sack bodies,
 -- a heap per good and a smaller accent per good, all sharing the sack's bottom-centre pivot.
--- This script clones it onto every character and keeps it in step with Player.Cargo:
+-- This script clones it onto every character and keeps it in step with Player.Cargo (the rules
+-- live in CargoBagLook, shared with the fallen bag):
 --   * empty bag      -> hidden
 --   * sack body      -> Slack (load 1-8), Half (9-16), Full (17-25)
 --   * heap           -> the good with the most load in the bag
@@ -23,6 +24,7 @@ if not GameMode.TwoTeam then
 	return
 end
 local Cargo = require(ReplicatedStorage.Shared:WaitForChild("Cargo"))
+local CargoBagLook = require(script.Parent:WaitForChild("CargoBagLook"))
 
 local template = ServerStorage:WaitForChild("CargoBag") :: Model
 
@@ -31,43 +33,8 @@ local BAG_SCALE = 0.75 -- the ground-sized model scaled to sit on a 2-stud torso
 -- behind it that the full (deepest) sack does not cut into the body
 local BACK_OFFSET = CFrame.new(0, -0.4, 1.35)
 
--- Goods use Cargo's names; the model's pieces say "Iron" for Smelted Iron.
-local PIECE = { Wood = "Wood", Stone = "Stone", Ore = "Ore", Wool = "Wool", SmeltedIron = "Iron" }
-
 type Rig = { model: Model, welds: { [BasePart]: Weld }, rest: { [BasePart]: CFrame } }
 local rigs: { [Player]: Rig } = {}
-
-local function sackFor(load: number): string
-	if load <= 8 then
-		return "SackSlack"
-	elseif load <= 16 then
-		return "SackHalf"
-	end
-	return "SackFull"
-end
-
--- Goods in the bag ranked by load (weight x count); ties follow Cargo.ORDER.
-local function ranked(bag: Instance): { string }
-	local list = {}
-	for index, resource in Cargo.ORDER do
-		local v = bag:FindFirstChild(resource)
-		local count = if v and v:IsA("IntValue") then v.Value else 0
-		if count > 0 and PIECE[resource] then
-			table.insert(list, { resource = resource, load = count * Cargo.WEIGHT[resource], index = index })
-		end
-	end
-	table.sort(list, function(a, b)
-		if a.load ~= b.load then
-			return a.load > b.load
-		end
-		return a.index < b.index
-	end)
-	local names = {}
-	for _, entry in list do
-		table.insert(names, entry.resource)
-	end
-	return names
-end
 
 local function refresh(player: Player)
 	local rig = rigs[player]
@@ -80,31 +47,12 @@ local function refresh(player: Player)
 		local v = bag:FindFirstChild(resource)
 		contents[resource] = if v and v:IsA("IntValue") then v.Value else 0
 	end
-	local load = Cargo.loadOf(contents)
-	local order = ranked(bag)
-	local show: { [string]: boolean } = {}
-	if load > 0 then
-		show[sackFor(load)] = true
-		if order[1] then
-			show["Heap" .. PIECE[order[1]]] = true
-		end
-		if order[2] then
-			show["Accent" .. PIECE[order[2]]] = true
-		end
-	end
-	-- heap height follows the load: about a third showing when nearly empty, all of it when full
-	local fill = math.clamp((load - 1) / (Cargo.MAX_LOAD - 1), 0, 1)
-	local shown = 0.35 + 0.65 * fill
+	local look = CargoBagLook.pick(contents)
+	local sink = CargoBagLook.sink(rig.model, look)
 	for part, weld in rig.welds do
-		part.Transparency = if show[part.Name] then 0 else 1
+		part.Transparency = if look.show[part.Name] then 0 else 1
 		local rest = rig.rest[part]
-		if part.Name:match("^Heap") or part.Name:match("^Accent") then
-			local heap = order[1] and rig.model:FindFirstChild("Heap" .. PIECE[order[1]])
-			local height = if heap and heap:IsA("BasePart") then heap.Size.Y else 0
-			weld.C0 = rest * CFrame.new(0, -(1 - shown) * height, 0)
-		else
-			weld.C0 = rest
-		end
+		weld.C0 = if CargoBagLook.isGoods(part.Name) then rest * CFrame.new(0, -sink, 0) else rest
 	end
 end
 
