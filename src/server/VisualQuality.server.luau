@@ -55,6 +55,7 @@ sky.MoonAngularSize = 9
 sky.StarCount = 0
 
 local function setSky(faces: { [string]: string }, sunShown: boolean)
+	sky.Parent = Lighting -- the Adventure preset takes it out; every other preset puts it back
 	sky.SkyboxFt = faces.Ft
 	sky.SkyboxBk = faces.Bk
 	sky.SkyboxLf = faces.Lf
@@ -67,44 +68,125 @@ end
 -- "Gritty": the overcast warm-grey daylight from REALISM-TARGET.md (The Forge's outdoor look).
 -- Low, diffuse light, a warm-grey cloud deck hiding the painted sky, near-black interiors so
 -- torches and braziers carry them, saturation kept in the darks, a little contrast.
+--
+-- LIGHTING PASS 2026-10-06 (awaiting the user's judgement). Workspace.LightingPass = "Original"
+-- restores the values in ORIGINAL exactly; anything else (the default) uses TUNED. What changed:
+--   * more key light, less flat sky fill: shade and interiors read darker while sunlit ground
+--     stays light (Brightness 1.0 -> 1.5, OutdoorAmbient 185 -> 162, EnvironmentDiffuseScale
+--     0.8 -> 0.6), with slightly crisper overcast shadows (ShadowSoftness 0.9 -> 0.75);
+--   * thinner haze so the far castle and players along the ram routes stay legible
+--     (Atmosphere Density 0.36 -> 0.30, Haze 1.4 -> 0.9, Offset 0.05 -> 0.08, darker Decay);
+--   * lower exposure, a little more contrast (ExposureCompensation -0.05 -> -0.10,
+--     Contrast 0.10 -> 0.15), restrained bloom (0.45/24/1.1 -> 0.30/20/1.3), and half the far blur.
+type Gritty = {
+	brightness: number, outdoorAmbient: Color3, exposure: number, shadowSoftness: number,
+	envDiffuse: number, envSpecular: number,
+	density: number, offset: number, haze: number, decay: Color3,
+	contrast: number, bloomIntensity: number, bloomSize: number, bloomThreshold: number, farBlur: number,
+}
+local ORIGINAL: Gritty = {
+	brightness = 1.0, outdoorAmbient = Color3.fromRGB(185, 178, 166), exposure = -0.05, shadowSoftness = 0.9,
+	envDiffuse = 0.8, envSpecular = 0.25,
+	density = 0.36, offset = 0.05, haze = 1.4, decay = Color3.fromRGB(150, 140, 126),
+	contrast = 0.1, bloomIntensity = 0.45, bloomSize = 24, bloomThreshold = 1.1, farBlur = 0.12,
+}
+local TUNED: Gritty = {
+	brightness = 1.5, outdoorAmbient = Color3.fromRGB(162, 156, 146), exposure = -0.10, shadowSoftness = 0.75,
+	envDiffuse = 0.6, envSpecular = 0.15,
+	density = 0.30, offset = 0.08, haze = 0.9, decay = Color3.fromRGB(132, 122, 108),
+	contrast = 0.15, bloomIntensity = 0.30, bloomSize = 20, bloomThreshold = 1.3, farBlur = 0.06,
+}
+local function tunedPass(): boolean
+	return Workspace:GetAttribute("LightingPass") ~= "Original"
+end
+
 local function setGritty()
+	local v = if tunedPass() then TUNED else ORIGINAL
 	pcall(function() Lighting.LightingStyle = Enum.LightingStyle.Realistic end)
 	setSky(OVERCAST_SKY, false)
 	Lighting.ClockTime = 14.2
 	Lighting.GlobalShadows = true
-	Lighting.ShadowSoftness = 0.9
-	Lighting.Brightness = 1.0 -- the sun is behind the deck: soft shadows; the warm-grey fill does most of the lighting
-	Lighting.ExposureCompensation = -0.05
+	Lighting.ShadowSoftness = v.shadowSoftness
+	Lighting.Brightness = v.brightness -- the sun is behind the deck: soft shadows
+	Lighting.ExposureCompensation = v.exposure
 	Lighting.Ambient = Color3.fromRGB(34, 32, 32)
-	Lighting.OutdoorAmbient = Color3.fromRGB(185, 178, 166)
+	Lighting.OutdoorAmbient = v.outdoorAmbient
 	Lighting.ColorShift_Top = Color3.fromRGB(214, 202, 184)
 	Lighting.ColorShift_Bottom = Color3.fromRGB(0, 0, 0)
-	Lighting.EnvironmentDiffuseScale = 0.8
-	Lighting.EnvironmentSpecularScale = 0.25
-	atmosphere.Density = 0.36
-	atmosphere.Offset = 0.05
-	atmosphere.Haze = 1.4
+	Lighting.EnvironmentDiffuseScale = v.envDiffuse
+	Lighting.EnvironmentSpecularScale = v.envSpecular
+	atmosphere.Density = v.density
+	atmosphere.Offset = v.offset
+	atmosphere.Haze = v.haze
 	atmosphere.Glare = 0
 	atmosphere.Color = Color3.fromRGB(181, 172, 156)
-	atmosphere.Decay = Color3.fromRGB(150, 140, 126)
+	atmosphere.Decay = v.decay
 	grade.Brightness = 0
-	grade.Contrast = 0.1
+	grade.Contrast = v.contrast
 	grade.Saturation = 0
 	grade.TintColor = Color3.fromRGB(255, 248, 238)
-	bloom.Intensity = 0.45
-	bloom.Size = 24
-	bloom.Threshold = 1.1
-	sunRays.Intensity = 0
-	depth.FarIntensity = 0.12
+	bloom.Intensity = v.bloomIntensity
+	bloom.Size = v.bloomSize
+	bloom.Threshold = v.bloomThreshold
+	sunRays.Intensity = 0 -- the sun disc is hidden behind the deck: rays would have no source
+	depth.FarIntensity = v.farBlur
 	depth.FocusDistance = 140
 	depth.InFocusRadius = 160
 	depth.NearIntensity = 0
 	clouds.Enabled = false -- the overcast skybox is the cloud deck
 end
 
+-- "Adventure" (the DEFAULT since 2026-10-06, chosen by the user over Gritty): a bright,
+-- stylized midday look in the spirit of Vesteria, checked for Empire-Clash-style readability.
+-- Lively fields, easy-to-follow paths, clearly visible stone, warm wood; soft daylight with
+-- shadows that still ground players and props; warm interiors that are not near-black.
+-- No skybox: Roblox's atmospheric blue sky with dynamic Clouds. Lighting only; no models change.
+local function setAdventure()
+	pcall(function() Lighting.LightingStyle = Enum.LightingStyle.Realistic end)
+	sky.Parent = nil -- the atmosphere draws the sky; the cloud layer below supplies the clouds
+	Lighting.ClockTime = 13.2 -- high sun: short, soft shadows that still sit players on the ground
+	Lighting.GlobalShadows = true
+	Lighting.ShadowSoftness = 0.35
+	Lighting.Brightness = 2.8
+	Lighting.ExposureCompensation = -0.05
+	Lighting.Ambient = Color3.fromRGB(92, 80, 68) -- interiors stay warm and readable, not near-black
+	Lighting.OutdoorAmbient = Color3.fromRGB(152, 150, 144) -- near-neutral fill: shade stays readable without going blue
+	Lighting.ColorShift_Top = Color3.fromRGB(255, 236, 206) -- warm sun on stone and wood
+	Lighting.ColorShift_Bottom = Color3.fromRGB(0, 0, 0)
+	Lighting.EnvironmentDiffuseScale = 0.5 -- the blue sky must not tint every shaded side blue
+	Lighting.EnvironmentSpecularScale = 0.1
+	atmosphere.Density = 0.24
+	atmosphere.Offset = 0.15
+	atmosphere.Haze = 0.3
+	atmosphere.Glare = 0.15
+	atmosphere.Color = Color3.fromRGB(199, 214, 230)
+	atmosphere.Decay = Color3.fromRGB(106, 140, 180) -- distance fades to blue, so the far castle reads as far
+	grade.Brightness = 0.02
+	grade.Contrast = 0.08
+	grade.Saturation = 0.22 -- lively greens and team colours
+	grade.TintColor = Color3.fromRGB(255, 250, 240)
+	bloom.Intensity = 0.35
+	bloom.Size = 24
+	bloom.Threshold = 1.6 -- soft glow on the sky and fire without blowing out pale stone
+	sunRays.Intensity = 0.06
+	sunRays.Spread = 0.6
+	depth.FarIntensity = 0.04 -- barely any far blur: players at range stay sharp
+	depth.FocusDistance = 140
+	depth.InFocusRadius = 160
+	depth.NearIntensity = 0
+	clouds.Enabled = true
+	clouds.Cover = 0.55
+	clouds.Density = 0.6
+	clouds.Color = Color3.fromRGB(255, 255, 255)
+end
+
 local function setWeather(preset: string)
 	if preset == "Gritty" then
 		setGritty()
+		return
+	end
+	if preset == "Adventure" then
+		setAdventure()
 		return
 	end
 	local wet = preset == "Rain"
@@ -178,9 +260,18 @@ local function lantern(name: string, position: Vector3, color: Color3, brightnes
 	return p
 end
 
+-- The forge fire is the interior's main light. The 2026-10-06 pass makes it carry the room
+-- (a warm pool on the back wall and floor); LightingPass = "Original" restores the old glow.
+-- 1.8 / 18 rather than brighter: at low graphics quality point-light shadows are off, and a
+-- stronger fire floods the whole building orange and leaks through its walls.
+local FORGE_GLOW = { tuned = { 1.8, 18 }, original = { 0.95, 16 } }
+local forgeLights: { PointLight } = {}
+local forgeFills: { PointLight } = {}
+
 local function forge(team: string, x: number, z: number)
 	local p = lantern(team .. "_ForgeFire", Vector3.new(x, 14.5, z),
-		Color3.fromRGB(255, 158, 93), 0.95, 16)
+		Color3.fromRGB(255, 158, 93), FORGE_GLOW.original[1], FORGE_GLOW.original[2])
+	table.insert(forgeLights, p:FindFirstChild("Glow") :: PointLight)
 	local smoke = owned("ParticleEmitter", "Smoke", p) :: ParticleEmitter
 	smoke.Texture = "rbxasset://textures/particles/smoke_main.dds"
 	smoke.Rate = 5
@@ -230,16 +321,40 @@ for _, castle in Layout.castles do
 		local cx, cz = (s.min_x + s.max_x) / 2, (s.min_z + s.max_z) / 2
 		if s.role == "Blacksmith" then
 			forge(team, cx + 6 * toGate, cz + 6 * math.sign(cz - s.door.z))
+			-- Adventure only: a soft, shadowless warm fill at the room's centre, so the forge reads
+			-- as a warm working room instead of taking the cool daylight from its open front
+			local fill = lantern(team .. "_ForgeRoomFill", Vector3.new(cx, 17, cz), Color3.fromRGB(255, 186, 120), 1.2, 16)
+			local light = fill:FindFirstChild("Glow") :: PointLight
+			light.Shadows = false
+			light.Enabled = false
+			table.insert(forgeFills, light)
 		elseif LANTERN[s.role] then
 			lantern(team .. "_" .. s.role .. "Lantern", Vector3.new(cx, 17.2, cz), LANTERN[s.role], 0.72, 14)
 		end
 	end
 end
 
-if Workspace:GetAttribute("WeatherPreset") == nil then
-	Workspace:SetAttribute("WeatherPreset", "Clear")
+local function setForgeGlow()
+	local glow = if tunedPass() then FORGE_GLOW.tuned else FORGE_GLOW.original
+	for _, light in forgeLights do
+		light.Brightness = glow[1]
+		light.Range = glow[2]
+	end
+	local adventure = Workspace:GetAttribute("WeatherPreset") == "Adventure"
+	for _, light in forgeFills do
+		light.Enabled = adventure
+	end
 end
-setWeather(Workspace:GetAttribute("WeatherPreset") :: string)
-Workspace:GetAttributeChangedSignal("WeatherPreset"):Connect(function()
+
+-- Adventure is the default look (AGENTS.md §9, chosen 2026-10-06). The fallback used to be Clear, which showed
+-- the golden sky in any place without the attribute saved.
+if Workspace:GetAttribute("WeatherPreset") == nil then
+	Workspace:SetAttribute("WeatherPreset", "Adventure")
+end
+local function apply()
 	setWeather(Workspace:GetAttribute("WeatherPreset") :: string)
-end)
+	setForgeGlow()
+end
+apply()
+Workspace:GetAttributeChangedSignal("WeatherPreset"):Connect(apply)
+Workspace:GetAttributeChangedSignal("LightingPass"):Connect(apply)

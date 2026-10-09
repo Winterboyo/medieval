@@ -1,6 +1,6 @@
 --!strict
 -- Camera-local rain keeps weather inexpensive on a large mirrored battlefield.
--- The default preset is Clear; Workspace.WeatherPreset may be set to Rain.
+-- The default preset is Adventure (VisualQuality); rain shows only when Workspace.WeatherPreset is Rain.
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
