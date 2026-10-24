@@ -97,3 +97,20 @@ Observations captured during task-oriented work.
 **Suggested improvement:** Before editing an ambiguous surface, name the exact scene object and spatial extent in a screenshot or concise statement. Check that the target matches the user's reference before building and exporting.
 
 **Principle:** Visual feedback must be mapped to a specific surface and extent before asset work begins.
+
+## 2026-10-23
+
+### Observation 7: Anchor art direction to approved gameplay screenshots
+
+**Status:** OPEN
+**Date:** 2026-10-23
+**Session context:** Revising a game art specification after selecting architectural and grassy outdoor references with the user.
+**Skill:** New skill candidate: reference-driven art direction
+**Type:** open-source
+**Phase/Area:** Visual calibration and specification handoff
+
+**Issue:** Broad terms such as "childish," "toy," and "animated" led to literal toy and cartoon references that the user rejected. The accepted gameplay screenshots instead showed believable architecture and textured ground expressed with simpler game geometry. An old written style guide would have continued driving the builder toward the wrong surface treatment.
+
+**Suggested improvement:** Calibrate with actual gameplay views, identify which image governs each visual dimension, record exact local filenames and source links, and explicitly supersede conflicting palette and style instructions. Keep visual references separate from decisions about map coordinates, gameplay, HUD, and asset licensing.
+
+**Principle:** Approved images and named visual traits should govern an art brief; ambiguous style labels should not become modeling instructions.
