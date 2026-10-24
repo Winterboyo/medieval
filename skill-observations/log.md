@@ -114,3 +114,18 @@ Observations captured during task-oriented work.
 **Suggested improvement:** Calibrate with actual gameplay views, identify which image governs each visual dimension, record exact local filenames and source links, and explicitly supersede conflicting palette and style instructions. Keep visual references separate from decisions about map coordinates, gameplay, HUD, and asset licensing.
 
 **Principle:** Approved images and named visual traits should govern an art brief; ambiguous style labels should not become modeling instructions.
+
+### Observation 8: Restyle terrain without rebuilding its geometry
+
+**Status:** OPEN
+**Date:** 2026-10-23
+**Session context:** Applying approved grassy-ground references to an existing map while a separate modeling session remained protected.
+**Skill:** New skill candidate: geometry-preserving terrain restyling
+**Type:** open-source
+**Phase/Area:** Editor integration and visual verification
+
+**Issue:** The existing terrain generator encoded an old palette and random bare patches. Rebuilding all terrain or accessing a separate live modeling session would have expanded the work unnecessarily. The editor command also supplied its own undo recording, so trying to nest another recording failed before mutation.
+
+**Suggested improvement:** Prepare a read-only material plan from approved layout data, verify the exact editor place, retain original voxel occupancies and protected regions, then apply only material changes. Reuse an existing editor undo recording, verify every written voxel by readback, and compare both close and overhead screenshots. Choose a low ground-cover material when the reference has no tall grass rather than relying on unavailable decoration properties.
+
+**Principle:** Surface appearance can be changed independently of geometry; preserve and verify the structural data while reviewing the visual result in its target renderer.

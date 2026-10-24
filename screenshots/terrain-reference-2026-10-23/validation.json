@@ -1,0 +1,41 @@
+{
+  "date": "2026-10-23",
+  "placeId": 137753630303454,
+  "profile": "ArcaneReference-2026-10-23",
+  "finalFieldMaterial": "LeafyGrass",
+  "grassBaseTint": [
+    109,
+    138,
+    83
+  ],
+  "groundBaseTint": [
+    157,
+    140,
+    116
+  ],
+  "referenceGrassPixelMean": [
+    52,
+    117,
+    59
+  ],
+  "verification": {
+    "voxelOccupanciesChecked": 795600,
+    "occupancyChanges": 0,
+    "fieldColumns": 59546,
+    "roadColumns": 1634,
+    "protectedCastlePadColumns": 5000,
+    "protectedCraterColumns": 120,
+    "modelParts": 217,
+    "modelsUnchanged": true,
+    "repeatPassMaterialChanges": 0
+  },
+  "scope": "Existing voxel soil materials and three terrain material tints; terrain heights, layout.json, all models and model properties preserved.",
+  "studioSave": "Pending confirmation of Ctrl+S and Studio save output",
+  "captures": [
+    "before.jpg",
+    "field.jpg",
+    "path.jpg",
+    "overview.jpg"
+  ],
+  "remainingDifferences": "Only the terrain surface was revised. Existing castle/tree models, shoreline geometry, and lighting remain separate visual work."
+}

@@ -10,12 +10,12 @@ EditableImage and write voxels (scripts/build-terrain-v2-2.luau). Encoding, per 
   B      ground material code, MATERIALS below
 Pixel (i, j) is the column centred on Roblox x = X0 + 4 i + 2, z = Z0 + 4 j + 2 (row 0 = north).
 
-Materials follow REALISM-TARGET.md and the Phase 1 patch: dry grass with leafy and bare patches in
-the field, packed-dirt ram routes, mud crater floors, a light packed courtyard inside each castle
+Field materials follow DESIGN.md's approved 2026-10-23 Arcane Lineage references: a coherent
+textured green field, packed-dirt ram routes, mud crater floors, a light packed courtyard inside each castle
 (grass at the wall foot, mud round the forge), rock on steep ground and cliffs, sand at the water.
 Everything is mirrored across x = 0 like the map: noise is sampled at |x|.
 """
-import bpy, math, os
+import bpy, math, os, json
 from mathutils import noise, Vector
 
 STEP = 4
@@ -27,11 +27,26 @@ MATERIALS = {   # code -> Roblox Enum.Material name (scripts/build-terrain-v2-2.
     1: "Grass", 2: "LeafyGrass", 3: "Ground", 4: "Mud", 5: "Rock", 6: "Sand", 7: "Concrete",
 }
 CODE = {v: k for k, v in MATERIALS.items()}
+with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "reference_terrain_surface.json"), encoding="utf-8") as _profile_file:
+    SURFACE_PROFILE = json.load(_profile_file)
+assert SURFACE_PROFILE["preserve_heights"]
+FIELD_MATERIAL = SURFACE_PROFILE["field_material"]
+assert FIELD_MATERIAL in CODE
 
 
 def _n(x, z, scale, seed):
     """Perlin noise in roughly -1..1, mirrored across x = 0."""
     return noise.noise(Vector((abs(x) / scale, z / scale, seed)))
+
+
+def _reference_path(D, x, z, nearest_path):
+    """Same mirrored painted fringe as apply-reference-terrain-surface.luau."""
+    distance, _, _ = nearest_path(D, x, -z)
+    ax, by = abs(x), -z
+    edge = SURFACE_PROFILE["path_edge_wobble"] * (
+        0.5 + 0.25 * math.sin(ax / 13 + by / 9)
+        + 0.25 * math.sin(ax / 5.7 - by / 17))
+    return distance <= D["routes"][0]["width"] / 2 + edge
 
 
 def _courtyard(castle, x, z):
@@ -59,7 +74,7 @@ def build():
     bf = bpy.app.driver_namespace["battlefield"]
     # the builder's helpers live in its module globals; reach them through a function's globals
     G = bf["verify"].__globals__
-    in_path_paint = G["in_path_paint"]
+    nearest_path = G["nearest_path"]
     nx, nz = (X1 - X0) // STEP, (Z1 - Z0) // STEP
     H = [[0.0] * nx for _ in range(nz)]
     S = [[0.0] * nx for _ in range(nz)]
@@ -100,13 +115,12 @@ def build():
                         m = "Ground"
                     if m:
                         break
-            if m is None and in_path_paint(D, x, -z):
+            if m is None and _reference_path(D, x, z, nearest_path):
                 m = "Ground"
             if m is None and s < 22 and slope > 0.45:
                 m = "Rock"   # the cliff band near the coast
             if m is None:
-                n = _n(x, z, 46, 0.37) + 0.5 * _n(x, z, 13, 4.1)
-                m = "Ground" if n < -0.42 else ("LeafyGrass" if n > 0.3 else "Grass")
+                m = FIELD_MATERIAL  # the texture supplies detail; no camouflage-like bare patches
             mats[j][i] = CODE[m]
             counts[m] = counts.get(m, 0) + 1
     return dict(H=H, mats=mats, nx=nx, nz=nz, counts=counts)

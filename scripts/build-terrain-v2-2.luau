@@ -26,11 +26,13 @@ local MATERIALS = {
 	[6] = Enum.Material.Sand,
 	[7] = Enum.Material.Concrete,
 }
--- base colours multiply the material textures; tuned under the Gritty preset (REALISM-TARGET.md)
+-- Field tints follow assets/map/reference_terrain_surface.json and the approved 2026-10-23 references.
+-- After importing an older terrain_v2_2.png, apply-reference-terrain-surface.luau removes its
+-- old bare/leafy field patches without clearing or rebuilding the live terrain.
 local COLOURS = {
-	[Enum.Material.Grass] = Color3.fromRGB(148, 150, 130),
-	[Enum.Material.LeafyGrass] = Color3.fromRGB(132, 136, 116),
-	[Enum.Material.Ground] = Color3.fromRGB(186, 174, 160),
+	[Enum.Material.Grass] = Color3.fromRGB(109, 138, 83),
+	[Enum.Material.LeafyGrass] = Color3.fromRGB(109, 138, 83),
+	[Enum.Material.Ground] = Color3.fromRGB(157, 140, 116),
 	[Enum.Material.Mud] = Color3.fromRGB(120, 104, 90),
 	[Enum.Material.Rock] = Color3.fromRGB(110, 104, 100),
 	[Enum.Material.Sand] = Color3.fromRGB(178, 166, 146),

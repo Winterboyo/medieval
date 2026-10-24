@@ -1,0 +1,26 @@
+{
+  "version": "ArcaneReference-2026-10-23",
+  "layout_version": "2.2",
+  "references": [
+    "references/ChatGPT Image Oct 23, 2026, 05_19_23 PM.jpg",
+    "references/ChatGPT Image Oct 23, 2026, 05_22_37 PM.jpg"
+  ],
+  "sampled_grass_mean_rgb": [52, 117, 59],
+  "palette_note": "Reference pixels include texture and lighting. These are material base tints for comparison under Adventure daylight, not direct copies of the shaded pixel values.",
+  "material_colors": {
+    "Grass": [109, 138, 83],
+    "LeafyGrass": [109, 138, 83],
+    "Ground": [157, 140, 116]
+  },
+  "field_material": "LeafyGrass",
+  "field_material_note": "Low textured green cover without the tall animated blades produced by the Grass terrain material.",
+  "random_bare_field_patches": false,
+  "path_edge_wobble": 3,
+  "voxel_resolution": 4,
+  "voxel_min_y": -32,
+  "voxel_max_y": 16,
+  "preserve_heights": true,
+  "preserve_castle_pads": true,
+  "preserve_crater_profiles": true,
+  "preserve_shore_materials": true
+}
