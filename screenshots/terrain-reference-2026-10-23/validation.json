@@ -30,7 +30,15 @@
     "repeatPassMaterialChanges": 0
   },
   "scope": "Existing voxel soil materials and three terrain material tints; terrain heights, layout.json, all models and model properties preserved.",
-  "studioSave": "Pending confirmation of Ctrl+S and Studio save output",
+  "studioSave": "User confirmed saved with Ctrl+S on 2026-10-23; the Studio output bridge returned no explicit save-success message.",
+  "studioSaveVerification": {
+    "userConfirmed": true,
+    "livePlaceId": 137753630303454,
+    "liveSurfaceVersion": "ArcaneReference-2026-10-23",
+    "livePaletteMatchesProfile": true,
+    "saveSuccessLogObserved": false,
+    "persistedCloudCopyIndependentlyVerified": false
+  },
   "captures": [
     "before.jpg",
     "field.jpg",
